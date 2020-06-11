@@ -3,8 +3,9 @@ from abc import ABCMeta, abstractmethod
 import json
 from enum import Enum
 import datetime
-import typing
-from collections.abc import MutableMapping, KeysView, ValuesView, ItemsView
+from typing import Any, Set, Union, NewType, TypeVar
+from collections.abc import MutableMapping, KeysView, ValuesView, ItemsView, Collection
+
 '''
 TODO:
     - Enable asynchronous capabilities (https://docs.python.org/3/library/asyncio.html) 
@@ -24,25 +25,33 @@ References:
     https://docs.python.org/3/library/index.html
 '''
 
-AccessToken = typing.NewType('AccessToken', str)
+AccessToken = NewType('AccessToken', str)
 
 
 class ShareTraceServer(metaclass=ABCMeta):
+    '''
+    The ShareTrace server is where user risk scores are calculated and 
+    interaction graphs that abstract user-to-user contact are persisted. The
+    server is able to connect and disconnect from a client PDA, perform CRUD
+    operations with PDAs, and compute risk scores. Additional functions related
+    interaction graphs are left for derived classes to implement concretely.
+    The class implements the dunder context manager methods __enter__() and
+    __exit__() to allow for efficient interaction with the client.
+    '''
 
     def __init__(self, client_id: AnyStr):
         self.client_id = client_id
-        self.connect()
 
     @abstractmethod
-    def connect(self, **kwargs) -> typing.Any:
+    def connect(self, **kwargs) -> Any:
         pass
 
     @abstractmethod
-    def disconnect(self, **kwargs) -> typing.Any:
+    def disconnect(self, **kwargs) -> Any:
         pass
 
     @abstractmethod
-    def compute(self, **kwargs) -> typing.Any:
+    def compute(self, **kwargs) -> Any:
         pass
 
     def response_raise_for_status(self,
@@ -114,7 +123,7 @@ class ShareTraceServer(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def post_to_pda(self, access_token: AnyStr, **kwargs) -> typing.Any:
+    def post_to_pda(self, access_token: AnyStr, **kwargs) -> Any:
         '''
         May not need, depending on the API behavior.
 
@@ -123,7 +132,7 @@ class ShareTraceServer(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def put_to_pda(self, access_token: AnyStr, **kwargs) -> typing.Any:
+    def put_to_pda(self, access_token: AnyStr, **kwargs) -> Any:
         '''
         Use to update a UserPDA with new contact-tracing-related data.
 
@@ -132,7 +141,7 @@ class ShareTraceServer(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def del_from_pda(self, access_token: AnyStr, **kwargs) -> typing.Any:
+    def del_from_pda(self, access_token: AnyStr, **kwargs) -> Any:
         '''
         May not need, depending on the API behavior.
 
@@ -141,6 +150,7 @@ class ShareTraceServer(metaclass=ABCMeta):
         pass
 
     def __enter__(self):
+        self.connect()
         return self
 
     @abstractmethod
@@ -150,32 +160,66 @@ class ShareTraceServer(metaclass=ABCMeta):
         May also consider implementing asynchronous __aenter__() and 
             __aexit()__ instead.
         '''
-
         pass
 
     def __repr__(self):
         return f'{__class__.__name__}(client_id={self.client_id})'
 
+BluetoothID = NewType('BluetoothID', Union[str, int])
 
 class Contact:
-
-    def __init__(self, user_1: typing.AnyStr, user_2: typing.AnyStr):
+    '''
+    A contact is an interaction between two users. The only user information 
+    that is stored is the user's bluetooth id, as opposed to the entire UsePDA
+    object. This helps preserve user privacy since the Bluetooth id is an
+    ephemeral entity and generated securely through hashing.
+    '''
+    def __init__(self, user_1: BluetoothID, user_2: BluetoothID):
         self.user_1 = user_1
         self.user_2 = user_2
 
     def __repr__(self):
         return f'{__class__.__name__}(user_1={self.user_1}, user_2={self.user_2})'
 
+Date = TypeVar('Date', datetime.datetime, datetime.date)
 
-Date = typing.TypeVar('Date', datetime.datetime, datetime.date)
+class UserGroup(Collection):
+    '''
+    A collection of users (i.e. Bluetooth IDs).
+    '''
 
+    def __init__(self, users_blueooth_ids: List[BluetoothID] = None):
+        if users_blueooth_ids is None:
+            self.users = set()
+        else:
+            self.users = set(users_blueooth_ids)
+
+    def __contains__(self, user: BluetoothID):
+        return self.users.__contains__(user)
+
+    def __iter__(self):
+        return self.users.__iter__()
+
+    def __len__(self):
+        return self.users.__len__()
+
+    def remove(self, user: BluetoothID):
+        self.users.remove(user)
+
+    def add(self, user: BluetoothID):
+        self.users.add(user)
+        
 
 class ContactHistory(MutableMapping, KeysView, ValuesView, ItemsView):
     '''
-    ContactHistory is treated the same as a typical dict.
+    The contact history of a single user. The key-value mapping is between
+    a date (and time) of contact and all the users that are in contact with the 
+    user at that date (and time). The resolution of the date is left for
+    implementation. Type checking is performed when adding new elements to
+    ensure consistency.
     '''
 
-    def __init__(self, history: Dict = None):
+    def __init__(self, history: Dict[Contact, UserGroup] = None):
         if history is None:
             self.history = dict()
         else:
@@ -184,12 +228,12 @@ class ContactHistory(MutableMapping, KeysView, ValuesView, ItemsView):
     def __getitem__(self, key: Date):
         return self.history.__getitem__(key)
 
-    def __setitem__(self, key: Date, value: Contact):
+    def __setitem__(self, key: Date, value: UserGroup):
         if not isinstance(key, (datetime.datetime, datetime.date)):
             msg = 'Only keys must be either datetime.datetime or datetime.date.'
             raise TypeError(msg).with_traceback()
-        if not isinstance(value, Contact):
-            msg = 'Only values must be a Contact.'
+        if not isinstance(value, UserGroup):
+            msg = 'Only values must be a UserGroup.'
             raise TypeError(msg).with_traceback()
         self.history.__setitem__(key, value)
 
@@ -211,19 +255,24 @@ class ContactHistory(MutableMapping, KeysView, ValuesView, ItemsView):
     def items(self):
         return self.history.items()
 
+    def __repr__(self):
+        return f'{self.__class__.__name__}(num_contacts={len(self.history)})'
+
 
 class UserPDA(ABCMeta):
     '''
     A PDA belonging to a typical user of ShareTrace. Contains all of the
-        expected attributes mentioned in the ShareTrace white paper.
+    expected attributes mentioned in the ShareTrace white paper.
     '''
 
     def __init__(self,
                  access_token: AnyStr,
+                 bluetooth_id: Any,
                  symptoms: Set = None,
                  diagnosed: bool = False,
                  contact_history: ContactHistory = None):
         self.access_token = access_token
+        self.bluetooth_id = bluetooth_id
         self.diagnosed = diagnosed
         if symptoms is None:
             self.symptoms = set()
@@ -235,5 +284,8 @@ class UserPDA(ABCMeta):
             self.contact_history = contact_history
 
     @abstractmethod
-    def generate_bluetooth_id(self, **kwargs):
+    def generate_bluetooth_id(self, **kwargs) -> BluetoothID:
         pass
+
+    def __repr__(self):
+        return f'{self.__class__.__name__}(access_token={self.access_token})'
