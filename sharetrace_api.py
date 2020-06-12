@@ -57,6 +57,10 @@ class ShareTraceServer(metaclass=ABCMeta):
     def response_raise_for_status(self,
                                   request_func: function,
                                   **kwargs) -> requests.Response:
+        '''
+        Combines a requests function and the requests.raise_for_status() to
+        automatically raise an exception of one occurs.
+        '''
         def requests_function_not_found(func, package_or_module):
             return func not in package_or_module.__dict__.values()
 
@@ -81,10 +85,15 @@ class ShareTraceServer(metaclass=ABCMeta):
                 'username': username,
                 'password': password
             }
+
+            payload = {}
+
             response = response_raise_for_status(requests.get,
                                                 url=url,
-                                                headers=headers)
+                                                headers=headers
+                                                data=payload)
             response = response.text.encode('utf8')
+
             try:
                 return response['accessToken']
             else:
@@ -115,15 +124,21 @@ class ShareTraceServer(metaclass=ABCMeta):
                     'Content-Type': 'application/json',
                     'x-auth-token': access_token
                 }
+
+                payload = {}
+
                 response = response_raise_for_status(requests.get,
                                                      url=url,
-                                                     headers=headers)
+                                                     headers=headers,
+                                                     data=payload)
                 response = response.text.encode('utf8')
         '''
         pass
 
+    # TODO Add url parameter
+
     @abstractmethod
-    def post_to_pda(self, access_token: AnyStr, **kwargs) -> Any:
+    def post_to_pda(self, access_token: AnyStr, url: AnyStr ** kwargs) -> Any:
         '''
         May not need, depending on the API behavior.
 
@@ -132,7 +147,7 @@ class ShareTraceServer(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def put_to_pda(self, access_token: AnyStr, **kwargs) -> Any:
+    def put_to_pda(self, access_token: AnyStr, url: AnyStr, **kwargs) -> Any:
         '''
         Use to update a UserPDA with new contact-tracing-related data.
 
@@ -165,7 +180,11 @@ class ShareTraceServer(metaclass=ABCMeta):
     def __repr__(self):
         return f'{__class__.__name__}(client_id={self.client_id})'
 
+
 BluetoothID = NewType('BluetoothID', Union[str, int])
+Date = TypeVar('Date', datetime.datetime, datetime.date)
+Duration = NewType('Duration', datetime.timedelta)
+
 
 class Contact:
     '''
@@ -174,25 +193,48 @@ class Contact:
     object. This helps preserve user privacy since the Bluetooth id is an
     ephemeral entity and generated securely through hashing.
     '''
-    def __init__(self, user_1: BluetoothID, user_2: BluetoothID):
+
+    def __init__(self,
+                 user_1: BluetoothID,
+                 user_2: BluetoothID,
+                 time: Date,
+                 duration: Duration,
+                 signal_strength):
         self.user_1 = user_1
         self.user_2 = user_2
+        self.time = time
+        self.duration = duration
+        self.signal_strength = signal_strength
 
     def __repr__(self):
         return f'{__class__.__name__}(user_1={self.user_1}, user_2={self.user_2})'
 
-Date = TypeVar('Date', datetime.datetime, datetime.date)
+    def __eq__(self, value) -> bool:
+        if not isinstance(value, self.__class__):
+            return False
+        this = (self.user_1,
+                self.user_2,
+                self.time,
+                self.duration,
+                self.signal_strength)
+        that = (value.user_1,
+                value.user_2,
+                value.time,
+                value.duration,
+                value.signal_strength)
+        return this == that
 
-class UserGroup(Collection):
+
+class ContactGroup(Collection):
     '''
-    A collection of users (i.e. Bluetooth IDs).
+    A collection of Contacts.
     '''
 
-    def __init__(self, users_blueooth_ids: List[BluetoothID] = None):
-        if users_blueooth_ids is None:
+    def __init__(self, contacts: List[Contacts] = None):
+        if contacts is None:
             self.users = set()
         else:
-            self.users = set(users_blueooth_ids)
+            self.users = set(contacts)
 
     def __contains__(self, user: BluetoothID):
         return self.users.__contains__(user)
@@ -208,7 +250,7 @@ class UserGroup(Collection):
 
     def add(self, user: BluetoothID):
         self.users.add(user)
-        
+
 
 class ContactHistory(MutableMapping, KeysView, ValuesView, ItemsView):
     '''
@@ -219,7 +261,7 @@ class ContactHistory(MutableMapping, KeysView, ValuesView, ItemsView):
     ensure consistency.
     '''
 
-    def __init__(self, history: Dict[Contact, UserGroup] = None):
+    def __init__(self, history: Dict[Date, ContactGroup] = None):
         if history is None:
             self.history = dict()
         else:
@@ -232,8 +274,8 @@ class ContactHistory(MutableMapping, KeysView, ValuesView, ItemsView):
         if not isinstance(key, (datetime.datetime, datetime.date)):
             msg = 'Only keys must be either datetime.datetime or datetime.date.'
             raise TypeError(msg).with_traceback()
-        if not isinstance(value, UserGroup):
-            msg = 'Only values must be a UserGroup.'
+        if not isinstance(value, ContactGroup):
+            msg = 'Only values must be a ContactGroup.'
             raise TypeError(msg).with_traceback()
         self.history.__setitem__(key, value)
 
