@@ -75,7 +75,8 @@ class ShareTraceServer(metaclass=ABCMeta):
     def authenticate_pda(self,
                          url: AnyStr,
                          username: AnyStr,
-                         password: AnyStr) -> AccessToken:
+                         password: AnyStr,
+                         **kwargs) -> AccessToken:
         '''
         Additional implementation logic may be required by the API, but the
             basic operations are provided here:
@@ -104,7 +105,7 @@ class ShareTraceServer(metaclass=ABCMeta):
     def get_from_pda(self,
                      access_token: AnyStr,
                      url: AnyStr,
-                     **kwargs) -> typing.Any:
+                     **kwargs) -> Any:
         '''
         Use this to get UserPDA data related to contact tracing.
 
