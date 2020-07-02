@@ -12,7 +12,7 @@ import java.io.IOException;
 @Data public class ContactWritableComparable
         implements WritableComparable<ContactWritableComparable>
 {
-    @NonNull private Contact<?, ?> contact;
+    @NonNull private Contact contact;
 
     @Override public int compareTo(ContactWritableComparable o)
     {
