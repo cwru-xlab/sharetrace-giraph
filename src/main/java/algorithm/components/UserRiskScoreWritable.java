@@ -1,6 +1,6 @@
-package algorithm.components;
+package main.java.algorithm.components;
 
-import model.UserRiskScore;
+import main.java.model.UserRiskScore;
 import org.apache.hadoop.io.Writable;
 
 import java.io.DataInput;

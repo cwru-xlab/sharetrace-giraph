@@ -1,8 +1,8 @@
-package algorithm.components;
+package main.java.algorithm.components;
 
 import lombok.Data;
 import lombok.NonNull;
-import model.Contact;
+import main.java.model.Contact;
 import org.apache.hadoop.io.WritableComparable;
 
 import java.io.DataInput;

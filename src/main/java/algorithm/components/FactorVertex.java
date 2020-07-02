@@ -1,4 +1,4 @@
-package algorithm.components;
+package main.java.algorithm.components;
 
 import org.apache.giraph.graph.DefaultVertex;
 import org.apache.hadoop.io.NullWritable;

@@ -1,4 +1,4 @@
-package model;
+package main.java.model;
 
 import lombok.Builder;
 import lombok.NonNull;
