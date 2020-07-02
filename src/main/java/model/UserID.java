@@ -1,23 +1,10 @@
 package model;
 
-public abstract class UserID<T>
+import lombok.Builder;
+import lombok.NonNull;
+import lombok.Value;
+
+@Value @Builder public class UserID<T>
 {
-    private final T id;
-
-    public UserID(T id)
-    {
-        this.id = id;
-    }
-
-    public abstract UserID<T> create(T id);
-
-    public UserID<T> copy()
-    {
-        return create(getId());
-    }
-
-    public T getId()
-    {
-        return this.id;
-    }
+    @NonNull T id;
 }

@@ -1,22 +1,24 @@
 package model;
 
-import java.util.*;
+import lombok.Builder;
+import lombok.NonNull;
+import lombok.Value;
 
-public class ContactHistory
+import java.time.Instant;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+
+@Value @Builder public class ContactHistory
 {
-    private final Map<Date, Set<Contact>> history;
+    @NonNull Map<Instant, Set<Contact>> history;
 
-    public ContactHistory(Map<Date, Set<Contact>> history)
+    public boolean contactedBy(UserID<?> userID)
     {
-        this.history = Collections.unmodifiableMap(history);
+        return getContacts().stream().anyMatch(c -> c.containsUser(userID));
     }
 
-    public boolean contactedBy(Contact contact)
-    {
-        return getContacts().contains(contact);
-    }
-
-    public Set<Date> getDates()
+    public Set<Instant> getTimesOfContact()
     {
         return getHistory().keySet();
     }
@@ -26,10 +28,5 @@ public class ContactHistory
         Set<Contact> allContacts = new HashSet<>();
         getHistory().values().forEach(allContacts::addAll);
         return allContacts;
-    }
-
-    private Map<Date, Set<Contact>> getHistory()
-    {
-        return history;
     }
 }

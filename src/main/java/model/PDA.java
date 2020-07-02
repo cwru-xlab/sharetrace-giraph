@@ -1,53 +1,17 @@
 package model;
 
-import java.util.Collections;
+import lombok.Builder;
+import lombok.NonNull;
+import lombok.Value;
+
 import java.util.Set;
 
-public abstract class PDA
+// TODO Demographic info
+@Value @Builder public class PDA
 {
-    private final AccessToken<String> accessToken;
-    private final UserID<Long> userID;
-    private final Set<Symptom> symptoms;
-    private final Boolean diagnosed;
-    private final ContactHistory contactHistory;
-
-    public PDA(AccessToken<String> accessToken,
-               BluetoothID userID,
-               Set<Symptom> symptoms,
-               Boolean diagnosed,
-               ContactHistory contactHistory)
-    {
-        this.accessToken = accessToken.copy();
-        this.userID = userID.copy();
-        this.symptoms = Collections.unmodifiableSet(symptoms);
-        this.diagnosed = diagnosed;
-        this.contactHistory = contactHistory;
-    }
-
-    public abstract UserID<Long> generateUserID();
-
-    public AccessToken<String> getAccessToken()
-    {
-        return accessToken;
-    }
-
-    public UserID<Long> getUserID()
-    {
-        return userID;
-    }
-
-    public Set<Symptom> getSymptoms()
-    {
-        return symptoms;
-    }
-
-    public Boolean getDiagnosed()
-    {
-        return diagnosed;
-    }
-
-    public ContactHistory getContactHistory()
-    {
-        return contactHistory;
-    }
+    @NonNull AccessToken<?> accessToken;
+    @NonNull UserID<?> userID;
+    @NonNull Set<Symptom> symptoms;
+    @NonNull Boolean diagnosed;
+    @NonNull ContactHistory contactHistory;
 }

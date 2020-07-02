@@ -1,51 +1,37 @@
 package model;
 
+import lombok.Builder;
+import lombok.NonNull;
+import lombok.Value;
+
 import java.time.Duration;
-import java.util.Date;
+import java.time.Instant;
+import java.util.Objects;
 
-public class Contact
+@Value @Builder public class Contact implements Comparable<Contact>
 {
-    private final UserID<Long> firstUserId;
-    private final UserID<Long> secondUserId;
-    private final Date timeOfContact;
-    private final Duration durationOfContact;
-    private final SignalStrength signalStrength;
+    @NonNull UserID<?> firstUser;
+    @NonNull UserID<?> secondUser;
+    @NonNull Instant timeOfContact;
+    @NonNull Duration durationOfContact;
 
-    public Contact(UserID<Long> firstUserId,
-                   UserID<Long> secondUserId,
-                   Date timeOfContact,
-                   Duration durationOfContact,
-                   SignalStrength signalStrength)
+    public boolean containsUser(UserID<?> userID)
     {
-        this.firstUserId = firstUserId.copy();
-        this.secondUserId = secondUserId.copy();
-        this.timeOfContact = timeOfContact;
-        this.durationOfContact = durationOfContact;
-        this.signalStrength = signalStrength.copy();
+        return userID.equals(getFirstUser()) || userID.equals(getSecondUser());
     }
 
-    public UserID<Long> getFirstUserId()
+    @Override
+    /* See https://hadoop.apache.org/docs/current/api/org/apache/hadoop/io
+    /WritableComparable.html*/ public int hashCode()
     {
-        return firstUserId;
+        return Objects.hash(getFirstUser(),
+                            getSecondUser(),
+                            getTimeOfContact(),
+                            getDurationOfContact());
     }
 
-    public UserID<Long> getSecondUserId()
+    @Override public int compareTo(Contact o)
     {
-        return secondUserId;
-    }
-
-    public Date getTimeOfContact()
-    {
-        return timeOfContact;
-    }
-
-    public Duration getDurationOfContact()
-    {
-        return durationOfContact;
-    }
-
-    public SignalStrength getSignalStrength()
-    {
-        return signalStrength;
+        return getDurationOfContact().compareTo(o.getDurationOfContact());
     }
 }

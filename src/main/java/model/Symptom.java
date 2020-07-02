@@ -1,23 +1,11 @@
 package model;
 
-public class Symptom
+import lombok.Builder;
+import lombok.NonNull;
+import lombok.Value;
+
+@Value @Builder public class Symptom
 {
-    private final String name;
-    private final Double weighting;
-
-    public Symptom(String name, Double weighting)
-    {
-        this.name = name;
-        this.weighting = weighting;
-    }
-
-    public String getName()
-    {
-        return name;
-    }
-
-    public Double getWeighting()
-    {
-        return weighting;
-    }
+    @NonNull String name;
+    @NonNull Double weighting;
 }
