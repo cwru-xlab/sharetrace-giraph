@@ -1,10 +1,14 @@
 package main.java.model;
 
-import lombok.Builder;
 import lombok.NonNull;
 import lombok.Value;
 
-@Value @Builder public class AccessToken<T>
+/**
+ * A generic access token intended to be used for writing data to an authenticated entity.
+ *
+ * @param <T> Type of token.
+ */
+@Value(staticConstructor = "of") public class AccessToken<T>
 {
     @NonNull T token;
 }
