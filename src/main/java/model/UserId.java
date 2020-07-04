@@ -8,7 +8,7 @@ import lombok.NonNull;
  *
  * @param <T> Type of identification.
  */
-@Data(staticConstructor = "of") public final class UserId<T>
+@Data(staticConstructor = "of") public final class UserId<T> implements Identifiable<T>
 {
-    @NonNull private T id;
+    @NonNull private final T id;
 }
