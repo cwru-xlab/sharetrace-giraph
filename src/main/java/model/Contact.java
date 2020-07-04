@@ -4,7 +4,6 @@ import lombok.Builder;
 import lombok.NonNull;
 import lombok.Value;
 
-import java.util.Collection;
 import java.util.Objects;
 import java.util.SortedSet;
 
@@ -19,49 +18,6 @@ import java.util.SortedSet;
     public boolean containsUser(Identifiable<?> userID)
     {
         return userID.equals(firstUser) || userID.equals(secondUser);
-    }
-
-    public boolean addAll(Collection<TemporalOccurrence> temporalOccurrences)
-    {
-        return occurrences.addAll(temporalOccurrences);
-    }
-
-    public boolean add(TemporalOccurrence occurrence) throws IllegalArgumentException
-    {
-        verifyAdd(occurrence);
-        return occurrences.add(occurrence);
-    }
-
-    private void verifyAdd(TemporalOccurrence occurrence) throws IllegalArgumentException
-    {
-        if (occurrences.contains(occurrence))
-        {
-            throw new IllegalArgumentException(ILLEGAL_TEMPORAL_OCCURRENCE_MESSAGE);
-        }
-    }
-
-    public boolean removeAll(Collection<TemporalOccurrence> occurrences)
-    {
-        return occurrences.removeAll(occurrences);
-    }
-
-    public boolean remove(TemporalOccurrence occurrence) throws IllegalStateException
-    {
-        verifyRemove(occurrence);
-        return occurrences.remove(occurrence);
-    }
-
-    private void verifyRemove(TemporalOccurrence occurrence) throws IllegalStateException
-    {
-        if (hasSingleOccurrence() && occurrences.contains(occurrence))
-        {
-            throw new IllegalStateException(ILLEGAL_REMOVAL_MESSAGE);
-        }
-    }
-
-    private boolean hasSingleOccurrence()
-    {
-        return 1 == occurrences.size();
     }
 
     @Override
