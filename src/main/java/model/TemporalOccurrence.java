@@ -11,6 +11,7 @@ import java.time.Instant;
  * An occurrence at specific point in time and of a certain duration.
  *
  * The default implementation of compareTo(TemporalOccurrence) is by the point in time.
+ *
  * @see Contact
  */
 @Value @Builder public class TemporalOccurrence implements Comparable<TemporalOccurrence>
@@ -18,8 +19,8 @@ import java.time.Instant;
     @NonNull Instant time;
     @NonNull Duration duration;
 
-    @Override public int compareTo(TemporalOccurrence temporalOccurrence)
+    @Override public int compareTo(TemporalOccurrence o)
     {
-        return getTime().compareTo(temporalOccurrence.getTime());
+        return time.compareTo(o.getTime());
     }
 }
