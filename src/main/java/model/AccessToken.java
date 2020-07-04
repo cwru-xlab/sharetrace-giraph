@@ -1,5 +1,7 @@
 package main.java.model;
 
+import lombok.AccessLevel;
+import lombok.Getter;
 import lombok.NonNull;
 import lombok.Value;
 
@@ -8,7 +10,12 @@ import lombok.Value;
  *
  * @param <T> Type of token.
  */
-@Value(staticConstructor = "of") public class AccessToken<T>
+@Value(staticConstructor = "of") @Getter(AccessLevel.NONE) public class AccessToken<T> implements Identifiable<T>
 {
     @NonNull T token;
+
+    @Override public T getId()
+    {
+        return token;
+    }
 }
