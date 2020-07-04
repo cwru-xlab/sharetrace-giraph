@@ -6,23 +6,30 @@ import lombok.Value;
 
 import java.io.IOException;
 
-@Value public class RiskScore implements Comparable<RiskScore>
+/**
+ * A value ranging between 0 and 1 that denotes the risk of some condition.
+ *
+ * The default implementation of compareTo(RiskScore<N>) uses the {@code double} value of the score.
+ *
+ * @param <N> Numerical type of the score.
+ */
+@Value @Builder public class RiskScore<N extends Number> implements Comparable<RiskScore<N>>
 {
-    @NonNull Double score;
-    public static final String INVALID_RISK_SCORE_MESSAGE =
-            "%must be between 0" + " and 1, inclusive.";
+    @NonNull N score;
+    public static final String INVALID_RISK_SCORE_MESSAGE = "must be between 0" + " and 1, inclusive.";
 
-    @Builder public RiskScore(@NonNull Double riskScore) throws IOException
+    @Builder public RiskScore(@NonNull N riskScore) throws IOException
     {
         verifyScore(riskScore);
         this.score = riskScore;
     }
 
-    private void verifyScore(@NonNull Double score) throws IOException
+    private void verifyScore(@NonNull N score) throws IOException
     {
-        if (score <= 0 && 1 <= score)
+        double risk = score.doubleValue();
+        if (risk <= 0 && 1 <= risk)
         {
-            throw new IOException(formatInvalidRiskScoreMessage(score));
+            throw new IOException(formatInvalidRiskScoreMessage(risk));
         }
     }
 
@@ -31,8 +38,8 @@ import java.io.IOException;
         return score.toString() + INVALID_RISK_SCORE_MESSAGE;
     }
 
-    @Override public int compareTo(RiskScore riskScore)
+    @Override public int compareTo(RiskScore<N> riskScore)
     {
-        return Double.compare(getScore(), riskScore.getScore());
+        return Double.compare(getScore().doubleValue(), riskScore.getScore().doubleValue());
     }
 }
