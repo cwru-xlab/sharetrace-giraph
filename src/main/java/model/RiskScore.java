@@ -11,7 +11,7 @@ import java.io.IOException;
  *
  * @param <N> Numerical type of the score.
  */
-@Value public class RiskScore<N extends Number> implements Comparable<RiskScore<N>>, ComputedValue<N>
+@Value public class RiskScore<N extends Number> implements ComputedValue<N>
 {
     @NonNull @Getter(AccessLevel.NONE) N score;
     public static final String INVALID_RISK_SCORE_MESSAGE = " must be between 0 and 1, inclusive.";
@@ -36,13 +36,13 @@ import java.io.IOException;
         return score + INVALID_RISK_SCORE_MESSAGE;
     }
 
-    @Override public int compareTo(RiskScore<N> o)
-    {
-        return Double.compare(score.doubleValue(), o.getValue().doubleValue());
-    }
-
     @Override public N getValue()
     {
         return score;
+    }
+
+    @Override public int compareTo(N o)
+    {
+        return Double.compare(score.doubleValue(), o.doubleValue());
     }
 }
