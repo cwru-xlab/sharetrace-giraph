@@ -27,15 +27,15 @@ import java.util.SortedSet;
     private static final String IDENTICAL_USERS_MESSAGE = "A contact must contain two distinct users.";
 
     @Builder
-    private Contact(@NonNull Identifiable<U1> user1,
-                    @NonNull Identifiable<U2> user2,
-                    @NonNull SortedSet<TemporalOccurrence> timesInContact)
+    private Contact(@NonNull Identifiable<U1> firstUser,
+                    @NonNull Identifiable<U2> secondUser,
+                    @NonNull SortedSet<TemporalOccurrence> occurrences)
     {
-        verifyUsers(user1, user2);
-        verifyOccurrences(timesInContact);
-        firstUser = user1;
-        secondUser = user2;
-        occurrences = timesInContact;
+        verifyUsers(firstUser, secondUser);
+        verifyOccurrences(occurrences);
+        this.firstUser = firstUser;
+        this.secondUser = secondUser;
+        this.occurrences = occurrences;
     }
 
     private void verifyUsers(Identifiable<U1> user1, Identifiable<U2> user2)
