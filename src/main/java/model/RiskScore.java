@@ -16,10 +16,10 @@ import java.io.IOException;
     @NonNull @Getter(AccessLevel.NONE) N score;
     public static final String INVALID_RISK_SCORE_MESSAGE = " must be between 0 and 1, inclusive.";
 
-    @Builder private RiskScore(@NonNull N riskScore) throws IOException
+    @Builder private RiskScore(@NonNull N score) throws IOException
     {
-        verifyScore(riskScore);
-        score = riskScore;
+        verifyScore(score);
+        this.score = score;
     }
 
     private void verifyScore(@NonNull N riskScore) throws IOException
