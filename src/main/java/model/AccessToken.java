@@ -10,9 +10,9 @@ import lombok.Value;
  *
  * @param <T> Type of token.
  */
-@Value(staticConstructor = "of") @Getter(AccessLevel.NONE) public class AccessToken<T> implements Identifiable<T>
+@Value(staticConstructor = "of") public class AccessToken<T> implements Identifiable<T>
 {
-    @NonNull T token;
+    @NonNull @Getter(AccessLevel.NONE) T token;
 
     @Override public T getId()
     {
