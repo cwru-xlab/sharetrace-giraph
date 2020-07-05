@@ -4,14 +4,22 @@ import lombok.Builder;
 import lombok.NonNull;
 import lombok.Value;
 
-import java.util.Set;
-
-// TODO Demographic info
-@Value @Builder public class PDA
+@Value
+@Builder
+public class PDA<T, U, R extends Number>
 {
-    @NonNull AccessToken<?> accessToken;
-    @NonNull UserID<?> userID;
-    @NonNull Set<Symptom> symptoms;
-    @NonNull Boolean diagnosed;
-    @NonNull ContactHistory contactHistory;
+    @NonNull
+    Identifiable<T> accessToken;
+
+    @NonNull
+    Identifiable<U> userId;
+
+    @NonNull
+    ComputedValue<R> riskScore;
+
+    @NonNull
+    boolean diagnosed;
+
+    @NonNull
+    ContactHistory<U, U> contactHistory;
 }
