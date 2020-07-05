@@ -10,11 +10,15 @@ import lombok.Value;
  *
  * @param <T> Type of identification.
  */
-@Value(staticConstructor = "of") public class UserId<T> implements Identifiable<T>
+@Value(staticConstructor = "of")
+public class UserId<T> implements Identifiable<T>
 {
-    @NonNull @Getter(AccessLevel.NONE) T id;
+    @NonNull
+    @Getter(AccessLevel.NONE)
+    T id;
 
-    @Override public T getId()
+    @Override
+    public T getId()
     {
         return id;
     }
