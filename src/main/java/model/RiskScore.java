@@ -10,7 +10,7 @@ import java.io.IOException;
 /**
  * A value ranging between 0 and 1 that denotes the risk of some condition.
  * <p>
- * The default implementation of compareTo(RiskScore) uses the {@code double} value of the score.
+ * The default implementation of {@code compareTo(RiskScore)} uses the {@code double} value of the score.
  *
  * @param <N> Numerical type of the score.
  */
