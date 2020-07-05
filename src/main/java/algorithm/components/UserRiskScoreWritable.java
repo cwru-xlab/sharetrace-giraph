@@ -7,6 +7,7 @@ import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
 
+@Deprecated
 public class UserRiskScoreWritable implements Writable
 {
     private UserRiskScore userRiskScore;

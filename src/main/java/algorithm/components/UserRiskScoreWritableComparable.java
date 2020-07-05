@@ -9,21 +9,26 @@ import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
 
-@Data public class UserRiskScoreWritableComparable
-        implements WritableComparable<UserRiskScoreWritableComparable>
+@Deprecated
+@Data
+public class UserRiskScoreWritableComparable implements WritableComparable<UserRiskScoreWritableComparable>
 {
-    @NonNull private UserRiskScore userRiskScore;
+    @NonNull
+    private UserRiskScore<Long, Double> userRiskScore;
 
-    @Override public int compareTo(UserRiskScoreWritableComparable o)
+    @Override
+    public int compareTo(UserRiskScoreWritableComparable o)
     {
-        return getUserRiskScore().compareTo(o.getUserRiskScore());
+        return userRiskScore.compareTo(o.getUserRiskScore().getRiskScore());
     }
 
-    @Override public void write(DataOutput dataOutput) throws IOException
+    @Override
+    public void write(DataOutput dataOutput) throws IOException
     {
     }
 
-    @Override public void readFields(DataInput dataInput) throws IOException
+    @Override
+    public void readFields(DataInput dataInput) throws IOException
     {
     }
 }
