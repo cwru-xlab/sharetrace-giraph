@@ -1,6 +1,5 @@
 package main.java.model;
 
-import lombok.Builder;
 import lombok.NonNull;
 import lombok.Value;
 
@@ -10,7 +9,7 @@ import java.util.SortedSet;
 
 /**
  * An encounter between two users at one or more points in time.
- *
+ * <p>
  * Two contacts are considered equal if their contacts are equal, regardless of the field they are assigned. That is,
  * a {@code Contact} with {@link #firstUser} {@code u1} and {@link #secondUser} {@code u2} is considered equal to a
  * different {@code Contact} with equal {@code u1} and {@code u2} except assigned to the opposite field.
@@ -18,15 +17,22 @@ import java.util.SortedSet;
  * @param <U1> Type of identifier of the first user.
  * @param <U2> Type of identifier of the second user.
  */
-@Value public class Contact<U1, U2> implements Comparable<Contact<?, ?>>
+@Value(staticConstructor = "of")
+public class Contact<U1, U2> implements Comparable<Contact<?, ?>>
 {
-    @NonNull Identifiable<U1> firstUser;
-    @NonNull Identifiable<U2> secondUser;
-    @NonNull SortedSet<TemporalOccurrence> occurrences;
+    @NonNull
+    Identifiable<U1> firstUser;
+
+    @NonNull
+    Identifiable<U2> secondUser;
+
+    @NonNull
+    SortedSet<TemporalOccurrence> occurrences;
+
     private static final String NO_OCCURRENCES_MESSAGE = "A contact must contain at least one occurrence.";
+
     private static final String IDENTICAL_USERS_MESSAGE = "A contact must contain two distinct users.";
 
-    @Builder
     private Contact(@NonNull Identifiable<U1> firstUser,
                     @NonNull Identifiable<U2> secondUser,
                     @NonNull SortedSet<TemporalOccurrence> occurrences)
@@ -55,17 +61,20 @@ import java.util.SortedSet;
     }
 
     @Override
-    /* See https://hadoop.apache.org/docs/current/api/org/apache/hadoop/io/WritableComparable.html*/ public int hashCode()
+    /* See https://hadoop.apache.org/docs/current/api/org/apache/hadoop/io/WritableComparable.html */
+    public int hashCode()
     {
-        return Objects.hash(firstUser, secondUser);
+        return Objects.hash(firstUser.getId(), secondUser.getId());
     }
 
-    @Override public int compareTo(@NonNull Contact<?, ?> o)
+    @Override
+    public int compareTo(@NonNull Contact<?, ?> o)
     {
         return occurrences.first().compareTo(o.getOccurrences().first());
     }
 
-    @Override public boolean equals(Object obj)
+    @Override
+    public boolean equals(Object obj)
     {
         if (this == obj)
             return true;
