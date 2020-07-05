@@ -1,11 +1,12 @@
 package main.java.algorithm.components;
 
 import lombok.AccessLevel;
-import lombok.Getter;
+import lombok.Data;
 import lombok.NonNull;
 import lombok.Setter;
 import main.java.model.Identifiable;
 import main.java.model.UserId;
+import org.apache.giraph.graph.Vertex;
 import org.apache.hadoop.io.WritableComparable;
 
 import java.io.DataInput;
@@ -13,27 +14,29 @@ import java.io.DataOutput;
 import java.io.IOException;
 
 /**
- * Identifier for a vertex that uses {@link Identifiable<Long>} and {@link UserId<Long>}.
+ * Identifier for a {@link Vertex} that uses {@link Identifiable<Long>} and {@link UserId<Long>}.
  */
-@Getter(AccessLevel.PUBLIC) @Setter(AccessLevel.PRIVATE) public class UserIdWritableComparable
-        implements WritableComparable<Identifiable<Long>>
+@Data
+@Setter(AccessLevel.PRIVATE)
+public class UserIdWritableComparable implements WritableComparable<Identifiable<Long>>
 {
-    @NonNull private Identifiable<Long> userId;
+    @NonNull
+    private Identifiable<Long> userId;
 
-    @Override public void write(DataOutput dataOutput) throws IOException
+    @Override
+    public void write(DataOutput dataOutput) throws IOException
     {
-        long id = userId.getId();
-        dataOutput.writeLong(id);
+        dataOutput.writeLong(userId.getId());
     }
 
-    @Override public void readFields(DataInput dataInput) throws IOException
+    @Override
+    public void readFields(DataInput dataInput) throws IOException
     {
-        long rawId = dataInput.readLong();
-        Identifiable<Long> id = UserId.of(rawId);
-        setUserId(id);
+        setUserId(UserId.of(dataInput.readLong()));
     }
 
-    @Override public int compareTo(@NonNull Identifiable<Long> o)
+    @Override
+    public int compareTo(@NonNull Identifiable<Long> o)
     {
         return Long.compare(userId.getId(), o.getId());
     }
