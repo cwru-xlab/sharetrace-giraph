@@ -4,13 +4,20 @@ import lombok.Builder;
 import lombok.NonNull;
 import lombok.Value;
 
-@Value @Builder public class UserRiskScore implements Comparable<UserRiskScore>
+@Deprecated
+@Value
+@Builder
+public class UserRiskScore<U, R extends Number> implements Comparable<ComputedValue<R>>
 {
-    @NonNull UserID<?> userID;
-    @NonNull RiskScore riskScore;
+    @NonNull
+    Identifiable<U> userId;
 
-    @Override public int compareTo(@NonNull UserRiskScore userRiskScore)
+    @NonNull
+    ComputedValue<R> riskScore;
+
+    @Override
+    public int compareTo(ComputedValue<R> o)
     {
-        return getRiskScore().compareTo(userRiskScore.getRiskScore());
+        return riskScore.compareTo(o.getValue());
     }
 }
