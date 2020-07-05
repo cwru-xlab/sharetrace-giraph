@@ -12,7 +12,9 @@ import java.util.Set;
  * @param <U1> Type of identifier for the first user of {@link Contact}.
  * @param <U2> Type of identifier for the second user of a {@link Contact}.
  */
-@Value(staticConstructor = "of") public class ContactHistory<U1, U2>
+@Value(staticConstructor = "of")
+public class ContactHistory<U1, U2>
 {
-    @NonNull Set<Contact<U1, U2>> history;
+    @NonNull
+    Set<Contact<U1, U2>> history;
 }
