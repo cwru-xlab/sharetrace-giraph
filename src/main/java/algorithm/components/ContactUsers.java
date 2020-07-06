@@ -22,9 +22,10 @@ import java.util.Objects;
  *
  * @see Contact
  */
+@Deprecated
 @Data
 @Setter(AccessLevel.PRIVATE)
-public class ContactIdWritableComparable implements WritableComparable<ContactIdWritableComparable>
+public class ContactUsers implements WritableComparable<ContactUsers>
 {
     @NonNull
     private Identifiable<Long> firstUser;
@@ -47,11 +48,14 @@ public class ContactIdWritableComparable implements WritableComparable<ContactId
     }
 
     @Override
-    public int compareTo(@NonNull ContactIdWritableComparable o)
+    public int compareTo(@NonNull ContactUsers o)
     {
-        long maxId = Math.max(firstUser.getId(), secondUser.getId());
-        long otherMaxId = Math.max(o.getFirstUser().getId(), o.getSecondUser().getId());
-        return Long.compare(maxId, otherMaxId);
+        int compare = firstUser.compareTo(o.getFirstUser());
+        if (0 == compare)
+        {
+            compare = secondUser.compareTo(o.getSecondUser());
+        }
+        return compare;
     }
 
     @Override
@@ -61,7 +65,7 @@ public class ContactIdWritableComparable implements WritableComparable<ContactId
             return true;
         if (o == null || getClass() != o.getClass())
             return false;
-        ContactIdWritableComparable that = (ContactIdWritableComparable) o;
+        ContactUsers that = (ContactUsers) o;
         boolean withSameOrder = firstUser.equals(that.getFirstUser()) && secondUser.equals(that.getSecondUser());
         boolean withDiffOrder = firstUser.equals(that.getSecondUser()) && secondUser.equals(that.getFirstUser());
         return withSameOrder || withDiffOrder;
