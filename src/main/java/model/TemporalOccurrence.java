@@ -9,7 +9,8 @@ import java.time.Instant;
 /**
  * An occurrence at specific point in time and of a certain duration.
  * <p>
- * The default implementation of compareTo(TemporalOccurrence) is by the point in time.
+ * The default implementation of {@link #compareTo(TemporalOccurrence)} is to first compare {@link #time}. If the
+ * occurrences are equally comparable based on the former, {@link #duration} is then used for comparison.
  *
  * @see Contact
  */
@@ -23,8 +24,13 @@ public class TemporalOccurrence implements Comparable<TemporalOccurrence>
     Duration duration;
 
     @Override
-    public int compareTo(TemporalOccurrence o)
+    public int compareTo(@NonNull TemporalOccurrence o)
     {
-        return time.compareTo(o.getTime());
+        int compare = time.compareTo(o.getTime());
+        if (0 == compare)
+        {
+            compare = duration.compareTo(o.getDuration());
+        }
+        return compare;
     }
 }
