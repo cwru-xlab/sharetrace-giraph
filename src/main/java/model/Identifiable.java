@@ -5,8 +5,7 @@ package main.java.model;
  *
  * @param <T> Type of identifier.
  */
-@FunctionalInterface
-public interface Identifiable<T>
+public interface Identifiable<T> extends Comparable<Identifiable<T>>
 {
     T getId();
 }
