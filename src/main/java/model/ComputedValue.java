@@ -5,7 +5,7 @@ package main.java.model;
  *
  * @param <N> Numerical type of the value.
  */
-public interface ComputedValue<N extends Number> extends Comparable<N>
+public interface ComputedValue<N extends Number> extends Comparable<ComputedValue<N>>
 {
     N getValue();
 }
