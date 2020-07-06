@@ -18,7 +18,7 @@ import java.util.SortedSet;
  * @param <U2> Type of identifier of the second user.
  */
 @Value(staticConstructor = "of")
-public class Contact<U1, U2> implements Comparable<Contact<?, ?>>
+public class Contact<U1 extends Identifiable<U1>, U2 extends Identifiable<U2>> implements Comparable<Contact<U1, U2>>
 {
     @NonNull
     Identifiable<U1> firstUser;
@@ -68,9 +68,16 @@ public class Contact<U1, U2> implements Comparable<Contact<?, ?>>
     }
 
     @Override
-    public int compareTo(@NonNull Contact<?, ?> o)
+    public int compareTo(@NonNull Contact<U1, U2> o)
     {
-        return occurrences.first().compareTo(o.getOccurrences().first());
+        int compare = firstUser.compareTo(o.getFirstUser());
+        {
+            if (0 == compare)
+            {
+                compare = secondUser.compareTo(o.getSecondUser());
+            }
+        }
+        return compare;
     }
 
     @Override
