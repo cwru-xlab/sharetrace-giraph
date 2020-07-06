@@ -16,9 +16,10 @@ import java.io.IOException;
 /**
  * Identifier for a {@link Vertex} that uses {@link Identifiable<Long>} and {@link UserId<Long>}.
  */
-@Data
+@Deprecated
+@Data(staticConstructor = "of")
 @Setter(AccessLevel.PRIVATE)
-public class UserIdWritableComparable implements WritableComparable<Identifiable<Long>>
+public class User implements WritableComparable<Identifiable<Long>>
 {
     @NonNull
     private Identifiable<Long> userId;
