@@ -9,13 +9,11 @@ import java.io.IOException;
 
 /**
  * A value ranging between 0 and 1 that denotes the risk of some condition.
- * <p>
- * The default implementation of {@code compareTo(RiskScore)} uses the {@code double} value of the score.
  *
  * @param <N> Numerical type of the score.
  */
 @Value(staticConstructor = "of")
-public class RiskScore<N extends Number> implements ComputedValue<N>
+public class RiskScore<N extends Number & Comparable<N>> implements ComputedValue<N>
 {
     @NonNull
     @Getter(AccessLevel.NONE)
@@ -50,8 +48,8 @@ public class RiskScore<N extends Number> implements ComputedValue<N>
     }
 
     @Override
-    public int compareTo(N o)
+    public int compareTo(@NonNull ComputedValue<N> o)
     {
-        return Double.compare(score.doubleValue(), o.doubleValue());
+        return score.compareTo(o.getValue());
     }
 }
