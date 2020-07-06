@@ -18,7 +18,7 @@ import java.util.SortedSet;
  * @param <U2> Type of identifier of the second user.
  */
 @Value(staticConstructor = "of")
-public class Contact<U1 extends Identifiable<U1>, U2 extends Identifiable<U2>> implements Comparable<Contact<U1, U2>>
+public class Contact<U1 extends Comparable<U1>, U2 extends Comparable<U2>> implements Comparable<Contact<U1, U2>>
 {
     @NonNull
     Identifiable<U1> firstUser;
@@ -33,8 +33,7 @@ public class Contact<U1 extends Identifiable<U1>, U2 extends Identifiable<U2>> i
 
     private static final String IDENTICAL_USERS_MESSAGE = "A contact must contain two distinct users.";
 
-    private Contact(@NonNull Identifiable<U1> firstUser,
-                    @NonNull Identifiable<U2> secondUser,
+    private Contact(@NonNull Identifiable<U1> firstUser, @NonNull Identifiable<U2> secondUser,
                     @NonNull SortedSet<TemporalOccurrence> occurrences)
     {
         verifyUsers(firstUser, secondUser);
