@@ -7,11 +7,9 @@ import lombok.Value;
 
 /**
  * A generic access token intended to be used for writing data to an authenticated entity.
- *
- * @param <T> Type of token.
  */
 @Value(staticConstructor = "of")
-public class AccessToken<T> implements Identifiable<T>
+public class AccessToken<T extends Comparable<T>> implements Identifiable<T>
 {
     @NonNull
     @Getter(AccessLevel.NONE)
@@ -21,5 +19,11 @@ public class AccessToken<T> implements Identifiable<T>
     public T getId()
     {
         return token;
+    }
+
+    @Override
+    public int compareTo(@NonNull Identifiable<T> o)
+    {
+        return token.compareTo(o.getId());
     }
 }
