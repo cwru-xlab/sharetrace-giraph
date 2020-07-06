@@ -31,6 +31,7 @@ public class VariableVertexComputation
         extends AbstractComputation<Users, SortedRiskScores, NullWritable, SortedRiskScores, SortedRiskScores>
 {
     // TODO Assumes all risk scores are kept in the vertex
+    // TODO Iterable<SortedRiskScores> might actually need to be Iterable<RiskScoreData>
     @Override
     public void compute(Vertex<Users, SortedRiskScores, NullWritable> vertex, Iterable<SortedRiskScores> iterable)
             throws IOException
