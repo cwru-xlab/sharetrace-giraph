@@ -11,7 +11,7 @@ import lombok.Value;
  * @param <T> Type of identification.
  */
 @Value(staticConstructor = "of")
-public class UserId<T> implements Identifiable<T>
+public class UserId<T extends Comparable<T>> implements Identifiable<T>
 {
     @NonNull
     @Getter(AccessLevel.NONE)
@@ -21,5 +21,11 @@ public class UserId<T> implements Identifiable<T>
     public T getId()
     {
         return id;
+    }
+
+    @Override
+    public int compareTo(Identifiable<T> o)
+    {
+        return id.compareTo(o.getId());
     }
 }
