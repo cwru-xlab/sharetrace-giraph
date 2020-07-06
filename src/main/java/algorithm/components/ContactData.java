@@ -18,13 +18,13 @@ import java.util.SortedSet;
 import java.util.TreeSet;
 
 /**
- * Contact data stored in a {@link Vertex} and used as part of the risk score computation.
+ * {@link Contact} data stored in a {@link Vertex} and used as part of the risk score computation.
  *
  * @see Contact
  */
 @Data
 @Setter(AccessLevel.PRIVATE)
-public class ContactDataWritable implements Writable
+public class ContactData implements Writable
 {
     @NonNull
     private SortedSet<TemporalOccurrence> occurrences;
