@@ -6,7 +6,7 @@ import lombok.Value;
 
 @Value
 @Builder
-public class PDA<T, U, R extends Number>
+public class PDA<T extends Comparable<T>, U extends Comparable<U>, R extends Number>
 {
     @NonNull
     Identifiable<T> accessToken;
@@ -19,7 +19,4 @@ public class PDA<T, U, R extends Number>
 
     @NonNull
     boolean diagnosed;
-
-    @NonNull
-    ContactHistory<U, U> contactHistory;
 }
