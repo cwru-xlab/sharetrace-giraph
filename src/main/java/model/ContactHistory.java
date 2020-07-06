@@ -12,8 +12,9 @@ import java.util.Set;
  * @param <U1> Type of identifier for the first user of {@link Contact}.
  * @param <U2> Type of identifier for the second user of a {@link Contact}.
  */
+@Deprecated
 @Value(staticConstructor = "of")
-public class ContactHistory<U1, U2>
+public class ContactHistory<U1 extends Comparable<U1>, U2 extends Comparable<U2>>
 {
     @NonNull
     Set<Contact<U1, U2>> history;
