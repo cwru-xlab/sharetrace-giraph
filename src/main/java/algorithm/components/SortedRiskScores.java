@@ -20,6 +20,9 @@ import java.util.stream.Collectors;
 public class SortedRiskScores implements Writable
 {
     @NonNull
+    private Identifiable<Long> sender;
+
+    @NonNull
     private NavigableSet<TemporalUserRiskScore<Long, Double>> sortedRiskScores;
 
     public NavigableSet<TemporalUserRiskScore<Long, Double>> filterOutBefore(@NonNull Instant instant)
