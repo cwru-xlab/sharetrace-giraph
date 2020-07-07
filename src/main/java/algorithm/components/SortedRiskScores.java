@@ -11,15 +11,23 @@ import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
 import java.time.Instant;
-import java.util.SortedSet;
+import java.util.NavigableSet;
 import java.util.TreeSet;
+import java.util.stream.Collectors;
 
 @Data(staticConstructor = "of")
 @Setter(AccessLevel.PRIVATE)
 public class SortedRiskScores implements Writable
 {
     @NonNull
-    private SortedSet<TemporalUserRiskScore<Long, Double>> sortedRiskScores;
+    private NavigableSet<TemporalUserRiskScore<Long, Double>> sortedRiskScores;
+
+    public NavigableSet<TemporalUserRiskScore<Long, Double>> filterOutBefore(@NonNull Instant instant)
+    {
+        return sortedRiskScores.stream()
+                               .filter(r -> r.getUpdateTime().isAfter(instant))
+                               .collect(Collectors.toCollection(TreeSet::new));
+    }
 
     @Override
     public void write(DataOutput dataOutput) throws IOException
@@ -37,7 +45,7 @@ public class SortedRiskScores implements Writable
     public void readFields(DataInput dataInput) throws IOException
     {
         int nScores = dataInput.readInt();
-        SortedSet<TemporalUserRiskScore<Long, Double>> sortedScores = new TreeSet<>();
+        NavigableSet<TemporalUserRiskScore<Long, Double>> sortedScores = new TreeSet<>();
         for (int iScore = 0; iScore < nScores; iScore++)
         {
             Identifiable<Long> userId = UserId.of(dataInput.readLong());

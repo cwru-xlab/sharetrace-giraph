@@ -14,7 +14,7 @@ import java.io.DataOutput;
 import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.SortedSet;
+import java.util.NavigableSet;
 import java.util.TreeSet;
 
 /**
@@ -27,7 +27,7 @@ import java.util.TreeSet;
 public class ContactData implements Writable
 {
     @NonNull
-    private SortedSet<TemporalOccurrence> occurrences;
+    private NavigableSet<TemporalOccurrence> occurrences;
 
     @Override
     public void write(DataOutput dataOutput) throws IOException
@@ -44,7 +44,7 @@ public class ContactData implements Writable
     public void readFields(DataInput dataInput) throws IOException
     {
         int nOccurrences = dataInput.readInt();
-        SortedSet<TemporalOccurrence> temporalOccurrences = new TreeSet<>();
+        NavigableSet<TemporalOccurrence> temporalOccurrences = new TreeSet<>();
         for (int iOccurrence = 0; iOccurrence < nOccurrences; iOccurrence++)
         {
             Instant time = Instant.ofEpochMilli(dataInput.readLong());
