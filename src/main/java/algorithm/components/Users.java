@@ -42,7 +42,7 @@ public class Users implements WritableComparable<Users>
         {
             usersInput.add(UserId.of(dataInput.readLong()));
         }
-        users = usersInput;
+        setUsers(usersInput);
     }
 
     @Override
