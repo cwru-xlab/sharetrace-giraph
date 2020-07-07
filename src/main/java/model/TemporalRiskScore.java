@@ -25,10 +25,10 @@ public class TemporalRiskScore<N extends Number & Comparable<N>> implements Comp
     @Override
     public int compareTo(@NonNull TemporalRiskScore<N> o)
     {
-        int compare = riskScore.compareTo(o.getRiskScore());
+        int compare = updateTime.compareTo(o.getUpdateTime());
         if (0 == compare)
         {
-            compare = updateTime.compareTo(o.getUpdateTime());
+            compare = riskScore.compareTo(o.getRiskScore());
         }
         return compare;
     }

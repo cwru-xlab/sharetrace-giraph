@@ -8,10 +8,10 @@ import java.time.Instant;
 /**
  * A {@link RiskScore} with a time for when it was last updated and an associated user.
  * <p>
- * The default implementation of {@link #compareTo(TemporalUserRiskScore)} is to first compare {@link #riskScore}. If
- * the risk scores are equally comparable based on the former, {@link #updateTime} is then used for comparison.
- * Finally, if the risk scores are still equally comparable based on the former two criteria, the {@link #userId} is
- * used for comparison.
+ * The default implementation of {@link #compareTo(TemporalUserRiskScore)} is to first compare {@link #updateTime}. If
+ * the risk scores are equally comparable based on the former, {@link #riskScore} is then used for comparison. Finally,
+ * if the risk scores are still equally comparable based on the former two criteria, the {@link #userId} is used for
+ * comparison.
  *
  * @param <N> Numerical type of the risk score.
  */
@@ -30,10 +30,10 @@ public class TemporalUserRiskScore<U, N extends Number> implements Comparable<Te
     @Override
     public int compareTo(@NonNull TemporalUserRiskScore<U, N> o)
     {
-        int compare = riskScore.compareTo(o.getRiskScore());
+        int compare = updateTime.compareTo(o.getUpdateTime());
         if (0 == compare)
         {
-            compare = updateTime.compareTo(o.getUpdateTime());
+            compare = riskScore.compareTo(o.getRiskScore());
             if (0 == compare)
             {
                 compare = userId.compareTo(o.getUserId());
