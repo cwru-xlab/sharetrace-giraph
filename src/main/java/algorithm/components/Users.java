@@ -13,6 +13,7 @@ import java.io.DataOutput;
 import java.io.IOException;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.NavigableSet;
 import java.util.Set;
 
 @Data(staticConstructor = "of")
@@ -20,7 +21,7 @@ import java.util.Set;
 public class Users implements WritableComparable<Users>
 {
     @NonNull
-    private Set<Identifiable<Long>> users;
+    private NavigableSet<Identifiable<Long>> users;
 
     @Override
     public void write(DataOutput dataOutput) throws IOException
