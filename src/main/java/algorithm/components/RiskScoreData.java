@@ -19,7 +19,7 @@ import java.time.Instant;
 /**
  * A {@link TemporalUserRiskScore} stored in a {@link Vertex} and used as part of the risk score computation.
  */
-@Data
+@Data(staticConstructor = "of")
 @Setter(AccessLevel.PRIVATE)
 public class RiskScoreData implements WritableComparable<RiskScoreData>
 {
