@@ -11,6 +11,7 @@ import org.apache.hadoop.io.NullWritable;
 
 import java.io.IOException;
 import java.time.Instant;
+import java.util.AbstractMap.SimpleImmutableEntry;
 import java.util.*;
 
 /**
@@ -75,28 +76,28 @@ public class FactorVertexComputation
 
     private class GetRiskScoresAndRecivers<T>
     {
-        private final Map<Identifiable<T>, SortedRiskScores> outgoingMessages;
+        private final Set<Map.Entry<Identifiable<T>, SortedRiskScores>> outgoingMessages;
 
         private GetRiskScoresAndRecivers(Collection<? extends Identifiable<T>> users,
                                          Iterable<? extends SortedRiskScores> riskScores)
         {
-            Map<Identifiable<T>, SortedRiskScores> messages = new HashMap<>(users.size());
+            Set<Map.Entry<Identifiable<T>, SortedRiskScores>> messages = new HashSet<>(users.size());
             for (Identifiable<T> receiver : users)
             {
                 for (SortedRiskScores scores : riskScores)
                 {
                     if (scores.getSender() != receiver)
                     {
-                        messages.put(receiver, scores);
+                        messages.add(new SimpleImmutableEntry<>(receiver, scores));
                     }
                 }
             }
-            outgoingMessages = Map.copyOf(messages);
+            outgoingMessages = Set.copyOf(messages);
         }
 
-        private Iterable<Map.Entry<Identifiable<T>, SortedRiskScores>> getEntries()
+        private Set<Map.Entry<Identifiable<T>, SortedRiskScores>> getEntries()
         {
-            return List.copyOf(outgoingMessages.entrySet());
+            return outgoingMessages;
         }
     }
 }
