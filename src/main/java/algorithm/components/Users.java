@@ -11,10 +11,9 @@ import org.apache.hadoop.io.WritableComparable;
 import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
-import java.util.HashSet;
 import java.util.Iterator;
 import java.util.NavigableSet;
-import java.util.Set;
+import java.util.TreeSet;
 
 @Data(staticConstructor = "of")
 @Setter(AccessLevel.PRIVATE)
@@ -38,11 +37,12 @@ public class Users implements WritableComparable<Users>
     public void readFields(DataInput dataInput) throws IOException
     {
         int nUsers = dataInput.readInt();
-        Set<Identifiable<Long>> usersInput = new HashSet<>(nUsers);
+        NavigableSet<Identifiable<Long>> usersInput = new TreeSet<>();
         for (int iUser = 0; iUser < nUsers; iUser++)
         {
             usersInput.add(UserId.of(dataInput.readLong()));
         }
+        users = usersInput;
     }
 
     @Override
@@ -57,5 +57,4 @@ public class Users implements WritableComparable<Users>
         }
         return compare;
     }
-
 }
