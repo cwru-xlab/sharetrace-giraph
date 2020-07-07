@@ -1,6 +1,7 @@
 package main.java.algorithm.components;
 
-import main.java.model.ComputedValue;
+import lombok.NonNull;
+import main.java.model.Identifiable;
 import main.java.model.RiskScore;
 import main.java.model.TemporalUserRiskScore;
 import org.apache.giraph.edge.Edge;
@@ -9,11 +10,8 @@ import org.apache.giraph.graph.Vertex;
 import org.apache.hadoop.io.NullWritable;
 
 import java.io.IOException;
-import java.time.Duration;
 import java.time.Instant;
-import java.util.SortedSet;
-import java.util.TreeSet;
-// TODO Update Javadoc when types are finalized
+import java.util.*;
 
 /**
  * Computation performed at every factor {@link Vertex} of the factor graph. The following are the elements that
@@ -35,29 +33,70 @@ public class FactorVertexComputation
     public void compute(Vertex<Users, ContactData, NullWritable> vertex, Iterable<SortedRiskScores> iterable)
             throws IOException
     {
-        // Combine all incoming risk scores with local risk scores
-        SortedSet<TemporalUserRiskScore<Long, Double>> incomingRiskScores = new TreeSet<>();
-        iterable.forEach(scores -> incomingRiskScores.addAll(scores.getSortedRiskScores()));
-        SortedSet<TemporalUserRiskScore<Long, Double>> outgoingRiskScores = new TreeSet<>();
-        for (TemporalUserRiskScore<Long, Double> score : incomingRiskScores)
+        // Get all receiver-scores pairs, where the scores were not sent from the receiver
+        GetRiskScoresAndRecivers<Long> pairs = new GetRiskScoresAndRecivers<>(vertex.getId().getUsers(), iterable);
+        for (Map.Entry<Identifiable<Long>, SortedRiskScores> pair : pairs.getEntries())
         {
-            Instant riskyEncounterTime = score.getUpdateTime();
-            Instant mostRecentEncounter = vertex.getValue().getOccurrences().last().getTime();
-            // TODO Most recent or earliest?
-            if (mostRecentEncounter.isAfter(riskyEncounterTime))
+            Identifiable<Long> receiverId = pair.getKey();
+            SortedRiskScores scores = pair.getValue();
+            Instant earliestTime = getEarliestTimeOfContact(vertex.getValue());
+            NavigableSet<TemporalUserRiskScore<Long, Double>> filtered = scores.filterOutBefore(earliestTime);
+            sendMessage(finalizeReceiver(receiverId), finalizeOutgoingMessage(filtered, receiverId));
+        }
+    }
+
+    private static Instant getEarliestTimeOfContact(@NonNull ContactData data)
+    {
+        return data.getOccurrences().first().getTime();
+    }
+
+    private static RiskScoreData finalizeOutgoingMessage(
+            @NonNull Collection<TemporalUserRiskScore<Long, Double>> remaining,
+            @NonNull Identifiable<Long> receiverId)
+    {
+        TemporalUserRiskScore<Long, Double> outgoingMessage;
+        if (remaining.isEmpty())
+        {
+            outgoingMessage = TemporalUserRiskScore.of(receiverId, Instant.now(), RiskScore.of(0.0));
+        }
+        else
+        {
+            outgoingMessage = Collections.max(remaining, Comparator.comparing(TemporalUserRiskScore::getRiskScore));
+        }
+        return RiskScoreData.of(outgoingMessage);
+    }
+
+    private static Users finalizeReceiver(@NonNull Identifiable<Long> receiverId)
+    {
+        NavigableSet<Identifiable<Long>> receiver = new TreeSet<>();
+        receiver.add(receiverId);
+        return Users.of(receiver);
+    }
+
+    private class GetRiskScoresAndRecivers<T>
+    {
+        private final Map<Identifiable<T>, SortedRiskScores> outgoingMessages;
+
+        private GetRiskScoresAndRecivers(Collection<? extends Identifiable<T>> users,
+                                         Iterable<? extends SortedRiskScores> riskScores)
+        {
+            Map<Identifiable<T>, SortedRiskScores> messages = new HashMap<>(users.size());
+            for (Identifiable<T> receiver : users)
             {
-                ComputedValue<Double> noRisk = RiskScore.of(0.0);
-                outgoingRiskScores.add(TemporalUserRiskScore.of(score.getUserId(), score.getUpdateTime(), noRisk));
+                for (SortedRiskScores scores : riskScores)
+                {
+                    if (scores.getSender() != receiver)
+                    {
+                        messages.put(receiver, scores);
+                    }
+                }
             }
-            else
-            {
-                // TODO Should this be the first contact that comes before this encounter?
-                // TODO Duration needs normalization factor
-                Duration contactDuration = vertex.getValue().getOccurrences().last().getDuration();
-                double updatedRisk = score.getRiskScore().getValue() * (double) contactDuration.toMillis();
-                ComputedValue<Double> updated = RiskScore.of(updatedRisk);
-                outgoingRiskScores.add(TemporalUserRiskScore.of(score.getUserId(), score.getUpdateTime(), updated));
-            }
+            outgoingMessages = Map.copyOf(messages);
+        }
+
+        private Iterable<Map.Entry<Identifiable<T>, SortedRiskScores>> getEntries()
+        {
+            return List.copyOf(outgoingMessages.entrySet());
         }
     }
 }
