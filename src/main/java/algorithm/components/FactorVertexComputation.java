@@ -18,6 +18,7 @@ import java.time.Instant;
 import java.util.*;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
+// TODO Benchmark stream and parallel stream
 
 /**
  * Computation performed at every factor {@link Vertex} of the factor graph. The following are the elements that
@@ -43,7 +44,9 @@ public class FactorVertexComputation
             throws IOException
     {
         // Get all receiver-scores pairs, where the scores were not sent from the receiver
-        GetRiskScoresAndReceivers<Long> pairs = new GetRiskScoresAndReceivers<>(vertex.getId().getUsers(), iterable);
+        Collection<SortedRiskScores> incoming = new TreeSet<>();
+        iterable.forEach(incoming::add);
+        GetRiskScoresAndReceivers<Long> pairs = new GetRiskScoresAndReceivers<>(vertex.getId().getUsers(), incoming);
         Instant earliestTime = getEarliestTimeOfContact(vertex.getValue());
         pairs.getEntries()
              .parallelStream()
@@ -84,10 +87,12 @@ public class FactorVertexComputation
         private final Set<Map.Entry<Identifiable<T>, SortedRiskScores>> outgoingMessages;
 
         private GetRiskScoresAndReceivers(Collection<? extends Identifiable<T>> users,
-                                          Iterable<SortedRiskScores> riskScores)
+                                          Collection<SortedRiskScores> riskScores)
         {
             Collection<Map.Entry<Identifiable<T>, SortedRiskScores>> messages = new HashSet<>(users.size());
-            users.forEach(u -> riskScores.forEach(r -> messages.add(new AbstractMap.SimpleImmutableEntry<>(u, r))));
+            users.parallelStream()
+                 .forEach(u -> riskScores.parallelStream()
+                                         .forEach(r -> messages.add(new AbstractMap.SimpleImmutableEntry<>(u, r))));
             outgoingMessages = messages.parallelStream()
                                        .filter(Predicate.not(msg -> msg.getKey().equals(msg.getValue().getSender())))
                                        .collect(Collectors.toUnmodifiableSet());
