@@ -4,6 +4,7 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NonNull;
 import lombok.Value;
+import lombok.extern.log4j.Log4j2;
 
 import java.io.IOException;
 
@@ -12,6 +13,7 @@ import java.io.IOException;
  *
  * @param <N> Numerical type of the score.
  */
+@Log4j2
 @Value(staticConstructor = "of")
 public class RiskScore<N extends Number & Comparable<N>> implements ComputedValue<N>
 {

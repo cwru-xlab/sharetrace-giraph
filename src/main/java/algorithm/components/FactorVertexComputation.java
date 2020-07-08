@@ -1,6 +1,9 @@
 package main.java.algorithm.components;
 
+import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.NonNull;
+import lombok.extern.log4j.Log4j2;
 import main.java.model.Identifiable;
 import main.java.model.RiskScore;
 import main.java.model.TemporalUserRiskScore;
@@ -10,6 +13,7 @@ import org.apache.giraph.graph.Vertex;
 import org.apache.hadoop.io.NullWritable;
 
 import java.io.IOException;
+import java.text.MessageFormat;
 import java.time.Instant;
 import java.util.AbstractMap.SimpleImmutableEntry;
 import java.util.*;
@@ -27,11 +31,14 @@ import java.util.*;
  * Each factor vertex receives one or more {@link TemporalUserRiskScore}s from each of its variable vertices. After
  * computation, the factor vertex sends a single {@link TemporalUserRiskScore} to each of its variable vertices.
  */
+@Log4j2
+@Data
+@EqualsAndHashCode(callSuper = true)
 public class FactorVertexComputation
         extends AbstractComputation<Users, ContactData, NullWritable, SortedRiskScores, RiskScoreData>
 {
     @Override
-    public void compute(Vertex<Users, ContactData, NullWritable> vertex, Iterable<SortedRiskScores> iterable)
+    public final void compute(Vertex<Users, ContactData, NullWritable> vertex, Iterable<SortedRiskScores> iterable)
             throws IOException
     {
         // Get all receiver-scores pairs, where the scores were not sent from the receiver
@@ -51,20 +58,20 @@ public class FactorVertexComputation
         return data.getOccurrences().first().getTime();
     }
 
-    private static RiskScoreData finalizeOutgoingMessage(
-            @NonNull Collection<TemporalUserRiskScore<Long, Double>> remaining,
+    private static RiskScoreData finalizeMessage(
+            @NonNull Collection<TemporalUserRiskScore<Long, Double>> scores,
             @NonNull Identifiable<Long> receiverId)
     {
-        TemporalUserRiskScore<Long, Double> outgoingMessage;
-        if (remaining.isEmpty())
+        TemporalUserRiskScore<Long, Double> outgoing;
+        if (scores.isEmpty())
         {
-            outgoingMessage = TemporalUserRiskScore.of(receiverId, Instant.now(), RiskScore.of(0.0));
+            outgoing = TemporalUserRiskScore.of(receiverId, Instant.now(), RiskScore.of(0.0));
         }
         else
         {
-            outgoingMessage = Collections.max(remaining, Comparator.comparing(TemporalUserRiskScore::getRiskScore));
+            outgoing = Collections.max(scores, Comparator.comparing(TemporalUserRiskScore::getRiskScore));
         }
-        return RiskScoreData.of(outgoingMessage);
+        return RiskScoreData.of(outgoing);
     }
 
     private static Users finalizeReceiver(@NonNull Identifiable<Long> receiverId)
@@ -74,12 +81,12 @@ public class FactorVertexComputation
         return Users.of(receiver);
     }
 
-    private class GetRiskScoresAndRecivers<T>
+    private static final class GetRiskScoresAndReceivers<T>
     {
         private final Set<Map.Entry<Identifiable<T>, SortedRiskScores>> outgoingMessages;
 
-        private GetRiskScoresAndRecivers(Collection<? extends Identifiable<T>> users,
-                                         Iterable<? extends SortedRiskScores> riskScores)
+        private GetRiskScoresAndReceivers(Collection<? extends Identifiable<T>> users,
+                                          Iterable<SortedRiskScores> riskScores)
         {
             Set<Map.Entry<Identifiable<T>, SortedRiskScores>> messages = new HashSet<>(users.size());
             for (Identifiable<T> receiver : users)
@@ -98,6 +105,13 @@ public class FactorVertexComputation
         private Set<Map.Entry<Identifiable<T>, SortedRiskScores>> getEntries()
         {
             return outgoingMessages;
+        }
+
+        @Override
+        public String toString()
+        {
+            Object[] args = {getClass().getName(), "outgoingMessages", outgoingMessages.toString()};
+            return MessageFormat.format("{1}({2}={3})", args);
         }
     }
 }

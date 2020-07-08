@@ -4,6 +4,7 @@ import lombok.AccessLevel;
 import lombok.Data;
 import lombok.NonNull;
 import lombok.Setter;
+import lombok.extern.log4j.Log4j2;
 import main.java.model.*;
 import org.apache.hadoop.io.Writable;
 
@@ -15,9 +16,10 @@ import java.util.NavigableSet;
 import java.util.TreeSet;
 import java.util.stream.Collectors;
 
+@Log4j2
 @Data(staticConstructor = "of")
 @Setter(AccessLevel.PRIVATE)
-public class SortedRiskScores implements Writable
+public final class SortedRiskScores implements Writable
 {
     @NonNull
     private Identifiable<Long> sender;
@@ -25,7 +27,7 @@ public class SortedRiskScores implements Writable
     @NonNull
     private NavigableSet<TemporalUserRiskScore<Long, Double>> sortedRiskScores;
 
-    public NavigableSet<TemporalUserRiskScore<Long, Double>> filterOutBefore(@NonNull Instant instant)
+    NavigableSet<TemporalUserRiskScore<Long, Double>> filterOutBefore(@NonNull Instant instant)
     {
         return sortedRiskScores.stream()
                                .filter(r -> r.getUpdateTime().isAfter(instant))
@@ -56,5 +58,6 @@ public class SortedRiskScores implements Writable
             ComputedValue<Double> riskScore = RiskScore.of(dataInput.readDouble());
             sortedScores.add(TemporalUserRiskScore.of(userId, updateTime, riskScore));
         }
+        setSortedRiskScores(sortedRiskScores);
     }
 }

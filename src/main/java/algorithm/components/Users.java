@@ -4,6 +4,7 @@ import lombok.AccessLevel;
 import lombok.Data;
 import lombok.NonNull;
 import lombok.Setter;
+import lombok.extern.log4j.Log4j2;
 import main.java.model.Identifiable;
 import main.java.model.UserId;
 import org.apache.hadoop.io.WritableComparable;
@@ -15,9 +16,10 @@ import java.util.Iterator;
 import java.util.NavigableSet;
 import java.util.TreeSet;
 
+@Log4j2
 @Data(staticConstructor = "of")
 @Setter(AccessLevel.PRIVATE)
-public class Users implements WritableComparable<Users>
+public final class Users implements WritableComparable<Users>
 {
     @NonNull
     private NavigableSet<Identifiable<Long>> users;

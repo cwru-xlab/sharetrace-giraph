@@ -2,6 +2,7 @@ package main.java.model;
 
 import lombok.NonNull;
 import lombok.Value;
+import lombok.extern.log4j.Log4j2;
 
 import java.time.Instant;
 
@@ -15,6 +16,7 @@ import java.time.Instant;
  *
  * @param <N> Numerical type of the risk score.
  */
+@Log4j2
 @Value(staticConstructor = "of")
 public class TemporalUserRiskScore<U, N extends Number> implements Comparable<TemporalUserRiskScore<U, N>>
 {

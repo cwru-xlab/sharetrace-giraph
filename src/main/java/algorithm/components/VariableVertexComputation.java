@@ -1,5 +1,8 @@
 package main.java.algorithm.components;
 
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.extern.log4j.Log4j2;
 import main.java.model.Identifiable;
 import main.java.model.TemporalUserRiskScore;
 import org.apache.giraph.edge.Edge;
@@ -26,12 +29,14 @@ import java.util.TreeSet;
  * computation, the variable {@link Vertex} sends a collection of {@link TemporalUserRiskScore}s to each of its variable
  * vertices.
  */
+@Log4j2
+@Data
+@EqualsAndHashCode(callSuper = true)
 public class VariableVertexComputation
         extends AbstractComputation<Users, SortedRiskScores, NullWritable, RiskScoreData, SortedRiskScores>
 {
-    // TODO Assumes all risk scores are kept in the vertex
     @Override
-    public void compute(Vertex<Users, SortedRiskScores, NullWritable> vertex, Iterable<RiskScoreData> iterable)
+    public final void compute(Vertex<Users, SortedRiskScores, NullWritable> vertex, Iterable<RiskScoreData> iterable)
             throws IOException
     {
         NavigableSet<TemporalUserRiskScore<Long, Double>> localRiskScores = vertex.getValue().getSortedRiskScores();
@@ -39,7 +44,7 @@ public class VariableVertexComputation
         for (TemporalUserRiskScore<Long, Double> score : allRiskScores)
         {
             Users receiver = finalizeReceiver(score.getUserId());
-            Identifiable<Long> sender = vertex.getId().getUsers().pollFirst();
+            Identifiable<Long> sender = vertex.getId().getUsers().first();
             SortedRiskScores outgoingMessages = finalizeOutgoing(sender, allRiskScores, score);
             sendMessage(receiver, outgoingMessages);
         }
@@ -57,7 +62,7 @@ public class VariableVertexComputation
 
     private static SortedRiskScores finalizeOutgoing(
             Identifiable<Long> sender,
-            NavigableSet<TemporalUserRiskScore<Long, Double>> allRiskScores,
+            Collection<TemporalUserRiskScore<Long, Double>> allRiskScores,
             TemporalUserRiskScore<Long, Double> receiver)
     {
         NavigableSet<TemporalUserRiskScore<Long, Double>> outgoing = new TreeSet<>(allRiskScores);

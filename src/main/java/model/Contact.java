@@ -2,6 +2,7 @@ package main.java.model;
 
 import lombok.NonNull;
 import lombok.Value;
+import lombok.extern.log4j.Log4j2;
 
 import java.util.Collection;
 import java.util.Objects;
@@ -17,6 +18,7 @@ import java.util.SortedSet;
  * @param <U1> Type of identifier of the first user.
  * @param <U2> Type of identifier of the second user.
  */
+@Log4j2
 @Value(staticConstructor = "of")
 public class Contact<U1 extends Comparable<U1>, U2 extends Comparable<U2>> implements Comparable<Contact<U1, U2>>
 {
@@ -80,13 +82,13 @@ public class Contact<U1 extends Comparable<U1>, U2 extends Comparable<U2>> imple
     }
 
     @Override
-    public boolean equals(Object obj)
+    public boolean equals(Object o)
     {
-        if (this == obj)
+        if (this == o)
             return true;
-        if (null == obj || getClass() != obj.getClass())
+        if (null == o || getClass() != o.getClass())
             return false;
-        Contact<?, ?> contact = (Contact<?, ?>) obj;
+        Contact<?, ?> contact = (Contact<?, ?>) o;
         boolean withSameOrder = firstUser.equals(contact.getFirstUser()) && secondUser.equals(contact.getSecondUser());
         boolean withDiffOrder = firstUser.equals(contact.getSecondUser()) && secondUser.equals(contact.getFirstUser());
         return withSameOrder || withDiffOrder;

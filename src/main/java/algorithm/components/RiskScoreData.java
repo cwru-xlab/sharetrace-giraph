@@ -4,10 +4,8 @@ import lombok.AccessLevel;
 import lombok.Data;
 import lombok.NonNull;
 import lombok.Setter;
-import main.java.model.ComputedValue;
-import main.java.model.Identifiable;
-import main.java.model.TemporalUserRiskScore;
-import main.java.model.UserId;
+import lombok.extern.log4j.Log4j2;
+import main.java.model.*;
 import org.apache.giraph.graph.Vertex;
 import org.apache.hadoop.io.WritableComparable;
 
@@ -19,9 +17,10 @@ import java.time.Instant;
 /**
  * A {@link TemporalUserRiskScore} stored in a {@link Vertex} and used as part of the risk score computation.
  */
+@Log4j2
 @Data(staticConstructor = "of")
 @Setter(AccessLevel.PRIVATE)
-public class RiskScoreData implements WritableComparable<RiskScoreData>
+public final class RiskScoreData implements WritableComparable<RiskScoreData>
 {
     @NonNull
     TemporalUserRiskScore<Long, Double> riskScore;
@@ -39,7 +38,7 @@ public class RiskScoreData implements WritableComparable<RiskScoreData>
     {
         Identifiable<Long> user = UserId.of(dataInput.readLong());
         Instant updateTime = Instant.ofEpochMilli(dataInput.readLong());
-        ComputedValue<Double> score = main.java.model.RiskScore.of(dataInput.readDouble());
+        ComputedValue<Double> score = RiskScore.of(dataInput.readDouble());
         setRiskScore(TemporalUserRiskScore.of(user, updateTime, score));
     }
 

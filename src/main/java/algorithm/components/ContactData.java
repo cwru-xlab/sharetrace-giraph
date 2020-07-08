@@ -4,6 +4,7 @@ import lombok.AccessLevel;
 import lombok.Data;
 import lombok.NonNull;
 import lombok.Setter;
+import lombok.extern.log4j.Log4j2;
 import main.java.model.Contact;
 import main.java.model.TemporalOccurrence;
 import org.apache.giraph.graph.Vertex;
@@ -22,9 +23,10 @@ import java.util.TreeSet;
  *
  * @see Contact
  */
-@Data
+@Log4j2
+@Data(staticConstructor = "of")
 @Setter(AccessLevel.PRIVATE)
-public class ContactData implements Writable
+public final class ContactData implements Writable
 {
     @NonNull
     private NavigableSet<TemporalOccurrence> occurrences;

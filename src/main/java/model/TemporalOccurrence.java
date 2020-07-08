@@ -2,6 +2,7 @@ package main.java.model;
 
 import lombok.NonNull;
 import lombok.Value;
+import lombok.extern.log4j.Log4j2;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -14,6 +15,7 @@ import java.time.Instant;
  *
  * @see Contact
  */
+@Log4j2
 @Value(staticConstructor = "of")
 public class TemporalOccurrence implements Comparable<TemporalOccurrence>
 {
