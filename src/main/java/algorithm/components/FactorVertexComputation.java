@@ -16,6 +16,7 @@ import java.io.IOException;
 import java.text.MessageFormat;
 import java.time.Instant;
 import java.util.*;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 /**
@@ -88,7 +89,7 @@ public class FactorVertexComputation
             Collection<Map.Entry<Identifiable<T>, SortedRiskScores>> messages = new HashSet<>(users.size());
             users.forEach(u -> riskScores.forEach(r -> messages.add(new AbstractMap.SimpleImmutableEntry<>(u, r))));
             outgoingMessages = messages.parallelStream()
-                                       .filter(msg -> msg.getKey().equals(msg.getValue().getSender()))
+                                       .filter(Predicate.not(msg -> msg.getKey().equals(msg.getValue().getSender())))
                                        .collect(Collectors.toUnmodifiableSet());
         }
 
