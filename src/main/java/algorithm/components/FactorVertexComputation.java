@@ -15,8 +15,8 @@ import org.apache.hadoop.io.NullWritable;
 import java.io.IOException;
 import java.text.MessageFormat;
 import java.time.Instant;
-import java.util.AbstractMap.SimpleImmutableEntry;
 import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * Computation performed at every factor {@link Vertex} of the factor graph. The following are the elements that
@@ -42,15 +42,12 @@ public class FactorVertexComputation
             throws IOException
     {
         // Get all receiver-scores pairs, where the scores were not sent from the receiver
-        GetRiskScoresAndRecivers<Long> pairs = new GetRiskScoresAndRecivers<>(vertex.getId().getUsers(), iterable);
-        for (Map.Entry<Identifiable<Long>, SortedRiskScores> pair : pairs.getEntries())
-        {
-            Identifiable<Long> receiverId = pair.getKey();
-            SortedRiskScores scores = pair.getValue();
-            Instant earliestTime = getEarliestTimeOfContact(vertex.getValue());
-            NavigableSet<TemporalUserRiskScore<Long, Double>> filtered = scores.filterOutBefore(earliestTime);
-            sendMessage(finalizeReceiver(receiverId), finalizeOutgoingMessage(filtered, receiverId));
-        }
+        GetRiskScoresAndReceivers<Long> pairs = new GetRiskScoresAndReceivers<>(vertex.getId().getUsers(), iterable);
+        Instant earliestTime = getEarliestTimeOfContact(vertex.getValue());
+        pairs.getEntries()
+             .parallelStream()
+             .forEach(e -> sendMessage(finalizeReceiver(e.getKey()),
+                                       finalizeMessage(e.getValue().filterOutBefore(earliestTime), e.getKey())));
     }
 
     private static Instant getEarliestTimeOfContact(@NonNull ContactData data)
@@ -88,18 +85,11 @@ public class FactorVertexComputation
         private GetRiskScoresAndReceivers(Collection<? extends Identifiable<T>> users,
                                           Iterable<SortedRiskScores> riskScores)
         {
-            Set<Map.Entry<Identifiable<T>, SortedRiskScores>> messages = new HashSet<>(users.size());
-            for (Identifiable<T> receiver : users)
-            {
-                for (SortedRiskScores scores : riskScores)
-                {
-                    if (scores.getSender() != receiver)
-                    {
-                        messages.add(new SimpleImmutableEntry<>(receiver, scores));
-                    }
-                }
-            }
-            outgoingMessages = Set.copyOf(messages);
+            Collection<Map.Entry<Identifiable<T>, SortedRiskScores>> messages = new HashSet<>(users.size());
+            users.forEach(u -> riskScores.forEach(r -> messages.add(new AbstractMap.SimpleImmutableEntry<>(u, r))));
+            outgoingMessages = messages.parallelStream()
+                                       .filter(msg -> msg.getKey().equals(msg.getValue().getSender()))
+                                       .collect(Collectors.toUnmodifiableSet());
         }
 
         private Set<Map.Entry<Identifiable<T>, SortedRiskScores>> getEntries()
