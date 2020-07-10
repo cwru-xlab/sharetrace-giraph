@@ -39,33 +39,30 @@ public class VariableVertexComputation
     public final void compute(Vertex<Users, SortedRiskScores, NullWritable> vertex, Iterable<RiskScoreData> iterable)
             throws IOException
     {
-        NavigableSet<TemporalUserRiskScore<Long, Double>> localRiskScores = vertex.getValue().getSortedRiskScores();
-        NavigableSet<TemporalUserRiskScore<Long, Double>> allRiskScores = combine(localRiskScores, iterable);
-        for (TemporalUserRiskScore<Long, Double> score : allRiskScores)
-        {
-            Users receiver = finalizeReceiver(score.getUserId());
-            Identifiable<Long> sender = vertex.getId().getUsers().first();
-            SortedRiskScores outgoingMessages = finalizeOutgoing(sender, allRiskScores, score);
-            sendMessage(receiver, outgoingMessages);
-        }
+        NavigableSet<TemporalUserRiskScore<Long, Double>> localValues = vertex.getValue().getSortedRiskScores();
+        NavigableSet<TemporalUserRiskScore<Long, Double>> allValues = combine(localValues, iterable);
+        Identifiable<Long> sender = vertex.getId().getUsers().first();
+        allValues.parallelStream()
+                 .forEach(val -> sendMessage(finalizeReceiver(val.getUserId()),
+                                             finalizeOutgoing(sender, allValues, val)));
     }
 
     private static NavigableSet<TemporalUserRiskScore<Long, Double>> combine(
-            Collection<TemporalUserRiskScore<Long, Double>> localRiskScores,
-            Iterable<RiskScoreData> incomingRiskScores)
+            Collection<TemporalUserRiskScore<Long, Double>> localValues,
+            Iterable<RiskScoreData> incomingValues)
     {
-        NavigableSet<TemporalUserRiskScore<Long, Double>> allRiskScores = new TreeSet<>();
-        incomingRiskScores.forEach(score -> allRiskScores.add(score.getRiskScore()));
-        allRiskScores.addAll(localRiskScores);
-        return allRiskScores;
+        NavigableSet<TemporalUserRiskScore<Long, Double>> allValues = new TreeSet<>();
+        incomingValues.forEach(val -> allValues.add(val.getRiskScore()));
+        allValues.addAll(localValues);
+        return allValues;
     }
 
     private static SortedRiskScores finalizeOutgoing(
             Identifiable<Long> sender,
-            Collection<TemporalUserRiskScore<Long, Double>> allRiskScores,
+            Collection<TemporalUserRiskScore<Long, Double>> allValues,
             TemporalUserRiskScore<Long, Double> receiver)
     {
-        NavigableSet<TemporalUserRiskScore<Long, Double>> outgoing = new TreeSet<>(allRiskScores);
+        NavigableSet<TemporalUserRiskScore<Long, Double>> outgoing = new TreeSet<>(allValues);
         outgoing.remove(receiver);
         return SortedRiskScores.of(sender, outgoing);
     }

@@ -44,9 +44,9 @@ public class FactorVertexComputation
             throws IOException
     {
         // Get all receiver-scores pairs, where the scores were not sent from the receiver
-        Collection<SortedRiskScores> incoming = new TreeSet<>();
+        Collection<SortedRiskScores> incoming = new HashSet<>();
         iterable.forEach(incoming::add);
-        GetRiskScoresAndReceivers<Long> pairs = new GetRiskScoresAndReceivers<>(vertex.getId().getUsers(), incoming);
+        GetValuesAndReceivers<Long> pairs = new GetValuesAndReceivers<>(vertex.getId().getUsers(), incoming);
         Instant earliestTime = getEarliestTimeOfContact(vertex.getValue());
         pairs.getEntries()
              .parallelStream()
@@ -82,31 +82,33 @@ public class FactorVertexComputation
         return Users.of(receiver);
     }
 
-    private static final class GetRiskScoresAndReceivers<T>
+    private static final class GetValuesAndReceivers<T>
     {
-        private final Set<Map.Entry<Identifiable<T>, SortedRiskScores>> outgoingMessages;
+        private final Set<Map.Entry<Identifiable<T>, SortedRiskScores>> outgoing;
 
-        private GetRiskScoresAndReceivers(Collection<? extends Identifiable<T>> users,
-                                          Collection<SortedRiskScores> riskScores)
+        private GetValuesAndReceivers(Collection<? extends Identifiable<T>> users,
+                                      Collection<SortedRiskScores> incoming)
         {
+            // Stores the receiver ID and the corresponding values to receive
+            // Collection is used, instead of Map, since Map cannot stream
             Collection<Map.Entry<Identifiable<T>, SortedRiskScores>> messages = new HashSet<>(users.size());
             users.parallelStream()
-                 .forEach(u -> riskScores.parallelStream()
-                                         .forEach(r -> messages.add(new AbstractMap.SimpleImmutableEntry<>(u, r))));
-            outgoingMessages = messages.parallelStream()
-                                       .filter(Predicate.not(msg -> msg.getKey().equals(msg.getValue().getSender())))
-                                       .collect(Collectors.toUnmodifiableSet());
+                 .forEach(u -> incoming.parallelStream()
+                                       .forEach(v -> messages.add(new AbstractMap.SimpleImmutableEntry<>(u, v))));
+            outgoing = messages.parallelStream()
+                               .filter(Predicate.not(msg -> msg.getKey().equals(msg.getValue().getSender())))
+                               .collect(Collectors.toUnmodifiableSet());
         }
 
         private Set<Map.Entry<Identifiable<T>, SortedRiskScores>> getEntries()
         {
-            return outgoingMessages;
+            return outgoing;
         }
 
         @Override
         public String toString()
         {
-            Object[] args = {getClass().getName(), "outgoingMessages", outgoingMessages.toString()};
+            Object[] args = {getClass().getName(), "outgoingMessages", outgoing.toString()};
             return MessageFormat.format("{1}({2}={3})", args);
         }
     }
