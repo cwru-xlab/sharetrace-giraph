@@ -1,5 +1,7 @@
 package model.score;
 
+import lombok.NonNull;
+
 import java.io.IOException;
 
 /**
@@ -11,7 +13,7 @@ public interface ComputedValue<N extends Number> extends Comparable<ComputedValu
 {
     N getValue();
 
-    ComputedValue<N> minus(ComputedValue<N> value) throws IOException;
+    ComputedValue<N> minus(@NonNull ComputedValue<N> value) throws IOException;
 
     ComputedValue<N> abs() throws IOException;
 }

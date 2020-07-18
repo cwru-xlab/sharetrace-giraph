@@ -1,11 +1,16 @@
 package model.score;
 
 import lombok.AccessLevel;
+import lombok.Data;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 import lombok.NonNull;
-import lombok.Value;
+import lombok.Setter;
 import lombok.extern.log4j.Log4j2;
+import org.apache.hadoop.io.Writable;
 
+import java.io.DataInput;
+import java.io.DataOutput;
 import java.io.IOException;
 import java.text.MessageFormat;
 
@@ -13,18 +18,25 @@ import java.text.MessageFormat;
  * A value ranging between 0 and 1 that denotes the risk of some condition.
  */
 @Log4j2
-@Value
-public class RiskScore implements ComputedValue<Double>
+@Data
+@Setter(AccessLevel.NONE)
+@NoArgsConstructor(access = AccessLevel.PRIVATE)
+public final class RiskScore implements ComputedValue<Double>, Writable
 {
     public static final String INVALID_RISK_SCORE_MESSAGE = " must be between 0 and 1, inclusive.";
 
     @Getter(AccessLevel.NONE)
-    double score;
+    private double score;
 
     private RiskScore(double riskScore) throws IOException
     {
         verifyScore(riskScore);
         score = riskScore;
+    }
+
+    private static String formatInvalidRiskScoreMessage(@NonNull Double score)
+    {
+        return MessageFormat.format("{0}{1}", score, INVALID_RISK_SCORE_MESSAGE);
     }
 
     private static void verifyScore(double riskScore) throws IOException
@@ -35,19 +47,33 @@ public class RiskScore implements ComputedValue<Double>
         }
     }
 
-    private static String formatInvalidRiskScoreMessage(Double score)
+    public static RiskScore fromDataInput(@NonNull DataInput dataInput) throws IOException
     {
-        return MessageFormat.format("{0}{1}", score, INVALID_RISK_SCORE_MESSAGE);
+        RiskScore riskScore = new RiskScore();
+        riskScore.readFields(dataInput);
+        return riskScore;
     }
 
     @Override
-    public Double getValue()
+    public void readFields(@NonNull DataInput dataInput) throws IOException
     {
-        return score;
+        score = dataInput.readDouble();
     }
 
     @Override
-    public ComputedValue<Double> minus(ComputedValue<Double> value) throws IOException
+    public void write(@NonNull DataOutput dataOutput) throws IOException
+    {
+        dataOutput.writeDouble(score);
+    }
+
+    @Override
+    public int compareTo(@NonNull ComputedValue<Double> o)
+    {
+        return Double.compare(score, o.getValue());
+    }
+
+    @Override
+    public ComputedValue<Double> minus(@NonNull ComputedValue<Double> value) throws IOException
     {
         return of(score - value.getValue());
     }
@@ -64,8 +90,8 @@ public class RiskScore implements ComputedValue<Double>
     }
 
     @Override
-    public int compareTo(@NonNull ComputedValue<Double> o)
+    public Double getValue()
     {
-        return Double.compare(score, o.getValue());
+        return score;
     }
 }
