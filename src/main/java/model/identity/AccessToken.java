@@ -7,8 +7,7 @@ import lombok.Value;
 import lombok.extern.log4j.Log4j2;
 
 /**
- * A generic access token intended to be used for writing data to an
- * authenticated entity.
+ * A generic access token intended to be used for writing data to an authenticated entity.
  */
 @Log4j2
 @Value(staticConstructor = "of")
