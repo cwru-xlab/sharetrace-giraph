@@ -1,22 +1,24 @@
-package main.java.model;
+package model;
 
 import lombok.Builder;
 import lombok.NonNull;
 import lombok.Value;
+import model.identity.AccessToken;
+import model.identity.UserId;
+import model.score.RiskScore;
 
 @Value
 @Builder
-public class PDA<T extends Comparable<T>, U extends Comparable<U>, R extends Number>
+public class PDA
 {
     @NonNull
-    Identifiable<T> accessToken;
+    AccessToken accessToken;
 
     @NonNull
-    Identifiable<U> userId;
+    UserId userId;
 
     @NonNull
-    ComputedValue<R> riskScore;
+    RiskScore riskScore;
 
-    @NonNull
     boolean diagnosed;
 }
