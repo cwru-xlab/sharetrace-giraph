@@ -1,4 +1,4 @@
-package main.java.model;
+package model.identity;
 
 /**
  * A property of anything used as an identifier.

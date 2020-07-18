@@ -1,4 +1,4 @@
-package main.java.model;
+package model.identity;
 
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -7,26 +7,24 @@ import lombok.Value;
 import lombok.extern.log4j.Log4j2;
 
 /**
- * A generic container for a user identifier.
- *
- * @param <T> Type of identification.
+ * An identifier for a user.
  */
 @Log4j2
 @Value(staticConstructor = "of")
-public class UserId<T extends Comparable<T>> implements Identifiable<T>
+public class UserId implements Identifiable<String>
 {
     @NonNull
     @Getter(AccessLevel.NONE)
-    T id;
+    String id;
 
     @Override
-    public T getId()
+    public String getId()
     {
         return id;
     }
 
     @Override
-    public int compareTo(Identifiable<T> o)
+    public int compareTo(@NonNull Identifiable<String> o)
     {
         return id.compareTo(o.getId());
     }
