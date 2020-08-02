@@ -1,78 +1,125 @@
 package model.score;
 
-import lombok.AccessLevel;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-import lombok.NonNull;
-import lombok.Setter;
-import lombok.extern.log4j.Log4j2;
-import org.apache.hadoop.io.WritableComparable;
-
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonGetter;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.base.Preconditions;
 import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
+import java.text.MessageFormat;
 import java.time.Instant;
+import java.util.Objects;
+import lombok.extern.log4j.Log4j2;
 
 /**
- * A {@link RiskScore} with a time for when it was last updated.
+ * A {@link AbstractRiskScore} with a time for when it was last updated.
  * <p>
- * The default implementation of {@link #compareTo(TemporalRiskScore)} is to first compare {@link #riskScore}. If the
- * risk scores are equally comparable based on the former, then {@link #updateTime} is then used for comparison.
+ * The default implementation of {@link #compareTo(TemporalRiskScore)} is to first compare {@link
+ * #riskScore}. If the risk scores are equally comparable based on the former, then {@link
+ * #timeUpdated} is then used for comparison.
  *
- * @see RiskScore
+ * @see AbstractRiskScore
  */
 @Log4j2
-@Data
-@Setter(AccessLevel.NONE)
-@NoArgsConstructor(access = AccessLevel.PRIVATE)
-public final class TemporalRiskScore implements WritableComparable<TemporalRiskScore>
-{
-    @NonNull
-    private Instant updateTime;
+public final class TemporalRiskScore implements AbstractRiskScore, Comparable<TemporalRiskScore> {
 
-    @NonNull
-    private RiskScore riskScore;
+  private static final String UPDATE_TIME_LABEL = "updateTime";
 
-    private TemporalRiskScore(@NonNull Instant updateTime, @NonNull RiskScore riskScore)
-    {
-        this.updateTime = updateTime;
-        this.riskScore = riskScore;
+  private static final String EPOCH_TIME_LABEL = "epochSecond";
+
+  private Instant timeUpdated;
+
+  private RiskScore riskScore;
+
+  @JsonCreator
+  private TemporalRiskScore(Instant updateTime, double score) {
+    Preconditions.checkNotNull(updateTime);
+    timeUpdated = updateTime;
+    riskScore = RiskScore.of(score);
+  }
+
+  private TemporalRiskScore() {
+  }
+
+  public static TemporalRiskScore of(Instant updateTime, double riskScore) {
+    return new TemporalRiskScore(updateTime, riskScore);
+  }
+
+  static TemporalRiskScore fromDataInput(DataInput dataInput) throws IOException {
+    log.debug("Creating TemporalRiskScore from DataInput");
+    Preconditions.checkNotNull(dataInput);
+    TemporalRiskScore temporalRiskScore = new TemporalRiskScore();
+    temporalRiskScore.readFields(dataInput);
+    return temporalRiskScore;
+  }
+
+  static TemporalRiskScore fromJsonNode(JsonNode jsonNode) {
+    log.debug("Creating TemporalRiskScore from JsonNode");
+    Preconditions.checkNotNull(jsonNode);
+    long time = jsonNode.get(UPDATE_TIME_LABEL).asLong();
+    Instant updateTime = Instant.ofEpochSecond(time);
+    RiskScore riskScore = RiskScore.fromJsonNode(jsonNode);
+    return new TemporalRiskScore(updateTime, riskScore.getRiskScore());
+  }
+
+  @Override
+  public void readFields(DataInput dataInput) throws IOException {
+    Preconditions.checkNotNull(dataInput);
+    timeUpdated = Instant.ofEpochSecond(dataInput.readLong());
+    riskScore = RiskScore.fromDataInput(dataInput);
+  }
+
+  @Override
+  public void write(DataOutput dataOutput) throws IOException {
+    Preconditions.checkNotNull(dataOutput);
+    dataOutput.writeLong(timeUpdated.getEpochSecond());
+    riskScore.write(dataOutput);
+  }
+
+  @Override
+  public int compareTo(TemporalRiskScore o) {
+    Preconditions.checkNotNull(o);
+    int compare = timeUpdated.compareTo(o.getTimeUpdated());
+    if (0 == compare) {
+      compare = Double.compare(riskScore.getRiskScore(), o.getRiskScore());
     }
+    return compare;
+  }
 
-    public static TemporalRiskScore of(@NonNull Instant updateTime, @NonNull RiskScore riskScore)
-    {
-        return new TemporalRiskScore(updateTime, riskScore);
-    }
+  @Override
+  public double getRiskScore() {
+    return riskScore.getRiskScore();
+  }
 
-    public static TemporalRiskScore fromDataInput(@NonNull DataInput dataInput) throws IOException
-    {
-        TemporalRiskScore riskScore = new TemporalRiskScore();
-        riskScore.readFields(dataInput);
-        return riskScore;
-    }
+  @JsonGetter(UPDATE_TIME_LABEL)
+  public Instant getTimeUpdated() {
+    return timeUpdated;
+  }
 
-    @Override
-    public void readFields(@NonNull DataInput dataInput) throws IOException
-    {
-        updateTime = Instant.ofEpochMilli(dataInput.readLong());
-        riskScore = RiskScore.fromDataInput(dataInput);
+  @Override
+  public boolean equals(Object o) {
+    if (this == o) {
+      return true;
     }
+    if (o == null || getClass() != o.getClass()) {
+      return false;
+    }
+    TemporalRiskScore score = (TemporalRiskScore) o;
+    boolean equalUpdateTime = Objects.equals(timeUpdated, score.getTimeUpdated());
+    boolean equalRiskScore = Objects.equals(riskScore.getRiskScore(), score.getRiskScore());
+    return equalUpdateTime && equalRiskScore;
+  }
 
-    @Override
-    public void write(@NonNull DataOutput dataOutput) throws IOException
-    {
-        dataOutput.writeLong(updateTime.toEpochMilli());
-        riskScore.write(dataOutput);
-    }
+  @Override
+  public int hashCode() {
+    return Objects.hash(timeUpdated, getRiskScore());
+  }
 
-    @Override
-    public int compareTo(@NonNull TemporalRiskScore o)
-    {
-        int compare = updateTime.compareTo(o.getUpdateTime());
-        if (0 == compare)
-        {
-            compare = riskScore.compareTo(o.getRiskScore());
-        }
-        return compare;
-    }
+  @Override
+  public String toString() {
+    return MessageFormat.format("TemporalRiskScore'{'updateTime={0}, riskScore={1}'}'",
+        timeUpdated,
+        riskScore);
+  }
 }
