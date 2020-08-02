@@ -32,18 +32,18 @@ public final class TemporalRiskScore implements AbstractRiskScore, Comparable<Te
 
   private RiskScore riskScore;
 
-  @JsonCreator
-  private TemporalRiskScore(Instant updateTime, double score) {
+  private TemporalRiskScore(Instant updateTime, RiskScore score) {
     Preconditions.checkNotNull(updateTime);
     timeUpdated = updateTime;
-    riskScore = RiskScore.of(score);
+    riskScore = score;
   }
 
   private TemporalRiskScore() {
   }
 
+  @JsonCreator
   public static TemporalRiskScore of(Instant updateTime, double riskScore) {
-    return new TemporalRiskScore(updateTime, riskScore);
+    return new TemporalRiskScore(updateTime, RiskScore.of(riskScore));
   }
 
   static TemporalRiskScore fromDataInput(DataInput dataInput) throws IOException {
@@ -60,7 +60,7 @@ public final class TemporalRiskScore implements AbstractRiskScore, Comparable<Te
     long time = jsonNode.get(UPDATE_TIME_LABEL).asLong();
     Instant updateTime = Instant.ofEpochSecond(time);
     RiskScore riskScore = RiskScore.fromJsonNode(jsonNode);
-    return new TemporalRiskScore(updateTime, riskScore.getRiskScore());
+    return new TemporalRiskScore(updateTime, riskScore);
   }
 
   @Override
