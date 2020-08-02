@@ -1,8 +1,6 @@
 package algorithm.computation;
 
 import algorithm.aggregators.VertexValueDeltaAggregator;
-import lombok.Data;
-import lombok.EqualsAndHashCode;
 import lombok.extern.log4j.Log4j2;
 import model.identity.UserGroup;
 import org.apache.giraph.graph.Computation;
@@ -11,8 +9,6 @@ import org.apache.hadoop.io.DoubleWritable;
 import org.apache.hadoop.io.NullWritable;
 
 @Log4j2
-@Data
-@EqualsAndHashCode(callSuper = true)
 public final class MasterComputer extends DefaultMasterCompute {
 
   private static final double HALT_THRESHOLD = 0.001;

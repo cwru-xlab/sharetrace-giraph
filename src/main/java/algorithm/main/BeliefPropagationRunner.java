@@ -7,8 +7,6 @@ import algorithm.format.input.FactorVertexInputFormat;
 import algorithm.format.input.VariableVertexInputFormat;
 import algorithm.format.output.FactorVertexOutputFormat;
 import algorithm.format.output.VariableVertexOutputFormat;
-import lombok.RequiredArgsConstructor;
-import lombok.ToString;
 import lombok.extern.log4j.Log4j2;
 import model.contact.Contact;
 import model.identity.UserGroup;
@@ -34,8 +32,6 @@ import org.apache.hadoop.util.ToolRunner;
  * https://giraph.apache.org/apidocs/org/apache/giraph/conf/GiraphConfiguration.html
  */
 @Log4j2
-@ToString
-@RequiredArgsConstructor
 public final class BeliefPropagationRunner {
 
   private static final boolean IS_STATIC_GRAPH = true;
