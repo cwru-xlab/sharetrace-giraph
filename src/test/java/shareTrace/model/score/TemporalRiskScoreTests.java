@@ -14,9 +14,9 @@ import shareTrace.TestConstants;
 @Log4j2
 class TemporalRiskScoreTests {
 
-  private static final Instant TEST_INSTANT_1 = TestConstants.getTestInstant1();
+  private static final Instant INSTANT_1 = TestConstants.getInstant1();
 
-  private static final Instant TEST_INSTANT_2 = TestConstants.getTestInstant2();
+  private static final Instant INSTANT_2 = TestConstants.getInstant2();
 
   private static final double MIN_RISK_SCORE = TestConstants.getMinRiskScore();
 
@@ -32,9 +32,9 @@ class TemporalRiskScoreTests {
 
   @BeforeAll
   static void beforeAll() {
-    minRiskScoreEarly = TemporalRiskScore.of(TEST_INSTANT_1, MIN_RISK_SCORE);
-    minRiskScoreLate = TemporalRiskScore.of(TEST_INSTANT_1, MAX_RISK_SCORE);
-    maxRiskScoreLate = TemporalRiskScore.of(TEST_INSTANT_2, MAX_RISK_SCORE);
+    minRiskScoreEarly = TemporalRiskScore.of(INSTANT_1, MIN_RISK_SCORE);
+    minRiskScoreLate = TemporalRiskScore.of(INSTANT_1, MAX_RISK_SCORE);
+    maxRiskScoreLate = TemporalRiskScore.of(INSTANT_2, MAX_RISK_SCORE);
   }
 
   @Test
