@@ -14,13 +14,13 @@ public final class TestConstants {
 
     private static final String USER_ID_2_STRING = "USER_ID_2";
 
-    private static final Instant INSTANT_1 = Instant.ofEpochMilli(1234567890L);
+    private static final Instant INSTANT_1 = Instant.ofEpochSecond(1234567890L);
 
-    private static final Instant INSTANT_2 = Instant.ofEpochMilli(1357924680L);
+    private static final Instant INSTANT_2 = Instant.ofEpochSecond(1357924680L);
 
-    private static final Duration DURATION_1 = Duration.ofMillis(1000L);
+    private static final Duration DURATION_1 = Duration.ofSeconds(1L);
 
-    private static final Duration DURATION_2 = Duration.ofMillis(2000L);
+    private static final Duration DURATION_2 = Duration.ofSeconds(2L);
 
     private static final SimpleModule JAVA_TIME_MODULE = new JavaTimeModule();
 
