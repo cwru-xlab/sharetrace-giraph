@@ -5,7 +5,7 @@ package model.identity;
  *
  * @param <T> Type of identifier.
  */
-public interface Identifiable<T> extends Comparable<Identifiable<T>>
-{
-    T getId();
+public interface Identifiable<T> extends Comparable<Identifiable<T>> {
+
+  T getId();
 }
