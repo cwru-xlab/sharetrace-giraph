@@ -29,7 +29,7 @@ public final class TemporalOccurrence implements Writable, Comparable<TemporalOc
 
   private static final String EPOCH_TIME_UNIT_LABEL = "epochSecond";
 
-  private static final String TIME_UNIT_LABEL = "second";
+  private static final String TIME_UNIT_LABEL = "seconds";
 
   private static final String DURATION_LABEL = "duration";
 
@@ -58,8 +58,8 @@ public final class TemporalOccurrence implements Writable, Comparable<TemporalOc
   public static TemporalOccurrence fromJsonNode(JsonNode jsonNode) {
     log.debug("Creating a TemporalOccurrence from JsonNode");
     Preconditions.checkNotNull(jsonNode);
-    long second = jsonNode.get(TIME_LABEL).get(EPOCH_TIME_UNIT_LABEL).asLong();
-    long duration = jsonNode.get(DURATION_LABEL).get(TIME_UNIT_LABEL).asLong();
+    long second = jsonNode.get(TIME_LABEL).asLong();
+    long duration = jsonNode.get(DURATION_LABEL).asLong();
     return new TemporalOccurrence(Instant.ofEpochSecond(second), Duration.ofSeconds(duration));
   }
 
