@@ -1,19 +1,16 @@
 package server;
 
-import model.AccessToken;
-
 import java.io.Closeable;
 import java.net.URL;
+import model.identity.AccessToken;
 
-public abstract class ShareTraceServer
-        implements Runnable, Closeable, TokenAccessor<String>
-{
-    public abstract void authenticatePDA(AccessToken<String> accessToken,
-                                         URL PDA);
+public abstract class ShareTraceServer implements Runnable, Closeable {
 
-    public abstract void putToPDA(AccessToken<String> accessToken, URL PDA);
+  public abstract void authenticatePDA(AccessToken accessToken, URL PDA);
 
-    public abstract void getFromPDA(AccessToken<String> accessToken, URL PDA);
+  public abstract void putToPDA(AccessToken accessToken, URL PDA);
 
-    public abstract void computeRiskScores();
+  public abstract void getFromPDA(AccessToken accessToken, URL PDA);
+
+  public abstract void computeRiskScores();
 }
