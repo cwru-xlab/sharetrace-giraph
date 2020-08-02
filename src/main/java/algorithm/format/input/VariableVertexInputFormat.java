@@ -23,13 +23,13 @@ public class VariableVertexInputFormat extends
   private static final ObjectMapper OBJECT_MAPPER = FormatUtils.getObjectMapper();
 
   @Override
-  public final TextVertexInputFormat.TextVertexReader createVertexReader(InputSplit inputSplit,
+  public final TextVertexReader createVertexReader(InputSplit inputSplit,
       TaskAttemptContext taskAttemptContext) {
     return new VariableVertexReader();
   }
 
   @NoArgsConstructor
-  private final class VariableVertexReader extends TextVertexInputFormat.TextVertexReader {
+  private final class VariableVertexReader extends TextVertexReader {
 
     @Override
     public boolean nextVertex() throws IOException, InterruptedException {

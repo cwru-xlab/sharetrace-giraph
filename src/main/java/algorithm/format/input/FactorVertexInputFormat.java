@@ -23,13 +23,13 @@ public class FactorVertexInputFormat extends
   private static final ObjectMapper OBJECT_MAPPER = FormatUtils.getObjectMapper();
 
   @Override
-  public final TextVertexInputFormat.TextVertexReader createVertexReader(InputSplit inputSplit,
+  public final TextVertexReader createVertexReader(InputSplit inputSplit,
       TaskAttemptContext taskAttemptContext) {
     return new FactorVertexReader();
   }
 
   @NoArgsConstructor
-  private final class FactorVertexReader extends TextVertexInputFormat.TextVertexReader {
+  private final class FactorVertexReader extends TextVertexReader {
 
     @Override
     public boolean nextVertex() throws IOException, InterruptedException {

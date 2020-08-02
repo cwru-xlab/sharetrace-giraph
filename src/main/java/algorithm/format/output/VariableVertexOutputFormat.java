@@ -25,14 +25,14 @@ public final class VariableVertexOutputFormat
   private static final ObjectMapper OBJECT_MAPPER = FormatUtils.getObjectMapper();
 
   @Override
-  public TextVertexOutputFormat.TextVertexWriter createVertexWriter(
+  public TextVertexWriter createVertexWriter(
       @NonNull TaskAttemptContext taskAttemptContext)
       throws IOException, InterruptedException {
     return new VariableVertexWriter(taskAttemptContext);
   }
 
   @ToString
-  private final class VariableVertexWriter extends TextVertexOutputFormat.TextVertexWriter {
+  private final class VariableVertexWriter extends TextVertexWriter {
 
     private final RecordWriter<Text, Text> recordReader;
 
