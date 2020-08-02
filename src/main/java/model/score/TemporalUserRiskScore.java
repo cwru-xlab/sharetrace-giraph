@@ -29,6 +29,8 @@ import model.identity.UserId;
 public final class TemporalUserRiskScore implements AbstractRiskScore,
     Comparable<TemporalUserRiskScore> {
 
+  private static final String USER_ID_LABEL = "userId";
+
   private UserId id;
 
   private TemporalRiskScore riskScore;
@@ -52,7 +54,7 @@ public final class TemporalUserRiskScore implements AbstractRiskScore,
   public static TemporalUserRiskScore fromJsonNode(JsonNode jsonNode) {
     log.debug("Creating TemporalUserRiskScore from JsonNode");
     Preconditions.checkNotNull(jsonNode);
-    UserId userId = UserId.fromJsonNode(jsonNode.get(UserId.getIdLabel()));
+    UserId userId = UserId.fromJsonNode(jsonNode.get(USER_ID_LABEL));
     TemporalRiskScore riskScore = TemporalRiskScore.fromJsonNode(jsonNode);
     return new TemporalUserRiskScore(userId, riskScore);
   }
