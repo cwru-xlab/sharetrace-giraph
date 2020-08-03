@@ -8,13 +8,15 @@ import java.io.DataOutput;
 import java.io.IOException;
 import java.text.MessageFormat;
 import java.util.Objects;
-import lombok.extern.log4j.Log4j2;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A value ranging between 0 and 1 that denotes the risk of some condition.
  */
-@Log4j2
 public final class RiskScore implements AbstractRiskScore, Comparable<AbstractRiskScore> {
+
+  private static final Logger log = LoggerFactory.getLogger(RiskScore.class);
 
   private static final String RISK_SCORE_RANGE_MESSAGE = "Risk score must be between 0 and 1, inclusive";
 

@@ -10,7 +10,8 @@ import java.io.IOException;
 import java.text.MessageFormat;
 import java.time.Instant;
 import java.util.Objects;
-import lombok.extern.log4j.Log4j2;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A {@link AbstractRiskScore} with a time for when it was last updated.
@@ -21,8 +22,9 @@ import lombok.extern.log4j.Log4j2;
  *
  * @see AbstractRiskScore
  */
-@Log4j2
 public final class TemporalRiskScore implements AbstractRiskScore, Comparable<TemporalRiskScore> {
+
+  private static final Logger log = LoggerFactory.getLogger(TemporalRiskScore.class);
 
   private static final String UPDATE_TIME_LABEL = "updateTime";
 

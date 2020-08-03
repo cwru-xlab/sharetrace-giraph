@@ -9,7 +9,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
-import lombok.extern.log4j.Log4j2;
 import model.identity.UserGroup;
 import model.identity.UserId;
 import model.score.SendableRiskScores;
@@ -18,7 +17,6 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import shareTrace.TestConstants;
 
-@Log4j2
 class VariableVertexTests {
 
   private static final UserId USER_ID_1 = UserId.of(TestConstants.getUserId1String());

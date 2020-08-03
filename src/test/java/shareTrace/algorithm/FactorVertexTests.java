@@ -6,7 +6,6 @@ import algorithm.format.vertex.FactorVertex;
 import algorithm.format.vertex.Vertex;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.extern.log4j.Log4j2;
 import model.contact.Contact;
 import model.contact.TemporalOccurrence;
 import model.identity.UserGroup;
@@ -15,7 +14,6 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import shareTrace.TestConstants;
 
-@Log4j2
 class FactorVertexTests {
 
   private static final UserId USER_ID_1 = UserId.of(TestConstants.getUserId1String());

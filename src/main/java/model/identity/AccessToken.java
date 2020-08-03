@@ -4,15 +4,18 @@ import com.google.common.base.Preconditions;
 import com.google.common.base.Strings;
 import java.text.MessageFormat;
 import java.util.Objects;
-import lombok.extern.log4j.Log4j2;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A generic access token intended to be used for writing data to an authenticated entity.
  *
  * @see Identifiable
  */
-@Log4j2
+
 public final class AccessToken implements Identifiable<String> {
+
+  private static final Logger log = LoggerFactory.getLogger(AccessToken.class);
 
   private final String token;
 

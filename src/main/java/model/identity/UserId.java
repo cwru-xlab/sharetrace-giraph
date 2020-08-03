@@ -9,9 +9,10 @@ import java.io.DataOutput;
 import java.io.IOException;
 import java.text.MessageFormat;
 import java.util.Objects;
-import lombok.extern.log4j.Log4j2;
 import org.apache.hadoop.io.Writable;
 import org.python.google.common.base.Preconditions;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * An identifier for a user.
@@ -19,8 +20,9 @@ import org.python.google.common.base.Preconditions;
  * @see Identifiable
  * @see Writable
  */
-@Log4j2
 public final class UserId implements Identifiable<String>, Writable {
+
+  private static final Logger log = LoggerFactory.getLogger(UserId.class);
 
   private static final String ID_LABEL = "id";
 

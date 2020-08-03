@@ -6,7 +6,6 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.SortedSet;
 import java.util.TreeSet;
-import lombok.extern.log4j.Log4j2;
 import model.identity.UserGroup;
 import model.identity.UserId;
 import model.score.SendableRiskScores;
@@ -16,6 +15,8 @@ import org.apache.giraph.graph.AbstractComputation;
 import org.apache.giraph.graph.Vertex;
 import org.apache.hadoop.io.DoubleWritable;
 import org.apache.hadoop.io.NullWritable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Computation performed at every factor {@link Vertex} of the factor graph. The following are the
@@ -31,10 +32,11 @@ import org.apache.hadoop.io.NullWritable;
  * computation, the variable {@link Vertex} sends a collection of {@link TemporalUserRiskScore}s to each of its variable
  * vertices.
  */
-@Log4j2
 public final class VariableVertexComputation
     extends
     AbstractComputation<UserGroup, SendableRiskScores, NullWritable, SendableRiskScores, SendableRiskScores> {
+
+  private static final Logger log = LoggerFactory.getLogger(FactorVertexComputation.class);
 
   private static final String AGGREGATOR_NAME = MasterComputer.getVertexDeltaAggregatorName();
 

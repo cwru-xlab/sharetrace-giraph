@@ -9,7 +9,6 @@ import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeSet;
 import java.util.stream.Collectors;
-import lombok.extern.log4j.Log4j2;
 import model.contact.Contact;
 import model.identity.UserGroup;
 import model.identity.UserId;
@@ -19,7 +18,8 @@ import org.apache.giraph.edge.Edge;
 import org.apache.giraph.graph.AbstractComputation;
 import org.apache.giraph.graph.Vertex;
 import org.apache.hadoop.io.NullWritable;
-// TODO Benchmark stream and parallel stream
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Computation performed at every factor {@link Vertex} of the factor graph. The following are the
@@ -34,10 +34,11 @@ import org.apache.hadoop.io.NullWritable;
  * Each factor vertex receives one or more {@link TemporalUserRiskScore}s from each of its variable vertices. After
  * computation, the factor vertex sends a single {@link TemporalUserRiskScore} to each of its variable vertices.
  */
-@Log4j2
 public final class FactorVertexComputation
     extends
     AbstractComputation<UserGroup, Contact, NullWritable, SendableRiskScores, SendableRiskScores> {
+
+  private static final Logger log = LoggerFactory.getLogger(FactorVertexComputation.class);
 
   private static final double DEFAULT_RISK_SCORE = 0.0;
 

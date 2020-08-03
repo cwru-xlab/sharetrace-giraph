@@ -1,15 +1,17 @@
 package algorithm.computation;
 
 import algorithm.aggregators.VertexValueDeltaAggregator;
-import lombok.extern.log4j.Log4j2;
 import model.identity.UserGroup;
 import org.apache.giraph.graph.Computation;
 import org.apache.giraph.master.DefaultMasterCompute;
 import org.apache.hadoop.io.DoubleWritable;
 import org.apache.hadoop.io.NullWritable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-@Log4j2
 public final class MasterComputer extends DefaultMasterCompute {
+
+  private static final Logger log = LoggerFactory.getLogger(MasterComputer.class);
 
   private static final double HALT_THRESHOLD = 0.001;
 

@@ -5,12 +5,12 @@ import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.fasterxml.jackson.module.paramnames.ParameterNamesModule;
-import lombok.Value;
-import lombok.extern.log4j.Log4j2;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-@Log4j2
-@Value
-public class FormatUtils {
+public final class FormatUtils {
+
+  private static final Logger log = LoggerFactory.getLogger(FormatUtils.class);
 
   private static final SimpleModule JAVA_TIME_MODULE = new JavaTimeModule();
 
@@ -20,6 +20,9 @@ public class FormatUtils {
 
   private static final ObjectMapper OBJECT_MAPPER =
       new ObjectMapper().registerModules(JAVA_TIME_MODULE, JDK8_MODULE, PARAMETER_NAMES_MODULE);
+
+  private FormatUtils() {
+  }
 
   public static ObjectMapper getObjectMapper() {
     return OBJECT_MAPPER;

@@ -10,8 +10,9 @@ import java.text.MessageFormat;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Objects;
-import lombok.extern.log4j.Log4j2;
 import org.apache.hadoop.io.Writable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * An occurrence at specific point in time and of a certain duration.
@@ -22,14 +23,11 @@ import org.apache.hadoop.io.Writable;
  *
  * @see Contact
  */
-@Log4j2
 public final class TemporalOccurrence implements Writable, Comparable<TemporalOccurrence> {
 
+  private static final Logger log = LoggerFactory.getLogger(TemporalOccurrence.class);
+
   private static final String TIME_LABEL = "time";
-
-  private static final String EPOCH_TIME_UNIT_LABEL = "epochSecond";
-
-  private static final String TIME_UNIT_LABEL = "seconds";
 
   private static final String DURATION_LABEL = "duration";
 

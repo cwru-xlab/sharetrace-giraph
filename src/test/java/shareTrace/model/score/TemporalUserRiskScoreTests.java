@@ -5,14 +5,12 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Instant;
-import lombok.extern.log4j.Log4j2;
 import model.identity.UserId;
 import model.score.TemporalUserRiskScore;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import shareTrace.TestConstants;
 
-@Log4j2
 class TemporalUserRiskScoreTests {
 
   private static final UserId USER_ID_1 = UserId.of(TestConstants.getUserId1String());

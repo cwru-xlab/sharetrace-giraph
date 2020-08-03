@@ -7,7 +7,6 @@ import algorithm.format.input.FactorVertexInputFormat;
 import algorithm.format.input.VariableVertexInputFormat;
 import algorithm.format.output.FactorVertexOutputFormat;
 import algorithm.format.output.VariableVertexOutputFormat;
-import lombok.extern.log4j.Log4j2;
 import model.contact.Contact;
 import model.identity.UserGroup;
 import model.score.SendableRiskScores;
@@ -26,13 +25,16 @@ import org.apache.hadoop.mapred.FileOutputFormat;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.util.Tool;
 import org.apache.hadoop.util.ToolRunner;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * For a full list of available configuration options, refer to the following link:
  * https://giraph.apache.org/apidocs/org/apache/giraph/conf/GiraphConfiguration.html
  */
-@Log4j2
 public final class BeliefPropagationRunner {
+
+  private static final Logger log = LoggerFactory.getLogger(BeliefPropagationRunner.class);
 
   private static final boolean IS_STATIC_GRAPH = true;
 
@@ -73,6 +75,8 @@ public final class BeliefPropagationRunner {
   private static final String VARIABLE_VERTEX_INPUT_PATH = "/bp/in/variable.txt";
 
   private static final String OUTPUT_PATH = "/bp/out";
+
+  private BeliefPropagationRunner(){}
 
   /**
    * @param args Additional Giraph configuration arguments from the command line.

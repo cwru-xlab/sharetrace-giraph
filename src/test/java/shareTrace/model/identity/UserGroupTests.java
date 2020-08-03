@@ -5,14 +5,12 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.extern.log4j.Log4j2;
 import model.identity.UserGroup;
 import model.identity.UserId;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import shareTrace.TestConstants;
 
-@Log4j2
 class UserGroupTests {
 
     private static final String USER_ID_1 = TestConstants.getUserId1String();

@@ -15,15 +15,17 @@ import java.util.Iterator;
 import java.util.Objects;
 import java.util.SortedSet;
 import java.util.TreeSet;
-import lombok.extern.log4j.Log4j2;
 import org.apache.hadoop.io.WritableComparable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Immutable {@link SortedSet} of {@link UserId}s. "Destructive" operations (i.e. any modification
  * to the contents of the collection) throw a {@link UnsupportedOperationException} when called.
  */
-@Log4j2
 public final class UserGroup implements WritableComparable<UserGroup>, SortedSet<UserId> {
+
+  private static final Logger log = LoggerFactory.getLogger(UserGroup.class);
 
   private static final String NO_USERS_MESSAGE = "A UserGroup must contain at least one user";
 

@@ -6,13 +6,11 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.extern.log4j.Log4j2;
 import model.score.RiskScore;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import shareTrace.TestConstants;
 
-@Log4j2
 class RiskScoreTests {
 
   private static final double MIN_RISK_SCORE = TestConstants.getMinRiskScore();

@@ -5,13 +5,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Instant;
-import lombok.extern.log4j.Log4j2;
 import model.score.TemporalRiskScore;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import shareTrace.TestConstants;
 
-@Log4j2
 class TemporalRiskScoreTests {
 
   private static final Instant INSTANT_1 = TestConstants.getInstant1();

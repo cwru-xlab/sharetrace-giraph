@@ -6,14 +6,17 @@ import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.databind.DeserializationContext;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.deser.std.StdDeserializer;
+import com.google.common.base.Preconditions;
 import java.io.IOException;
-import lombok.extern.log4j.Log4j2;
 import model.identity.UserGroup;
 import model.score.SendableRiskScores;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-@Log4j2
 public final class VariableVertexDeserializer extends
     StdDeserializer<Vertex<UserGroup, SendableRiskScores>> {
+
+  private static final Logger log = LoggerFactory.getLogger(VariableVertexDeserializer.class);
 
   private static final long serialVersionUID = 1180847517380691342L;
 
@@ -24,6 +27,8 @@ public final class VariableVertexDeserializer extends
   @Override
   public VariableVertex deserialize(JsonParser jsonParser, DeserializationContext context)
       throws IOException {
+    Preconditions.checkNotNull(jsonParser);
+    Preconditions.checkNotNull(context);
     JsonNode node = jsonParser.getCodec().readTree(jsonParser);
     UserGroup vertexId = UserGroup.fromJsonNode(node.get("vertexId"));
     SendableRiskScores vertexValue = SendableRiskScores.fromJsonNode(node.get("vertexValue"));

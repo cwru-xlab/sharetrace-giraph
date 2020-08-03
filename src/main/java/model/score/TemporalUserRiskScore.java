@@ -10,8 +10,9 @@ import java.io.IOException;
 import java.text.MessageFormat;
 import java.time.Instant;
 import java.util.Objects;
-import lombok.extern.log4j.Log4j2;
 import model.identity.UserId;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 // TODO Change UserId to String
 
@@ -25,9 +26,10 @@ import model.identity.UserId;
  *
  * @see TemporalRiskScore
  */
-@Log4j2
 public final class TemporalUserRiskScore implements AbstractRiskScore,
     Comparable<TemporalUserRiskScore> {
+
+  private static final Logger log = LoggerFactory.getLogger(TemporalUserRiskScore.class);
 
   private static final String USER_ID_LABEL = "userId";
 

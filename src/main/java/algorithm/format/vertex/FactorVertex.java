@@ -3,18 +3,21 @@ package algorithm.format.vertex;
 import algorithm.format.vertex.serialization.FactorVertexDeserializer;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import com.google.common.base.Preconditions;
 import java.text.MessageFormat;
 import java.util.Objects;
 import java.util.SortedSet;
-import lombok.extern.log4j.Log4j2;
 import model.contact.Contact;
 import model.contact.TemporalOccurrence;
 import model.identity.Identifiable;
 import model.identity.UserGroup;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-@Log4j2
 @JsonDeserialize(using = FactorVertexDeserializer.class)
 public final class FactorVertex implements Vertex<UserGroup, Contact> {
+
+  private static final Logger log = LoggerFactory.getLogger(FactorVertex.class);
 
   private final UserGroup vertexId;
 
@@ -22,6 +25,8 @@ public final class FactorVertex implements Vertex<UserGroup, Contact> {
 
   @JsonCreator
   private FactorVertex(UserGroup vertexId, Contact vertexValue) {
+    Preconditions.checkNotNull(vertexId);
+    Preconditions.checkNotNull(vertexValue);
     this.vertexId = vertexId;
     this.vertexValue = vertexValue;
   }

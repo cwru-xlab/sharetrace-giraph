@@ -13,10 +13,11 @@ import java.util.Iterator;
 import java.util.Objects;
 import java.util.SortedSet;
 import java.util.TreeSet;
-import lombok.extern.log4j.Log4j2;
 import model.identity.Identifiable;
 import model.identity.UserId;
 import org.apache.hadoop.io.Writable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * An encounter between two users at one or more points in time.
@@ -26,8 +27,9 @@ import org.apache.hadoop.io.Writable;
  * {@code u2} is considered equal to a different {@code Contact} with equal {@code u1} and {@code
  * u2} except assigned to the opposite field.
  */
-@Log4j2
 public final class Contact implements Comparable<Contact>, Writable {
+
+  private static final Logger log = LoggerFactory.getLogger(Contact.class);
 
   private static final String NO_OCCURRENCES_MESSAGE = "A contact must contain at least one occurrence";
 
