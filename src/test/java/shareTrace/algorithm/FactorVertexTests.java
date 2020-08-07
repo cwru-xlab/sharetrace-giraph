@@ -1,45 +1,52 @@
-package shareTrace.algorithm;
+package sharetrace.algorithm;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-import algorithm.format.vertex.FactorVertex;
-import algorithm.format.vertex.Vertex;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import model.contact.Contact;
-import model.contact.TemporalOccurrence;
-import model.identity.UserGroup;
-import model.identity.UserId;
-import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import shareTrace.TestConstants;
+import sharetrace.algorithm.format.vertex.FactorVertex;
+import sharetrace.algorithm.format.vertex.Vertex;
+import sharetrace.common.TestConstants;
+import sharetrace.model.contact.Contact;
+import sharetrace.model.contact.Occurrence;
+import sharetrace.model.identity.UserGroup;
+import sharetrace.model.identity.UserId;
 
 class FactorVertexTests {
 
-  private static final UserId USER_ID_1 = UserId.of(TestConstants.getUserId1String());
+  private final UserId userId1 = UserId.of(TestConstants.getUserId1String());
 
-  private static final UserId USER_ID_2 = UserId.of(TestConstants.getUserId2String());
+  private final UserId userId2 = UserId.of(TestConstants.getUserId2String());
 
-  private static final UserGroup USER_GROUP = UserGroup.of(USER_ID_1, USER_ID_2);
+  private final UserGroup userGroup = UserGroup.builder()
+      .addUsers(userId1, userId2)
+      .build();
 
-  private static final TemporalOccurrence OCCURRENCE =
-      TemporalOccurrence.of(TestConstants.getInstant1(), TestConstants.getDuration1());
+  private final Occurrence occurrence = Occurrence
+      .of(TestConstants.getInstant1(), TestConstants.getDuration1());
 
-  private static final Contact CONTACT = Contact.of(USER_ID_1, USER_ID_2, OCCURRENCE);
+  private final Contact contact = Contact.builder()
+      .setFirstUser(userId1)
+      .setSecondUser(userId2)
+      .addOccurrences(occurrence)
+      .build();
 
   private static final ObjectMapper OBJECT_MAPPER = TestConstants.getObjectMapper();
 
-  private static Vertex<UserGroup, Contact> factorVertex;
+  private Vertex<UserGroup, Contact> factorVertex;
 
-  @BeforeAll
-  static void beforeAll() {
-    factorVertex = FactorVertex.of(USER_GROUP, CONTACT);
+  @BeforeEach
+  final void beforeEach() {
+    factorVertex = FactorVertex.of(userGroup, contact);
   }
 
   @Test
   final void deserialization_verifyDeserialization_returnsFactorVertexWithSameValue()
       throws JsonProcessingException {
     String serialized = OBJECT_MAPPER.writeValueAsString(factorVertex);
+    System.out.println(serialized);
     FactorVertex deserialized = OBJECT_MAPPER.readValue(serialized, FactorVertex.class);
     assertEquals(factorVertex, deserialized, "Deserialized value should equal original value");
   }

@@ -1,71 +1,71 @@
-package shareTrace.model.score;
+package sharetrace.model.score;
 
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import model.score.RiskScore;
-import org.junit.jupiter.api.BeforeAll;
+import java.time.Instant;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import shareTrace.TestConstants;
+import sharetrace.common.TestConstants;
 
 class RiskScoreTests {
 
-  private static final double MIN_RISK_SCORE = TestConstants.getMinRiskScore();
+  private static final String USER_ID_1 = TestConstants.getUserId1String();
 
-  private static final double BELOW_MIN = MIN_RISK_SCORE - 1.0;
+  private static final String USER_ID_2 = TestConstants.getUserId2String();
 
   private static final double MAX_RISK_SCORE = TestConstants.getMaxRiskScore();
 
-  private static final double ABOVE_MAX = MAX_RISK_SCORE + 1.0;
+  private static final double MIN_RISK_SCORE = TestConstants.getMinRiskScore();
+
+  private static final Instant INSTANT_1 = TestConstants.getInstant1();
+
+  private static final Instant INSTANT_2 = TestConstants.getInstant2();
 
   private static final ObjectMapper OBJECT_MAPPER = TestConstants.getObjectMapper();
 
-  private static RiskScore minRiskScore;
+  private RiskScore earlyUser1MinRiskScore;
 
-  private static RiskScore maxRiskScore;
+  private RiskScore earlyUser1MaxRiskScore;
 
-  @BeforeAll
-  static void beforeAll() {
-    minRiskScore = RiskScore.of(MIN_RISK_SCORE);
-    maxRiskScore = RiskScore.of(MAX_RISK_SCORE);
+  private RiskScore earlyUser2MinRiskScore;
+
+  private RiskScore lateUser1MinRiskScore;
+
+  @BeforeEach
+  final void beforeEach() {
+    earlyUser1MinRiskScore = RiskScore.of(USER_ID_1, INSTANT_1, MIN_RISK_SCORE);
+    earlyUser2MinRiskScore = RiskScore.of(USER_ID_2, INSTANT_1, MIN_RISK_SCORE);
+    earlyUser1MaxRiskScore = RiskScore.of(USER_ID_1, INSTANT_1, MAX_RISK_SCORE);
+    lateUser1MinRiskScore = RiskScore.of(USER_ID_1, INSTANT_2, MIN_RISK_SCORE);
   }
 
   @Test
-  final void constructor_verifyLowerBound_throwsIllegalArgumentException() {
-    assertThrows(IllegalArgumentException.class, () -> RiskScore.of(BELOW_MIN));
+  final void compareTo_verifyScoresWithEqualIdAndUpdateTime_higherValueComparesGreater() {
+    assertEquals(1, earlyUser1MaxRiskScore.compareTo(earlyUser1MinRiskScore),
+        "Score with higher value should compare greater");
   }
 
   @Test
-  final void constructor_verifyUpperBound_throwsIllegalArgumentException() {
-    assertThrows(IllegalArgumentException.class, () -> RiskScore.of(ABOVE_MAX));
+  final void compareTo_verifyScoresWithEqualValueAndUpdateTime_greaterIdComparesGreater() {
+    assertEquals(1, earlyUser2MinRiskScore.compareTo(earlyUser1MinRiskScore),
+        "Score with greater id should compare greater");
   }
 
   @Test
-  final void constructor_verifyWithinBounds_doesNotThrowIllegalArgumentException() {
-    assertDoesNotThrow(() -> RiskScore.of(MAX_RISK_SCORE));
-    assertDoesNotThrow(() -> RiskScore.of(MIN_RISK_SCORE));
+  final void compareTo_verifyScoresWithEqualIdAndValue_laterUpdateTimeComparesGreater() {
+    assertEquals(1, lateUser1MinRiskScore.compareTo(earlyUser1MinRiskScore),
+        "Score with later update time should compare greater");
   }
 
   @Test
-  final void compareTo_higherRiskScoreComparesGreaterThanLowerRiskScores() {
-
-    assertEquals(1, maxRiskScore.compareTo(minRiskScore),
-        "Higher risk score should compare greater to lower risk score");
-    assertEquals(0, maxRiskScore.compareTo(maxRiskScore),
-        "Risk scores with same value should compare equally");
-    assertEquals(-1, minRiskScore.compareTo(maxRiskScore),
-        "Lower risk score should compare lesser to higher risk score");
-  }
-
-  @Test
-  final void deserialization_verifyDeserialization_returnsRiskScoreWithSameValue()
+  final void deserialization_verifyDeserialization_returnsTemporalUserRiskScoreWithSameValues()
       throws JsonProcessingException {
-    String serialized = OBJECT_MAPPER.writeValueAsString(maxRiskScore);
-    RiskScore deserialized = OBJECT_MAPPER.readValue(serialized, RiskScore.class);
-    assertEquals(maxRiskScore.getRiskScore(), deserialized.getRiskScore(),
+    String serialized = OBJECT_MAPPER.writeValueAsString(earlyUser1MinRiskScore);
+    AbstractRiskScore deserialized = OBJECT_MAPPER.readValue(serialized, RiskScore.class);
+    assertEquals(earlyUser1MinRiskScore, deserialized,
         "Deserialized value should equal original value");
   }
 }
+
