@@ -51,7 +51,7 @@ public final class FactorVertexComputation extends
 
   private static final double TRANSMISSION_PROBABILITY = 0.7;
 
-  private static final Instant EXPIRATION_TIME = ExpiredFactorVertexFilter.getExpirationTime();
+  private static final Instant CUTOFF = ExpiredFactorVertexFilter.getCutoff();
 
   private static boolean isTransmitted() {
     return TRANSMISSION_PROBABILITY <= ThreadLocalRandom.current().nextDouble(1.0);
@@ -78,7 +78,7 @@ public final class FactorVertexComputation extends
     SortedSet<Occurrence> values = new TreeSet<>(vertex.getValue().getContact().getOccurrences());
     ContactWritable updateValue = Contact.copyOf(vertex.getValue().getContact())
         .withOccurrences(values.stream()
-            .filter(occurrence -> occurrence.getTime().isAfter(EXPIRATION_TIME))
+            .filter(occurrence -> occurrence.getTime().isAfter(CUTOFF))
             .collect(Collectors.toSet())).wrap();
     vertex.setValue(updateValue);
   }
