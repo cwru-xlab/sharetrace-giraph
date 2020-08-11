@@ -1,4 +1,4 @@
-package sharetrace.algorithm.aggregators;
+package sharetrace.algorithm.beliefpropagation.aggregators;
 
 import com.google.common.base.Preconditions;
 import java.text.MessageFormat;
@@ -11,7 +11,7 @@ import org.slf4j.LoggerFactory;
 
 public final class VertexValueDeltaAggregator implements Aggregator<DoubleWritable> {
 
-  private static final Logger log = LoggerFactory.getLogger(VertexValueDeltaAggregator.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(VertexValueDeltaAggregator.class);
 
   private static final Double INITIAL_VALUE = Double.POSITIVE_INFINITY;
 
