@@ -66,7 +66,7 @@ public class ContactMatchingComputation {
     int oneBasedRowIndex = rowIndex + 1;
     // upperIndex = 3
     int upperIndex = oneBasedRowIndex * matrixSize - 1;
-    // nIndicesInRow = 1 * (4 - 0 - 1) = 3
+    // nIndicesInRow = 4 - 0 - 1 = 3
     int nIndicesInRow = matrixSize - rowIndex - 1;
     Set<Map.Entry<Integer, Integer>> rowEntries = new HashSet<>(nIndicesInRow);
     // rowEntries = [(0, 3), (0, 2), (0, 1)]
