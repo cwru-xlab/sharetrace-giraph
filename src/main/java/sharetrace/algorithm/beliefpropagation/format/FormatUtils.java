@@ -1,4 +1,4 @@
-package sharetrace.algorithm.format;
+package sharetrace.algorithm.beliefpropagation.format;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.module.SimpleModule;
@@ -11,7 +11,7 @@ import org.slf4j.LoggerFactory;
 
 public final class FormatUtils {
 
-  private static final Logger log = LoggerFactory.getLogger(FormatUtils.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(FormatUtils.class);
 
   private static final SimpleModule JAVA_TIME_MODULE = new JavaTimeModule();
 

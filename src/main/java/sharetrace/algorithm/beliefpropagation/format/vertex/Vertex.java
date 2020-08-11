@@ -1,4 +1,4 @@
-package sharetrace.algorithm.format.vertex;
+package sharetrace.algorithm.beliefpropagation.format.vertex;
 
 import sharetrace.model.common.Wrappable;
 

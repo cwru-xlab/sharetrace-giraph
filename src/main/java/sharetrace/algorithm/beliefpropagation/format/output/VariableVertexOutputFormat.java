@@ -1,4 +1,4 @@
-package sharetrace.algorithm.format.output;
+package sharetrace.algorithm.beliefpropagation.format.output;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Preconditions;
@@ -12,15 +12,14 @@ import org.apache.hadoop.mapreduce.RecordWriter;
 import org.apache.hadoop.mapreduce.TaskAttemptContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import sharetrace.algorithm.format.FormatUtils;
-import sharetrace.algorithm.format.vertex.VariableVertex;
+import sharetrace.algorithm.beliefpropagation.format.FormatUtils;
 import sharetrace.model.identity.UserGroupWritableComparable;
 import sharetrace.model.score.SendableRiskScoresWritable;
 
 public final class VariableVertexOutputFormat extends
     TextVertexOutputFormat<UserGroupWritableComparable, SendableRiskScoresWritable, NullWritable> {
 
-  private static final Logger log = LoggerFactory.getLogger(VariableVertexOutputFormat.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(VariableVertexOutputFormat.class);
 
   private static final ObjectMapper OBJECT_MAPPER = FormatUtils.getObjectMapper();
 
@@ -45,11 +44,7 @@ public final class VariableVertexOutputFormat extends
         NullWritable> vertex)
         throws IOException, InterruptedException {
       Preconditions.checkNotNull(vertex);
-      VariableVertex variableVertex = VariableVertex.builder()
-          .setVertexId(vertex.getId().getUserGroup())
-          .setVertexValue(vertex.getValue().getSendableRiskScores())
-          .build();
-      Text text = new Text(OBJECT_MAPPER.writeValueAsString(variableVertex));
+      Text text = new Text(OBJECT_MAPPER.writeValueAsString(vertex.getValue().getMaxRiskScore()));
       recordWriter.write(text, null);
     }
 

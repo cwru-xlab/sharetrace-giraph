@@ -1,4 +1,4 @@
-package sharetrace.algorithm.format.input;
+package sharetrace.algorithm.beliefpropagation.format.input;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
@@ -10,7 +10,7 @@ import org.apache.hadoop.mapreduce.InputSplit;
 import org.apache.hadoop.mapreduce.TaskAttemptContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import sharetrace.algorithm.format.FormatUtils;
+import sharetrace.algorithm.beliefpropagation.format.FormatUtils;
 import sharetrace.algorithm.format.vertex.VariableVertex;
 import sharetrace.model.identity.UserGroupWritableComparable;
 import sharetrace.model.score.SendableRiskScoresWritable;
@@ -18,7 +18,7 @@ import sharetrace.model.score.SendableRiskScoresWritable;
 public class VariableVertexInputFormat extends
     TextVertexInputFormat<UserGroupWritableComparable, SendableRiskScoresWritable, NullWritable> {
 
-  private static final Logger log = LoggerFactory.getLogger(VariableVertexInputFormat.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(VariableVertexInputFormat.class);
 
   private static final ObjectMapper OBJECT_MAPPER = FormatUtils.getObjectMapper();
 
