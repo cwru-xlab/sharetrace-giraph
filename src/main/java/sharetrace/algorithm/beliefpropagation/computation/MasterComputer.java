@@ -1,15 +1,18 @@
-package sharetrace.algorithm.computation;
+package sharetrace.algorithm.beliefpropagation.computation;
 
+import java.time.Instant;
 import org.apache.giraph.graph.Computation;
 import org.apache.giraph.master.DefaultMasterCompute;
 import org.apache.hadoop.io.DoubleWritable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import sharetrace.algorithm.aggregators.VertexValueDeltaAggregator;
+import sharetrace.algorithm.beliefpropagation.aggregators.VertexValueDeltaAggregator;
 
 public final class MasterComputer extends DefaultMasterCompute {
 
-  private static final Logger log = LoggerFactory.getLogger(MasterComputer.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(MasterComputer.class);
+
+  private static final Instant initializedAt = Instant.now();
 
   private static final double HALT_THRESHOLD = 0.00001;
 
@@ -42,5 +45,9 @@ public final class MasterComputer extends DefaultMasterCompute {
   @Override
   public void initialize() throws InstantiationException, IllegalAccessException {
     registerPersistentAggregator(VERTEX_DELTA_AGGREGATOR, VertexValueDeltaAggregator.class);
+  }
+
+  public static Instant getInitializedAt() {
+    return initializedAt;
   }
 }
