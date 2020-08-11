@@ -7,6 +7,8 @@ import java.io.IOException;
 import java.text.MessageFormat;
 import java.time.Instant;
 import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.TreeSet;
 import org.apache.hadoop.io.Writable;
 import org.slf4j.Logger;
@@ -22,9 +24,14 @@ import sharetrace.model.identity.UserId;
  */
 public final class SendableRiskScoresWritable implements Writable {
 
-  private static final Logger log = LoggerFactory.getLogger(SendableRiskScoresWritable.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(SendableRiskScoresWritable.class);
+
+  private static final Comparator<? super RiskScore> COMPARE_BY_RISK_SCORE =
+      Comparator.comparing(RiskScore::getValue);
 
   private AbstractSendableRiskScores sendableRiskScores;
+
+  private AbstractRiskScore maxRiskScore;
 
   private SendableRiskScoresWritable() {
   }
@@ -32,6 +39,7 @@ public final class SendableRiskScoresWritable implements Writable {
   private SendableRiskScoresWritable(AbstractSendableRiskScores sendableRiskScores) {
     Preconditions.checkNotNull(sendableRiskScores);
     this.sendableRiskScores = sendableRiskScores;
+    this.maxRiskScore = Collections.max(sendableRiskScores.getMessage(), COMPARE_BY_RISK_SCORE);
   }
 
   public static SendableRiskScoresWritable of(AbstractSendableRiskScores sendableRiskScores) {
@@ -80,15 +88,20 @@ public final class SendableRiskScoresWritable implements Writable {
         .setSender(userIds)
         .setMessage(riskScores)
         .build();
+    maxRiskScore = Collections.max(sendableRiskScores.getMessage(), COMPARE_BY_RISK_SCORE);
   }
 
   public SendableRiskScores getSendableRiskScores() {
     return SendableRiskScores.copyOf(sendableRiskScores);
   }
 
+  public RiskScore getMaxRiskScore() {
+    return RiskScore.copyOf(maxRiskScore);
+  }
+
   @Override
   public String toString() {
-    return MessageFormat.format("{0}'{'sendableRiskScores={1}'}'",
-        getClass().getSimpleName(), sendableRiskScores);
+    return MessageFormat.format("{0}'{'sendableRiskScores={1}, maxRiskScore={2}'}'",
+        getClass().getSimpleName(), sendableRiskScores, maxRiskScore);
   }
 }
