@@ -37,7 +37,7 @@ import sharetrace.model.location.TemporalLocation;
  * <p>
  * Given a list of {@link LocationHistory} instances of size N, the generation of unique pairs takes
  * O(N(N - 1) / 2) = O(N^2). Given two {@link LocationHistory} instances of size H1 and H2, the time
- * to find all occurrences is O(max(H1, H2)). Thus, the overall runtime is O(max(H1, H2) + N^2).
+ * to find all occurrences is O(max(H1, H2)). The overall running time is O(max(H1, H2) + N^2).
  */
 public class ContactMatchingComputation {
 
