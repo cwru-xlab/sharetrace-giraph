@@ -1,4 +1,4 @@
-package sharetrace.algorithm;
+package shareTrace.algorithm.beliefpropagation.format.vertex;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -6,8 +6,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import sharetrace.algorithm.beliefpropagation.format.vertex.Vertex;
 import sharetrace.algorithm.format.vertex.FactorVertex;
-import sharetrace.algorithm.format.vertex.Vertex;
 import sharetrace.common.TestConstants;
 import sharetrace.model.contact.Contact;
 import sharetrace.model.contact.Occurrence;

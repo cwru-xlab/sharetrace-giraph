@@ -1,4 +1,4 @@
-package sharetrace.algorithm;
+package shareTrace.algorithm.beliefpropagation.format.vertex;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -9,8 +9,8 @@ import java.util.Collection;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import sharetrace.algorithm.beliefpropagation.format.vertex.Vertex;
 import sharetrace.algorithm.format.vertex.VariableVertex;
-import sharetrace.algorithm.format.vertex.Vertex;
 import sharetrace.common.TestConstants;
 import sharetrace.model.identity.UserGroup;
 import sharetrace.model.identity.UserId;
