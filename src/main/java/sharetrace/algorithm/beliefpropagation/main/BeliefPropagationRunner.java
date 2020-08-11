@@ -1,10 +1,11 @@
-package sharetrace.algorithm.main;
+package sharetrace.algorithm.beliefpropagation.main;
 
 import org.apache.giraph.GiraphRunner;
 import org.apache.giraph.conf.GiraphConfiguration;
 import org.apache.giraph.graph.AbstractComputation;
 import org.apache.giraph.io.VertexInputFormat;
 import org.apache.giraph.io.VertexOutputFormat;
+import org.apache.giraph.io.filters.VertexInputFilter;
 import org.apache.giraph.io.formats.GiraphFileInputFormat;
 import org.apache.giraph.master.MasterCompute;
 import org.apache.hadoop.fs.Path;
@@ -16,13 +17,14 @@ import org.apache.hadoop.util.Tool;
 import org.apache.hadoop.util.ToolRunner;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import sharetrace.algorithm.computation.FactorVertexComputation;
-import sharetrace.algorithm.computation.MasterComputer;
-import sharetrace.algorithm.computation.VariableVertexComputation;
-import sharetrace.algorithm.format.input.FactorVertexInputFormat;
-import sharetrace.algorithm.format.input.VariableVertexInputFormat;
-import sharetrace.algorithm.format.output.FactorVertexOutputFormat;
-import sharetrace.algorithm.format.output.VariableVertexOutputFormat;
+import sharetrace.algorithm.beliefpropagation.computation.FactorVertexComputation;
+import sharetrace.algorithm.beliefpropagation.computation.MasterComputer;
+import sharetrace.algorithm.beliefpropagation.computation.VariableVertexComputation;
+import sharetrace.algorithm.beliefpropagation.filter.ExpiredFactorVertexFilter;
+import sharetrace.algorithm.beliefpropagation.format.input.FactorVertexInputFormat;
+import sharetrace.algorithm.beliefpropagation.format.input.VariableVertexInputFormat;
+import sharetrace.algorithm.beliefpropagation.format.output.FactorVertexOutputFormat;
+import sharetrace.algorithm.beliefpropagation.format.output.VariableVertexOutputFormat;
 import sharetrace.model.contact.ContactWritable;
 import sharetrace.model.identity.UserGroupWritableComparable;
 import sharetrace.model.score.SendableRiskScoresWritable;
@@ -33,13 +35,7 @@ import sharetrace.model.score.SendableRiskScoresWritable;
  */
 public final class BeliefPropagationRunner {
 
-  private static final Logger log = LoggerFactory.getLogger(BeliefPropagationRunner.class);
-
-  private static final boolean IS_STATIC_GRAPH = true;
-
-  private static final boolean USE_MESSAGE_SIZE_ENCODING = true;
-
-  private static final boolean IS_VERTEX_OUTPUT_FORMAT_THREAD_SAFE = true;
+  private static final Logger LOGGER = LoggerFactory.getLogger(BeliefPropagationRunner.class);
 
   private static final Class<? extends VertexInputFormat<?, ?, ?>> FACTOR_VERTEX_INPUT_FORMAT =
       FactorVertexInputFormat.class;
@@ -52,6 +48,9 @@ public final class BeliefPropagationRunner {
 
   private static final Class<? extends VertexOutputFormat<?, ?, ?>> VARIABLE_VERTEX_OUTPUT_FORMAT =
       VariableVertexOutputFormat.class;
+
+  private static final Class<? extends VertexInputFilter<?, ?, ?>> FACTOR_VERTEX_INPUT_FILTER =
+      ExpiredFactorVertexFilter.class;
 
   private static final Class<? extends WritableComparable<?>> VERTEX_ID = UserGroupWritableComparable.class;
 
@@ -75,17 +74,14 @@ public final class BeliefPropagationRunner {
 
   private static final String OUTPUT_PATH = "/bp/out";
 
-  private BeliefPropagationRunner(){}
+  private BeliefPropagationRunner() {
+  }
 
   /**
    * @param args Additional Giraph configuration arguments from the command line.
    */
   public static void main(String[] args) throws Exception {
     GiraphConfiguration config = new GiraphConfiguration();
-    // Memory/storage optimization
-    config.STATIC_GRAPH.set(config, IS_STATIC_GRAPH);
-    config.USE_MESSAGE_SIZE_ENCODING.set(config, USE_MESSAGE_SIZE_ENCODING);
-    // I/O
     GiraphFileInputFormat.addVertexInputPath(config, new Path(FACTOR_VERTEX_INPUT_PATH));
     GiraphFileInputFormat.addVertexInputPath(config, new Path(VARIABLE_VERTEX_INPUT_PATH));
     FileOutputFormat.setOutputPath(new JobConf(config), new Path(OUTPUT_PATH));
@@ -93,17 +89,13 @@ public final class BeliefPropagationRunner {
         .setMany(config, FACTOR_VERTEX_INPUT_FORMAT, VARIABLE_VERTEX_INPUT_FORMAT);
     config.VERTEX_OUTPUT_FORMAT_CLASS
         .setMany(config, FACTOR_VERTEX_OUTPUT_FORMAT, VARIABLE_VERTEX_OUTPUT_FORMAT);
-    config.VERTEX_OUTPUT_FORMAT_THREAD_SAFE.set(config, IS_VERTEX_OUTPUT_FORMAT_THREAD_SAFE);
-    // Vertex types
+    config.VERTEX_INPUT_FILTER_CLASS.set(config, FACTOR_VERTEX_INPUT_FILTER);
     config.VERTEX_ID_CLASS.set(config, VERTEX_ID);
     config.VERTEX_VALUE_CLASS.setMany(config, FACTOR_VERTEX_VALUE, VARIABLE_VERTEX_VALUE);
-    // Message types
     config.OUTGOING_MESSAGE_VALUE_CLASS.set(config, OUTGOING_MESSAGE_VALUE);
-    // Computation
     config.MASTER_COMPUTE_CLASS.set(config, MASTER_COMPUTE);
     config.COMPUTATION_CLASS
         .setMany(config, FACTOR_VERTEX_COMPUTATION, VARIABLE_VERTEX_COMPUTATION);
-    // Run
     Tool runner = new GiraphRunner();
     runner.setConf(config);
     ToolRunner.run(runner, args);
