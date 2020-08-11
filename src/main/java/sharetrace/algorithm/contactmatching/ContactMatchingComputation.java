@@ -2,7 +2,6 @@ package sharetrace.algorithm.contactmatching;
 
 import java.time.Duration;
 import java.util.Collection;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
@@ -45,7 +44,6 @@ public class ContactMatchingComputation {
 
   public Collection<Contact> compute(List<LocationHistory> histories) {
     return getStrictUpperTriangularMatrixEntries(histories.size())
-        .entrySet()
         .parallelStream()
         .map(e -> findContact(histories.get(e.getKey()), histories.get(e.getValue())))
         .filter(Objects::nonNull)
@@ -53,22 +51,22 @@ public class ContactMatchingComputation {
   }
 
   // Gets all strictly upper triangular entries in a matrix (i.e. unique pairs)
-  private Map<Integer, Integer> getStrictUpperTriangularMatrixEntries(int matrixSize) {
-    Map<Integer, Integer> entries = new HashMap<>(matrixSize * (matrixSize - 1) / 2);
+  private Set<Map.Entry<Integer, Integer>> getStrictUpperTriangularMatrixEntries(int matrixSize) {
+    Set<Map.Entry<Integer, Integer>> entries = new HashSet<>(matrixSize * (matrixSize - 1) / 2);
     for (int iRow = 0; iRow < matrixSize; iRow++) {
-      entries.putAll(getEntriesInRow(matrixSize, iRow));
+      entries.addAll(getEntriesInRow(matrixSize, iRow));
     }
     return entries;
   }
 
   // Assumes zero-based numbering and returns strictly upper triangular entries in a row
-  private Map<Integer, Integer> getEntriesInRow(int matrixSize, int rowIndex) {
+  private Set<Map.Entry<Integer, Integer>> getEntriesInRow(int matrixSize, int rowIndex) {
     int oneBasedRowIndex = rowIndex + 1;
     int upperIndex = oneBasedRowIndex * matrixSize;
     int nIndicesInRow = oneBasedRowIndex * (matrixSize - rowIndex - 1);
-    Map<Integer, Integer> rowEntries = new HashMap<>(nIndicesInRow);
+    Set<Map.Entry<Integer, Integer>> rowEntries = new HashSet<>(nIndicesInRow);
     for (int iIndex = 0; iIndex < nIndicesInRow; iIndex++) {
-      rowEntries.put(rowIndex, upperIndex - iIndex);
+      rowEntries.add(Map.entry(rowIndex, upperIndex - iIndex));
     }
     return rowEntries;
   }
@@ -97,7 +95,7 @@ public class ContactMatchingComputation {
         // Case 1: locations are the same and the occurrence has started
         if (started) {
           location = iter.next();
-          otherLocation = iter.next();
+          otherLocation = otherIter.next();
           // Case 2: locations are the same and the occurrence has not started
         } else {
           started = true;
