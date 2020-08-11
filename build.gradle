@@ -9,6 +9,7 @@
 plugins {
     // Apply the java-library plugin to add support for Java Library
     id 'java-library'
+    id 'idea'
 }
 
 repositories {
@@ -17,6 +18,9 @@ repositories {
     jcenter()
     mavenCentral()
 }
+
+sourceSets.main.java.srcDirs += "src/main/java"
+sourceSets.main.java.srcDirs += "src/main/generated"
 
 dependencies {
     // https://mvnrepository.com/artifact/com.fasterxml.jackson.core/jackson-databind
@@ -33,6 +37,9 @@ dependencies {
 
     // https://mvnrepository.com/artifact/com.fasterxml.jackson.datatype/jackson-datatype-jsr310
     implementation group: 'com.fasterxml.jackson.datatype', name: 'jackson-datatype-jsr310', version: '2.11.1'
+
+    // https://mvnrepository.com/artifact/com.fasterxml.jackson.datatype/jackson-datatype-jdk8
+    implementation group: 'com.fasterxml.jackson.datatype', name: 'jackson-datatype-jdk8', version: '2.11.1'
 
     // https://mvnrepository.com/artifact/org.apache.hadoop/hadoop-common
     implementation group: 'org.apache.hadoop', name: 'hadoop-common', version: '3.3.0'
