@@ -43,7 +43,7 @@ public class ContactMatchingComputation {
   private static final Duration DURATION_THRESHOLD = Duration.ofMinutes(15L);
 
   public Collection<Contact> compute(List<LocationHistory> histories) {
-    return getStrictUpperTriangularMatrixEntries(histories.size())
+    return getUpperTriangularMatrixEntries(histories.size())
         .parallelStream()
         .map(e -> findContact(histories.get(e.getKey()), histories.get(e.getValue())))
         .filter(Objects::nonNull)
@@ -51,7 +51,7 @@ public class ContactMatchingComputation {
   }
 
   // Gets all strictly upper triangular entries in a matrix (i.e. unique pairs)
-  private Set<Map.Entry<Integer, Integer>> getStrictUpperTriangularMatrixEntries(int matrixSize) {
+  private static Set<Map.Entry<Integer, Integer>> getUpperTriangularMatrixEntries(int matrixSize) {
     Set<Map.Entry<Integer, Integer>> entries = new HashSet<>(matrixSize * (matrixSize - 1) / 2);
     for (int iRow = 0; iRow < matrixSize; iRow++) {
       entries.addAll(getEntriesInRow(matrixSize, iRow));
@@ -60,11 +60,16 @@ public class ContactMatchingComputation {
   }
 
   // Assumes zero-based numbering and returns strictly upper triangular entries in a row
-  private Set<Map.Entry<Integer, Integer>> getEntriesInRow(int matrixSize, int rowIndex) {
+  private static Set<Map.Entry<Integer, Integer>> getEntriesInRow(int matrixSize, int rowIndex) {
+    // Ex: matrixSize = 4, rowIndex = 0
+    // oneBasedRowIndex = 1
     int oneBasedRowIndex = rowIndex + 1;
-    int upperIndex = oneBasedRowIndex * matrixSize;
-    int nIndicesInRow = oneBasedRowIndex * (matrixSize - rowIndex - 1);
+    // upperIndex = 3
+    int upperIndex = oneBasedRowIndex * matrixSize - 1;
+    // nIndicesInRow = 1 * (4 - 0 - 1) = 3
+    int nIndicesInRow = matrixSize - rowIndex - 1;
     Set<Map.Entry<Integer, Integer>> rowEntries = new HashSet<>(nIndicesInRow);
+    // rowEntries = [(0, 3), (0, 2), (0, 1)]
     for (int iIndex = 0; iIndex < nIndicesInRow; iIndex++) {
       rowEntries.add(Map.entry(rowIndex, upperIndex - iIndex));
     }
