@@ -18,7 +18,7 @@ import org.slf4j.LoggerFactory;
  */
 public final class RiskScoreWritable implements Writable {
 
-  private static final Logger log = LoggerFactory.getLogger(RiskScoreWritable.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(RiskScoreWritable.class);
 
   private AbstractRiskScore riskScore;
 

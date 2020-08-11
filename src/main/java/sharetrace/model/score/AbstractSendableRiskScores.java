@@ -17,7 +17,7 @@ public abstract class AbstractSendableRiskScores implements
     Sendable<SortedSet<UserId>, SortedSet<RiskScore>>,
     Wrappable<SendableRiskScoresWritable> {
 
-  private static final Logger log = LoggerFactory.getLogger(AbstractSendableRiskScores.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(AbstractSendableRiskScores.class);
 
   @Override
   @Value.NaturalOrder

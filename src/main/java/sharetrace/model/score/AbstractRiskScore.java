@@ -25,7 +25,7 @@ import sharetrace.model.identity.Identifiable;
 public abstract class AbstractRiskScore implements Updatable, Identifiable<String>,
     ComputedValue<Double>, Comparable<AbstractRiskScore> {
 
-  private static final Logger log = LoggerFactory.getLogger(AbstractRiskScore.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(AbstractRiskScore.class);
 
   private static final String RISK_SCORE_RANGE_MESSAGE = "Risk score must be between 0 and 1, inclusive";
 

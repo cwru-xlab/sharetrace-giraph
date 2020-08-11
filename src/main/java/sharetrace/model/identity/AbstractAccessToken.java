@@ -20,7 +20,7 @@ import sharetrace.common.Wrapped;
 @JsonDeserialize(as = AccessToken.class)
 public abstract class AbstractAccessToken implements Identifiable<String> {
 
-  private static final Logger log = LoggerFactory.getLogger(AbstractAccessToken.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(AbstractAccessToken.class);
 
   @Value.Check
   protected final void verifyInputArguments() {

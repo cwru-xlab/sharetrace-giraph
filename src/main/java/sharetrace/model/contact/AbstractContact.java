@@ -24,7 +24,7 @@ import sharetrace.model.identity.UserId;
 @JsonDeserialize(as = Contact.class)
 public abstract class AbstractContact implements Wrappable<ContactWritable> {
 
-  private static final Logger log = LoggerFactory.getLogger(AbstractContact.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(AbstractContact.class);
 
   private static final String NO_OCCURRENCES_MESSAGE = "A contact must contain at least one occurrence";
 

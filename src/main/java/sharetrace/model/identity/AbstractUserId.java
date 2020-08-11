@@ -21,7 +21,7 @@ import sharetrace.common.Wrapped;
 @JsonDeserialize(as = UserId.class)
 public abstract class AbstractUserId implements Identifiable<String>, Comparable<AbstractUserId> {
 
-  private static final Logger log = LoggerFactory.getLogger(AbstractUserId.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(AbstractUserId.class);
 
   @Value.Check
   protected final void verifyInputArguments() {

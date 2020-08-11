@@ -19,7 +19,7 @@ import sharetrace.model.common.Wrappable;
 @JsonDeserialize(as = UserGroup.class)
 public abstract class AbstractUserGroup implements Wrappable<UserGroupWritableComparable> {
 
-  private static final Logger log = LoggerFactory.getLogger(AbstractUserGroup.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(AbstractUserGroup.class);
 
   private static final String NO_USERS_MESSAGE = "UserGroup must contain at least one user";
 

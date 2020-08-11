@@ -22,7 +22,7 @@ import sharetrace.model.identity.UserId;
  */
 public final class ContactWritable implements Writable {
 
-  private static final Logger log = LoggerFactory.getLogger(ContactWritable.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(ContactWritable.class);
 
   private AbstractContact contact;
 
