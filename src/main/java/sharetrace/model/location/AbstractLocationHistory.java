@@ -2,7 +2,6 @@ package sharetrace.model.location;
 
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
-import com.google.common.base.Preconditions;
 import java.util.SortedSet;
 import org.immutables.value.Value;
 import sharetrace.model.identity.UserId;
@@ -19,15 +18,4 @@ public abstract class AbstractLocationHistory {
 
   @Value.NaturalOrder
   public abstract SortedSet<TemporalLocation> getHistory();
-
-  public LocationHistory trimPrevious(TemporalLocation cutoff) {
-    Preconditions.checkNotNull(cutoff);
-    return LocationHistory.of(getId(), getHistory().tailSet(cutoff));
-  }
-
-  public LocationHistory trimAfter(TemporalLocation cutoff) {
-    Preconditions.checkNotNull(cutoff);
-    return LocationHistory.of(getId(), getHistory().headSet(cutoff));
-  }
-
 }

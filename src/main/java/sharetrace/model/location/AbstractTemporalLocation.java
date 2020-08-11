@@ -16,8 +16,6 @@ import org.immutables.value.Value;
 @JsonDeserialize(as = TemporalLocation.class)
 public abstract class AbstractTemporalLocation implements Comparable<AbstractTemporalLocation> {
 
-  private static final String DEFAULT_LOCATION = "DEFAULT_LOCATION";
-
   public abstract String getLocation();
 
   public abstract Instant getTime();
@@ -25,10 +23,6 @@ public abstract class AbstractTemporalLocation implements Comparable<AbstractTem
   @Value.Check
   protected final void verifyInputArguments() {
     Preconditions.checkArgument(!Strings.isNullOrEmpty(getLocation()));
-  }
-
-  public static TemporalLocation withDefaultLocation(Instant time) {
-    return TemporalLocation.of(DEFAULT_LOCATION, time);
   }
 
   public boolean isBefore(TemporalLocation location) {
