@@ -22,7 +22,7 @@ import org.slf4j.LoggerFactory;
 public final class UserGroupWritableComparable implements
     WritableComparable<UserGroupWritableComparable> {
 
-  private static final Logger log = LoggerFactory.getLogger(UserGroupWritableComparable.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(UserGroupWritableComparable.class);
 
   private AbstractUserGroup userGroup;
 
