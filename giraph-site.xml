@@ -1,0 +1,65 @@
+<!--https://giraph.apache.org/apidocs/org/apache/giraph/conf/GiraphConstants.html-->
+<configuration>
+  <!--Separate the workers and the master tasks. This is required to support dynamic recovery
+  (boolean).-->
+  <!--(default: true)-->
+  <property>
+    <name>giraph.SplitMasterWorker</name>
+    <value>true</value>
+  </property>
+  <!--Delete checkpoints after a successful job run?-->
+  <!--(default: true)-->
+  <property>
+    <name>giraph.cleanupCheckpointsAfterSuccess</name>
+    <value>false</value>
+  </property>
+  <!--Create a source vertex if present in edge input but not necessarily in vertex input-->
+  <!--(default: true)-->
+  <property>
+    <name>giraph.createEdgeSourceVertices</name>
+    <value>true</value>
+  </property>
+  <!--The application will not mutate the graph topology (the edges). It is used to optimise
+  out-of-core graph, by not writing back edges every time.-->
+  <!--(default: false)-->
+  <property>
+    <name>giraph.isStaticGraph</name>
+    <value>false</value>
+  </property>
+  <!--Use message size encoding (typically better for complex objects, not meant for primitive
+  wrapped messages).-->
+  <!--(default: true)-->
+  <property>
+    <name>giraph.useMessageSizeEncoding</name>
+    <value>true</value>
+  </property>
+  <!--Vertex output format thread-safe - if your VertexOutputFormat allows several vertexWriters
+  to  be created and written to in parallel, you should set this to true.-->
+  <!--(default: false)-->
+  <property>
+    <name>giraph.vertexOutputFormatThreadSafe</name>
+    <value>true</value>
+  </property>
+  <property>
+    <name>giraph.maxNumberOfSupersteps</name>
+    <value>5</value>
+  </property>
+  <property>
+    <!--Number of threads for input split loading.-->
+    <!--(default: 1)-->
+    <name>giraph.numInputThreads</name>
+    <value>4</value>
+  </property>
+  <!--Number of threads for vertex computation.-->
+  <!--(default: 1)-->
+  <property>
+    <name>giraph.numComputeThreads</name>
+    <value>1</value>
+  </property>
+  <!--Number of threads for writing output in the end of the application.-->
+  <!--(default: 1)-->
+  <property>
+    <name>giraph.numOutputThreads</name>
+    <value>1</value>
+  </property>
+</configuration>
