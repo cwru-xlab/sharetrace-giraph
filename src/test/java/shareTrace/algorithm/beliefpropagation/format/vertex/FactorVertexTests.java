@@ -6,8 +6,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import sharetrace.algorithm.beliefpropagation.format.vertex.FactorVertex;
 import sharetrace.algorithm.beliefpropagation.format.vertex.Vertex;
-import sharetrace.algorithm.format.vertex.FactorVertex;
 import sharetrace.common.TestConstants;
 import sharetrace.model.contact.Contact;
 import sharetrace.model.contact.Occurrence;
@@ -46,7 +46,6 @@ class FactorVertexTests {
   final void deserialization_verifyDeserialization_returnsFactorVertexWithSameValue()
       throws JsonProcessingException {
     String serialized = OBJECT_MAPPER.writeValueAsString(factorVertex);
-    System.out.println(serialized);
     FactorVertex deserialized = OBJECT_MAPPER.readValue(serialized, FactorVertex.class);
     assertEquals(factorVertex, deserialized, "Deserialized value should equal original value");
   }

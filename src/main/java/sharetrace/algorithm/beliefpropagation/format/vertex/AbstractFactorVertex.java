@@ -5,7 +5,6 @@ import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import org.immutables.value.Value;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import sharetrace.algorithm.format.vertex.FactorVertex;
 import sharetrace.model.contact.Contact;
 import sharetrace.model.identity.UserGroup;
 
