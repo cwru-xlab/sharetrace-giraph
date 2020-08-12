@@ -43,15 +43,21 @@ public class ContactMatchingComputation {
   private static final Duration DURATION_THRESHOLD = Duration.ofMinutes(15L);
 
   public Collection<Contact> compute(List<LocationHistory> histories) {
-    return getUpperTriangularMatrixEntries(histories.size())
+    return getUniqueEntries(histories.size())
         .parallelStream()
         .map(e -> findContact(histories.get(e.getKey()), histories.get(e.getValue())))
         .filter(Objects::nonNull)
         .collect(Collectors.toSet());
   }
 
-  // Gets all strictly upper triangular entries in a matrix (i.e. unique pairs)
-  private static Set<Map.Entry<Integer, Integer>> getUpperTriangularMatrixEntries(int matrixSize) {
+  /*
+  Gets all strictly upper triangular entries in a matrix (i.e. unique pairs). For finding all
+  unique pairs in a list, put the same list along both axes of a square matrix. To only consider
+  unique pairs (i.e. only consider (x, y) and not also (y, x)), only iterate through the entries
+  in a strictly upper triangular matrix.
+  Ex: matrixSize = 4 -> entries = {(0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3)}
+   */
+  private Set<Map.Entry<Integer, Integer>> getUniqueEntries(int matrixSize) {
     Set<Map.Entry<Integer, Integer>> entries = new HashSet<>(matrixSize * (matrixSize - 1) / 2);
     for (int iRow = 0; iRow < matrixSize; iRow++) {
       entries.addAll(getEntriesInRow(matrixSize, iRow));
@@ -60,7 +66,7 @@ public class ContactMatchingComputation {
   }
 
   // Assumes zero-based numbering and returns strictly upper triangular entries in a row
-  private static Set<Map.Entry<Integer, Integer>> getEntriesInRow(int matrixSize, int rowIndex) {
+  private Set<Map.Entry<Integer, Integer>> getEntriesInRow(int matrixSize, int rowIndex) {
     // Ex: matrixSize = 4, rowIndex = 0
     // oneBasedRowIndex = 1
     int oneBasedRowIndex = rowIndex + 1;
@@ -69,7 +75,7 @@ public class ContactMatchingComputation {
     // nIndicesInRow = 4 - 0 - 1 = 3
     int nIndicesInRow = matrixSize - rowIndex - 1;
     Set<Map.Entry<Integer, Integer>> rowEntries = new HashSet<>(nIndicesInRow);
-    // rowEntries = [(0, 3), (0, 2), (0, 1)]
+    // rowEntries = {(0, 3), (0, 2), (0, 1)}
     for (int iIndex = 0; iIndex < nIndicesInRow; iIndex++) {
       rowEntries.add(Map.entry(rowIndex, upperIndex - iIndex));
     }
