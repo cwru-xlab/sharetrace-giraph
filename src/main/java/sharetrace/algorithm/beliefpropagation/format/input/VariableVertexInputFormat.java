@@ -11,7 +11,7 @@ import org.apache.hadoop.mapreduce.TaskAttemptContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import sharetrace.algorithm.beliefpropagation.format.FormatUtils;
-import sharetrace.algorithm.format.vertex.VariableVertex;
+import sharetrace.algorithm.beliefpropagation.format.vertex.VariableVertex;
 import sharetrace.model.identity.UserGroupWritableComparable;
 import sharetrace.model.score.SendableRiskScoresWritable;
 
