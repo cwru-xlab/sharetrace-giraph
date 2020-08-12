@@ -10,6 +10,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import sharetrace.model.contact.Contact;
 import sharetrace.model.contact.Occurrence;
 import sharetrace.model.location.LocationHistory;
@@ -58,11 +59,11 @@ public class ContactMatchingComputation {
   Ex: matrixSize = 4 -> entries = {(0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3)}
    */
   private Set<Map.Entry<Integer, Integer>> getUniqueEntries(int matrixSize) {
-    Set<Map.Entry<Integer, Integer>> entries = new HashSet<>(matrixSize * (matrixSize - 1) / 2);
-    for (int iRow = 0; iRow < matrixSize; iRow++) {
-      entries.addAll(getEntriesInRow(matrixSize, iRow));
-    }
-    return entries;
+    return IntStream.range(0, matrixSize)
+        .parallel()
+        .mapToObj(iRow -> getEntriesInRow(matrixSize, iRow))
+        .flatMap(Collection::parallelStream)
+        .collect(Collectors.toCollection(() -> new HashSet<>(matrixSize * (matrixSize - 1) / 2)));
   }
 
   // Assumes zero-based numbering and returns strictly upper triangular entries in a row
@@ -72,12 +73,11 @@ public class ContactMatchingComputation {
     int upperIndex = matrixSize - 1;
     // nIndicesInRow = 4 - 0 - 1 = 3
     int nIndicesInRow = matrixSize - rowIndex - 1;
-    Set<Map.Entry<Integer, Integer>> rowEntries = new HashSet<>(nIndicesInRow);
     // rowEntries = {(0, 3), (0, 2), (0, 1)}
-    for (int iIndex = 0; iIndex < nIndicesInRow; iIndex++) {
-      rowEntries.add(Map.entry(rowIndex, upperIndex - iIndex));
-    }
-    return rowEntries;
+    return IntStream.range(0, nIndicesInRow)
+        .parallel()
+        .mapToObj(iIndex -> Map.entry(rowIndex, upperIndex - iIndex))
+        .collect(Collectors.toCollection(() -> new HashSet<>(nIndicesInRow)));
   }
 
   private Contact findContact(LocationHistory history, LocationHistory otherHistory) {
