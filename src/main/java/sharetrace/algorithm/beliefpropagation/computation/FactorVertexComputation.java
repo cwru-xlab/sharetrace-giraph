@@ -6,6 +6,7 @@ import java.time.Instant;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.NoSuchElementException;
 import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeSet;
@@ -62,6 +63,8 @@ public final class FactorVertexComputation extends
       Iterable<SendableRiskScoresWritable> iterable) {
     Preconditions.checkNotNull(vertex);
     Preconditions.checkNotNull(iterable);
+    // TODO Move this two MasterComputer once the functionality is confirmed to work with two
+    //  different vertex classes
     if (0 == getSuperstep()) {
       filterExpiredVertexValues(vertex);
     }
@@ -95,9 +98,14 @@ public final class FactorVertexComputation extends
   private Collection<SendableRiskScores> retainValidMessages(Contact vertexValue,
       Collection<SendableRiskScores> incomingValues) {
     Collection<SendableRiskScores> updatedBeforeLast = new HashSet<>();
-    Instant lastTime = vertexValue.getOccurrences().first().getTime();
-    incomingValues.parallelStream()
-        .forEach(msg -> updatedBeforeLast.add(retainIfUpdatedBefore(msg, lastTime)));
+    // If there are no occurrences return an empty set
+    try {
+      Instant lastTime = vertexValue.getOccurrences().first().getTime();
+      incomingValues.parallelStream()
+          .forEach(msg -> updatedBeforeLast.add(retainIfUpdatedBefore(msg, lastTime)));
+    } catch (NoSuchElementException e) {
+      LOGGER.debug(e.getLocalizedMessage());
+    }
     return ImmutableSet.copyOf(updatedBeforeLast);
   }
 
