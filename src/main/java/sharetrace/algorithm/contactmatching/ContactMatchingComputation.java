@@ -68,10 +68,8 @@ public class ContactMatchingComputation {
   // Assumes zero-based numbering and returns strictly upper triangular entries in a row
   private Set<Map.Entry<Integer, Integer>> getEntriesInRow(int matrixSize, int rowIndex) {
     // Ex: matrixSize = 4, rowIndex = 0
-    // oneBasedRowIndex = 1
-    int oneBasedRowIndex = rowIndex + 1;
     // upperIndex = 3
-    int upperIndex = oneBasedRowIndex * matrixSize - 1;
+    int upperIndex = matrixSize - 1;
     // nIndicesInRow = 4 - 0 - 1 = 3
     int nIndicesInRow = matrixSize - rowIndex - 1;
     Set<Map.Entry<Integer, Integer>> rowEntries = new HashSet<>(nIndicesInRow);
