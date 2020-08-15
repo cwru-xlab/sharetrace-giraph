@@ -1,14 +1,12 @@
 package sharetrace.algorithm.beliefpropagation.format.output;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Preconditions;
-import java.io.IOException;
-import java.text.MessageFormat;
 import org.apache.giraph.graph.Vertex;
 import org.apache.giraph.io.formats.TextVertexOutputFormat;
 import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.io.Text;
-import org.apache.hadoop.mapreduce.RecordWriter;
 import org.apache.hadoop.mapreduce.TaskAttemptContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,35 +22,18 @@ public final class VariableVertexOutputFormat extends
   private static final ObjectMapper OBJECT_MAPPER = FormatUtils.getObjectMapper();
 
   @Override
-  public TextVertexWriter createVertexWriter(TaskAttemptContext context)
-      throws IOException, InterruptedException {
+  public TextVertexWriterToEachLine createVertexWriter(TaskAttemptContext context) {
     Preconditions.checkNotNull(context);
-    return new VariableVertexWriter(context);
+    return new VariableVertexWriter();
   }
 
-  private final class VariableVertexWriter extends TextVertexWriter {
-
-    private final RecordWriter<Text, Text> recordWriter;
-
-    private VariableVertexWriter(TaskAttemptContext context)
-        throws IOException, InterruptedException {
-      recordWriter = createLineRecordWriter(context);
-    }
+  private final class VariableVertexWriter extends TextVertexWriterToEachLine {
 
     @Override
-    public void writeVertex(Vertex<UserGroupWritableComparable, SendableRiskScoresWritable,
-        NullWritable> vertex)
-        throws IOException, InterruptedException {
-      Preconditions.checkNotNull(vertex);
-      Text text = new Text(OBJECT_MAPPER.writeValueAsString(vertex.getValue().getMaxRiskScore()));
-      recordWriter.write(text, null);
-    }
-
-    @Override
-    public String toString() {
-      return MessageFormat.format("{0}}'{'recordWriter={1}'}'",
-          getClass().getSimpleName(),
-          recordWriter);
+    protected Text convertVertexToLine(
+        Vertex<UserGroupWritableComparable, SendableRiskScoresWritable, NullWritable> vertex)
+        throws JsonProcessingException {
+      return new Text(OBJECT_MAPPER.writeValueAsString(vertex.getValue().getMaxRiskScore()));
     }
   }
 }

@@ -1,14 +1,12 @@
 package sharetrace.algorithm.beliefpropagation.format.output;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Preconditions;
-import java.io.IOException;
-import java.text.MessageFormat;
 import org.apache.giraph.graph.Vertex;
 import org.apache.giraph.io.formats.TextVertexOutputFormat;
 import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.io.Text;
-import org.apache.hadoop.mapreduce.RecordWriter;
 import org.apache.hadoop.mapreduce.TaskAttemptContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,39 +23,23 @@ public final class FactorVertexOutputFormat extends
   private static final ObjectMapper OBJECT_MAPPER = FormatUtils.getObjectMapper();
 
   @Override
-  public TextVertexWriter createVertexWriter(TaskAttemptContext context)
-      throws IOException, InterruptedException {
+  public TextVertexWriterToEachLine createVertexWriter(TaskAttemptContext context) {
     Preconditions.checkNotNull(context);
-    return new FactorVertexWriter(context);
+    return new FactorVertexWriter();
   }
 
-  private final class FactorVertexWriter extends TextVertexWriter {
-
-    private final RecordWriter<Text, Text> recordWriter;
-
-    private FactorVertexWriter(TaskAttemptContext context)
-        throws IOException, InterruptedException {
-      recordWriter = createLineRecordWriter(context);
-    }
+  private final class FactorVertexWriter extends TextVertexWriterToEachLine {
 
     @Override
-    public void writeVertex(
+    protected Text convertVertexToLine(
         Vertex<UserGroupWritableComparable, ContactWritable, NullWritable> vertex)
-        throws IOException, InterruptedException {
+        throws JsonProcessingException {
       Preconditions.checkNotNull(vertex);
       FactorVertex factorVertex = FactorVertex.builder()
           .setVertexId(vertex.getId().getUserGroup())
           .setVertexValue(vertex.getValue().getContact())
           .build();
-      Text text = new Text(OBJECT_MAPPER.writeValueAsString(factorVertex));
-      recordWriter.write(text, null);
-    }
-
-    @Override
-    public String toString() {
-      return MessageFormat.format("{0}'{'recordWriter={1}'}'",
-          getClass().getSimpleName(),
-          recordWriter);
+      return new Text(OBJECT_MAPPER.writeValueAsString(factorVertex));
     }
   }
 }

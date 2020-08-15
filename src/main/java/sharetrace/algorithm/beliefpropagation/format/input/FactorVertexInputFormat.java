@@ -2,7 +2,7 @@ package sharetrace.algorithm.beliefpropagation.format.input;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
-import org.apache.giraph.graph.Vertex;
+import org.apache.giraph.edge.Edge;
 import org.apache.giraph.io.formats.TextVertexInputFormat;
 import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.io.Text;
@@ -23,26 +23,32 @@ public class FactorVertexInputFormat extends
   private static final ObjectMapper OBJECT_MAPPER = FormatUtils.getObjectMapper();
 
   @Override
-  public final TextVertexReader createVertexReader(InputSplit split, TaskAttemptContext context) {
+  public final TextVertexReaderFromEachLine createVertexReader(InputSplit split,
+      TaskAttemptContext context) {
     return new FactorVertexReader();
   }
 
-  private final class FactorVertexReader extends TextVertexReader {
+  private final class FactorVertexReader extends TextVertexReaderFromEachLine {
 
     @Override
-    public boolean nextVertex() throws IOException, InterruptedException {
-      return getRecordReader().nextKeyValue();
+    protected UserGroupWritableComparable getId(Text line) throws IOException {
+      return OBJECT_MAPPER
+          .readValue(line.toString(), FactorVertex.class)
+          .getVertexId()
+          .wrap();
     }
 
     @Override
-    public Vertex<UserGroupWritableComparable, ContactWritable, NullWritable> getCurrentVertex()
-        throws IOException, InterruptedException {
-      Text line = getRecordReader().getCurrentValue();
-      FactorVertex factorVertex = OBJECT_MAPPER.readValue(line.toString(), FactorVertex.class);
-      Vertex<UserGroupWritableComparable, ContactWritable, NullWritable> vertex;
-      vertex = getConf().createVertex();
-      vertex.initialize(factorVertex.getVertexId().wrap(), factorVertex.getVertexValue().wrap());
-      return vertex;
+    protected ContactWritable getValue(Text line) throws IOException {
+      return OBJECT_MAPPER
+          .readValue(line.toString(), FactorVertex.class)
+          .getVertexValue()
+          .wrap();
+    }
+
+    @Override
+    protected Iterable<Edge<UserGroupWritableComparable, NullWritable>> getEdges(Text line) {
+      return null;
     }
   }
 }

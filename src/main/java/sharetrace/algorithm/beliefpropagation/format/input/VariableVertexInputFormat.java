@@ -1,8 +1,9 @@
 package sharetrace.algorithm.beliefpropagation.format.input;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.base.Preconditions;
 import java.io.IOException;
-import org.apache.giraph.graph.Vertex;
+import org.apache.giraph.edge.Edge;
 import org.apache.giraph.io.formats.TextVertexInputFormat;
 import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.io.Text;
@@ -23,28 +24,34 @@ public class VariableVertexInputFormat extends
   private static final ObjectMapper OBJECT_MAPPER = FormatUtils.getObjectMapper();
 
   @Override
-  public final TextVertexReader createVertexReader(InputSplit split, TaskAttemptContext context) {
+  public final TextVertexReaderFromEachLine createVertexReader(InputSplit split,
+      TaskAttemptContext context) {
     return new VariableVertexReader();
   }
 
-  private final class VariableVertexReader extends TextVertexReader {
+  private final class VariableVertexReader extends TextVertexReaderFromEachLine {
 
     @Override
-    public boolean nextVertex() throws IOException, InterruptedException {
-      return getRecordReader().nextKeyValue();
+    protected UserGroupWritableComparable getId(Text line) throws IOException {
+      Preconditions.checkNotNull(line);
+      return OBJECT_MAPPER
+          .readValue(line.toString(), VariableVertex.class)
+          .getVertexId()
+          .wrap();
     }
 
     @Override
-    public Vertex<UserGroupWritableComparable, SendableRiskScoresWritable, NullWritable> getCurrentVertex()
-        throws IOException, InterruptedException {
-      Text line = getRecordReader().getCurrentValue();
-      VariableVertex variableVertex = OBJECT_MAPPER
-          .readValue(line.toString(), VariableVertex.class);
-      Vertex<UserGroupWritableComparable, SendableRiskScoresWritable, NullWritable> vertex;
-      vertex = getConf().createVertex();
-      vertex.initialize(variableVertex.getVertexId().wrap(),
-          variableVertex.getVertexValue().wrap());
-      return vertex;
+    protected SendableRiskScoresWritable getValue(Text line) throws IOException {
+      Preconditions.checkNotNull(line);
+      return OBJECT_MAPPER
+          .readValue(line.toString(), VariableVertex.class)
+          .getVertexValue()
+          .wrap();
+    }
+
+    @Override
+    protected Iterable<Edge<UserGroupWritableComparable, NullWritable>> getEdges(Text line) {
+      return null;
     }
   }
 }
