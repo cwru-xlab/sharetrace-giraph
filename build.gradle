@@ -5,24 +5,44 @@
  * For more details take a look at the Java Libraries chapter in the Gradle
  * User Manual available at https://docs.gradle.org/6.5/userguide/java_library_plugin.html
  */
-
 plugins {
     // Apply the java-library plugin to add support for Java Library
     id 'java-library'
+
     id 'idea'
+
+    id "io.freefair.okhttp" version "5.1.1"
 }
 
 repositories {
     // Use jcenter for resolving dependencies.
     // You can declare any Maven/Ivy/file repository here.
     jcenter()
+
     mavenCentral()
 }
 
 sourceSets.main.java.srcDirs += "src/main/java"
+
 sourceSets.main.java.srcDirs += "src/main/generated"
 
 dependencies {
+
+//    // https://mvnrepository.com/artifact/com.amazonaws/aws-java-sdk-s3
+//    implementation group: 'com.amazonaws', name: 'aws-java-sdk-s3'
+
+//    // https://mvnrepository.com/artifact/com.amazonaws/aws-java-sdk-emr
+//    implementation group: 'com.amazonaws', name: 'aws-java-sdk-emr'
+
+    // https://mvnrepository.com/artifact/com.amazonaws/aws-java-sdk-lambda
+    implementation group: 'com.amazonaws', name: 'aws-java-sdk-lambda', version: '1.11.839'
+
+    // https://mvnrepository.com/artifact/com.amazonaws/aws-lambda-java-core
+    implementation group: 'com.amazonaws', name: 'aws-lambda-java-core', version: '1.2.1'
+
+    // https://mvnrepository.com/artifact/com.amazonaws/aws-lambda-java-core
+    implementation group: 'com.amazonaws', name: 'aws-lambda-java-events', version: '1.2.1'
+
     // https://mvnrepository.com/artifact/com.fasterxml.jackson.core/jackson-databind
     implementation group: 'com.fasterxml.jackson.core', name: 'jackson-databind', version: '2.11.1'
 
@@ -67,4 +87,8 @@ dependencies {
 
     // https://mvnrepository.com/artifact/org.junit.jupiter/junit-jupiter-engine
     implementation group: 'org.junit.jupiter', name: 'junit-jupiter-engine', version: '5.6.2'
+}
+
+test {
+    useJUnitPlatform()
 }
