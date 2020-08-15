@@ -95,6 +95,11 @@ public final class SendableRiskScoresWritable implements Writable {
     return SendableRiskScores.copyOf(sendableRiskScores);
   }
 
+  public void setSendableRiskScores(SendableRiskScores riskScores) {
+    sendableRiskScores = SendableRiskScores.copyOf(riskScores);
+    maxRiskScore = Collections.max(riskScores.getMessage());
+  }
+
   public RiskScore getMaxRiskScore() {
     return RiskScore.copyOf(maxRiskScore);
   }
