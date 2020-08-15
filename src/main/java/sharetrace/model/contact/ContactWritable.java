@@ -53,7 +53,7 @@ public final class ContactWritable implements Writable {
     dataOutput.writeInt(contact.getOccurrences().size());
     for (AbstractOccurrence occurrence : contact.getOccurrences()) {
       dataOutput.writeLong(occurrence.getTime().getEpochSecond());
-      dataOutput.writeLong(occurrence.getDuration().toSeconds());
+      dataOutput.writeLong(occurrence.getDuration().toMillis());
     }
   }
 
@@ -65,7 +65,7 @@ public final class ContactWritable implements Writable {
     int nOccurrences = dataInput.readInt();
     Collection<Occurrence> occurrences = new TreeSet<>();
     for (int iOccurrence = 0; iOccurrence < nOccurrences; iOccurrence++) {
-      Instant time = Instant.ofEpochSecond(dataInput.readLong());
+      Instant time = Instant.ofEpochMilli(dataInput.readLong());
       Duration duration = Duration.ofSeconds(dataInput.readLong());
       occurrences.add(Occurrence.of(time, duration));
     }
@@ -78,6 +78,10 @@ public final class ContactWritable implements Writable {
 
   public Contact getContact() {
     return Contact.copyOf(contact);
+  }
+
+  public void setContact(Contact newContact) {
+    contact = Contact.copyOf(newContact);
   }
 
   @Override

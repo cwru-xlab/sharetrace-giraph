@@ -1,6 +1,7 @@
 package sharetrace.algorithm.contactmatching;
 
 import java.time.Duration;
+import java.util.AbstractMap;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -76,8 +77,9 @@ public class ContactMatchingComputation {
     // rowEntries = {(0, 3), (0, 2), (0, 1)}
     return IntStream.range(0, nIndicesInRow)
         .parallel()
-        .mapToObj(iIndex -> Map.entry(rowIndex, upperIndex - iIndex))
+        .mapToObj(iIndex -> new AbstractMap.SimpleImmutableEntry<>(rowIndex, upperIndex - iIndex))
         .collect(Collectors.toCollection(() -> new HashSet<>(nIndicesInRow)));
+
   }
 
   private Contact findContact(LocationHistory history, LocationHistory otherHistory) {

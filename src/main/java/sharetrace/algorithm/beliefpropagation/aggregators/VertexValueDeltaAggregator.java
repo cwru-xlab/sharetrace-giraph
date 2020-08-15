@@ -3,7 +3,6 @@ package sharetrace.algorithm.beliefpropagation.aggregators;
 import com.google.common.base.Preconditions;
 import java.text.MessageFormat;
 import java.util.Optional;
-import java.util.function.Consumer;
 import org.apache.giraph.aggregators.Aggregator;
 import org.apache.hadoop.io.DoubleWritable;
 import org.slf4j.Logger;
@@ -41,9 +40,11 @@ public final class VertexValueDeltaAggregator implements Aggregator<DoubleWritab
 
   @Override
   public void reset() {
-    Runnable setInitialValue = () -> aggregatedValue.set(INITIAL_VALUE);
-    Consumer<DoubleWritable> initialize = v -> aggregatedValue = new DoubleWritable(INITIAL_VALUE);
-    Optional.ofNullable(aggregatedValue).ifPresentOrElse(initialize, setInitialValue);
+    if (Optional.ofNullable(aggregatedValue).isPresent()) {
+      aggregatedValue.set(INITIAL_VALUE);
+    } else {
+      aggregatedValue = new DoubleWritable(INITIAL_VALUE);
+    }
   }
 
   @Override
