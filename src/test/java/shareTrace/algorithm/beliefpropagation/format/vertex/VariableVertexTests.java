@@ -4,9 +4,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.collect.ImmutableList;
 import java.time.Instant;
 import java.util.Collection;
-import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import sharetrace.algorithm.beliefpropagation.format.vertex.VariableVertex;
@@ -33,7 +33,7 @@ class VariableVertexTests {
 
   private final RiskScore riskScore = RiskScore.of(userId1.getId(), instant1, minRiskScore);
 
-  private final Collection<RiskScore> riskScores = List.of(riskScore);
+  private final Collection<RiskScore> riskScores = ImmutableList.of(riskScore);
 
   private final SendableRiskScores sendableRiskScores = SendableRiskScores
       .of(userGroup.getUsers(), riskScores);
