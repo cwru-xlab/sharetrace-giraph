@@ -44,9 +44,9 @@ public class ContactMatchingComputation {
 
   private static final Duration DURATION_THRESHOLD = Duration.ofMinutes(15L);
 
-  public Collection<Contact> compute(List<LocationHistory> histories) {
+  public Set<Contact> compute(List<LocationHistory> histories) {
     return getUniqueEntries(histories.size())
-        .parallelStream()
+        .stream()
         .map(e -> findContact(histories.get(e.getKey()), histories.get(e.getValue())))
         .filter(Objects::nonNull)
         .collect(Collectors.toSet());
@@ -59,11 +59,10 @@ public class ContactMatchingComputation {
   in a strictly upper triangular matrix.
   Ex: matrixSize = 4 -> entries = {(0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3)}
    */
-  private Set<Map.Entry<Integer, Integer>> getUniqueEntries(int matrixSize) {
+  public Set<Map.Entry<Integer, Integer>> getUniqueEntries(int matrixSize) {
     return IntStream.range(0, matrixSize)
-        .parallel()
         .mapToObj(iRow -> getEntriesInRow(matrixSize, iRow))
-        .flatMap(Collection::parallelStream)
+        .flatMap(Collection::stream)
         .collect(Collectors.toCollection(() -> new HashSet<>(matrixSize * (matrixSize - 1) / 2)));
   }
 
@@ -76,7 +75,6 @@ public class ContactMatchingComputation {
     int nIndicesInRow = matrixSize - rowIndex - 1;
     // rowEntries = {(0, 3), (0, 2), (0, 1)}
     return IntStream.range(0, nIndicesInRow)
-        .parallel()
         .mapToObj(iIndex -> new AbstractMap.SimpleImmutableEntry<>(rowIndex, upperIndex - iIndex))
         .collect(Collectors.toCollection(() -> new HashSet<>(nIndicesInRow)));
 
@@ -153,6 +151,9 @@ public class ContactMatchingComputation {
 
   private Occurrence createOccurrence(TemporalLocation start, TemporalLocation end) {
     Duration duration = Duration.between(start.getTime(), end.getTime());
-    return Occurrence.of(start.getTime(), duration);
+    return Occurrence.builder()
+        .setTime(start.getTime())
+        .setDuration(duration)
+        .build();
   }
 }

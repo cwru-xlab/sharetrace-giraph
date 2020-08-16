@@ -1,4 +1,4 @@
-package sharetrace.common;
+package sharetrace.model.common;
 
 import org.immutables.value.Value;
 import org.immutables.value.Value.Style.ImplementationVisibility;

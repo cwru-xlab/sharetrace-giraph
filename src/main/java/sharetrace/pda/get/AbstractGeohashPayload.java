@@ -8,9 +8,9 @@ import java.util.SortedSet;
 import org.immutables.value.Value;
 import sharetrace.model.location.Geohash;
 
-@Value.Immutable
 @JsonSerialize(as = GeohashPayload.class)
 @JsonDeserialize(as = GeohashPayload.class)
+@Value.Immutable
 public abstract class AbstractGeohashPayload {
 
   public abstract String getEndpoint();

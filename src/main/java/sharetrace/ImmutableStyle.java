@@ -12,8 +12,8 @@ import org.immutables.value.Value.Style.ImplementationVisibility;
 @Value.Style(
     get = {"is*", "get*"},
     init = "set*",
+    typeAbstract = "Abstract*",
     typeImmutable = "*",
-    allParameters = true,
     deepImmutablesDetection = true,
     depluralize = true,
     visibility = ImplementationVisibility.PUBLIC,

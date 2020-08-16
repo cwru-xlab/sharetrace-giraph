@@ -11,9 +11,9 @@ import org.immutables.value.Value;
 /**
  * A pairing of a location with a time.
  */
-@Value.Immutable
 @JsonSerialize(as = TemporalLocation.class)
 @JsonDeserialize(as = TemporalLocation.class)
+@Value.Immutable
 public abstract class AbstractTemporalLocation implements Comparable<AbstractTemporalLocation> {
 
   public abstract String getLocation();

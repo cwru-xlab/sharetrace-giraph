@@ -8,9 +8,9 @@ import org.immutables.value.Value;
 /**
  * A geohash with a timestamp.
  */
-@Value.Immutable
 @JsonSerialize(as = Geohash.class)
 @JsonDeserialize(as = Geohash.class)
+@Value.Immutable
 public abstract class AbstractGeohash {
 
   public abstract String getHash();

@@ -1,4 +1,4 @@
-package sharetrace.model.score;
+package sharetrace.algorithm.beliefpropagation.format.writable;
 
 import com.google.common.base.Preconditions;
 import java.io.DataInput;
@@ -13,8 +13,14 @@ import java.util.TreeSet;
 import org.apache.hadoop.io.Writable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import sharetrace.algorithm.beliefpropagation.format.vertex.VertexType;
+import sharetrace.model.common.Wrappable;
 import sharetrace.model.identity.AbstractUserId;
 import sharetrace.model.identity.UserId;
+import sharetrace.model.score.AbstractRiskScore;
+import sharetrace.model.score.AbstractSendableRiskScores;
+import sharetrace.model.score.RiskScore;
+import sharetrace.model.score.SendableRiskScores;
 
 /**
  * Wrapper type for {@link SendableRiskScores} that is used in Hadoop.
@@ -22,7 +28,7 @@ import sharetrace.model.identity.UserId;
  * @see Writable
  * @see SendableRiskScores
  */
-public final class SendableRiskScoresWritable implements Writable {
+public final class SendableRiskScoresWritable implements Writable, Wrappable<FactorGraphWritable> {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(SendableRiskScoresWritable.class);
 
@@ -62,7 +68,7 @@ public final class SendableRiskScoresWritable implements Writable {
     dataOutput.writeInt(sendableRiskScores.getMessage().size());
     for (RiskScore riskScore : sendableRiskScores.getMessage()) {
       dataOutput.writeUTF(riskScore.getId());
-      dataOutput.writeLong(riskScore.getUpdateTime().getEpochSecond());
+      dataOutput.writeLong(riskScore.getUpdateTime().toEpochMilli());
       dataOutput.writeDouble(riskScore.getValue());
     }
   }
@@ -108,5 +114,10 @@ public final class SendableRiskScoresWritable implements Writable {
   public String toString() {
     return MessageFormat.format("{0}'{'sendableRiskScores={1}, maxRiskScore={2}'}'",
         getClass().getSimpleName(), sendableRiskScores, maxRiskScore);
+  }
+
+  @Override
+  public FactorGraphWritable wrap() {
+    return FactorGraphWritable.of(VertexType.VARIABLE, this);
   }
 }

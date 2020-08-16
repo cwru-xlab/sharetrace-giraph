@@ -17,9 +17,9 @@ import org.slf4j.LoggerFactory;
  * #getTime()}. If the occurrences are equally comparable based on the former, {@link
  * #getDuration()} is then used for comparison.
  */
-@Value.Immutable
 @JsonSerialize(as = Occurrence.class)
 @JsonDeserialize(as = Occurrence.class)
+@Value.Immutable
 public abstract class AbstractOccurrence implements Comparable<AbstractOccurrence> {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(AbstractOccurrence.class);

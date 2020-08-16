@@ -9,9 +9,9 @@ import sharetrace.model.identity.UserId;
 /**
  * A collection of {@link TemporalLocation}s that are associated with a {@link UserId}.
  */
-@Value.Immutable
 @JsonSerialize(as = LocationHistory.class)
 @JsonDeserialize(as = LocationHistory.class)
+@Value.Immutable
 public abstract class AbstractLocationHistory {
 
   public abstract UserId getId();

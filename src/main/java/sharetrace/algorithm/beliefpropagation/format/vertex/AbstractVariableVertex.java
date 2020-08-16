@@ -8,12 +8,18 @@ import org.slf4j.LoggerFactory;
 import sharetrace.model.identity.UserGroup;
 import sharetrace.model.score.SendableRiskScores;
 
-@Value.Immutable
 @JsonSerialize(as = VariableVertex.class)
 @JsonDeserialize(as = VariableVertex.class)
-public abstract class AbstractVariableVertex implements Vertex<UserGroup, SendableRiskScores> {
+@Value.Immutable
+public abstract class AbstractVariableVertex implements FactorGraphVertex<UserGroup, SendableRiskScores> {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(AbstractVariableVertex.class);
+
+  @Value.Default
+  @Override
+  public VertexType getType() {
+    return VertexType.VARIABLE;
+  }
 
   @Override
   public abstract UserGroup getVertexId();

@@ -6,7 +6,6 @@ import java.time.Instant;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
-import java.util.NoSuchElementException;
 import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeSet;
@@ -18,16 +17,18 @@ import org.apache.giraph.graph.Vertex;
 import org.apache.hadoop.io.NullWritable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import sharetrace.algorithm.beliefpropagation.filter.ExpiredFactorVertexFilter;
+import sharetrace.algorithm.beliefpropagation.format.vertex.VertexType;
+import sharetrace.algorithm.beliefpropagation.format.writable.ContactWritable;
+import sharetrace.algorithm.beliefpropagation.format.writable.FactorGraphWritable;
+import sharetrace.algorithm.beliefpropagation.format.writable.SendableRiskScoresWritable;
+import sharetrace.algorithm.beliefpropagation.format.writable.UserGroupWritableComparable;
+import sharetrace.algorithm.beliefpropagation.param.BPContext;
 import sharetrace.model.contact.Contact;
-import sharetrace.model.contact.ContactWritable;
 import sharetrace.model.contact.Occurrence;
 import sharetrace.model.identity.UserGroup;
-import sharetrace.model.identity.UserGroupWritableComparable;
 import sharetrace.model.identity.UserId;
 import sharetrace.model.score.RiskScore;
 import sharetrace.model.score.SendableRiskScores;
-import sharetrace.model.score.SendableRiskScoresWritable;
 
 /**
  * Computation performed at every factor {@link Vertex} of the factor graph. The following are the
@@ -44,31 +45,36 @@ import sharetrace.model.score.SendableRiskScoresWritable;
  * {@link RiskScore} to each of its variable vertices.
  */
 public final class FactorVertexComputation extends
-    BasicComputation<UserGroupWritableComparable, ContactWritable, NullWritable, SendableRiskScoresWritable> {
+    BasicComputation<UserGroupWritableComparable, FactorGraphWritable, NullWritable, SendableRiskScoresWritable> {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(FactorVertexComputation.class);
 
-  private static final double DEFAULT_RISK_SCORE = 0.0;
+  private static final double DEFAULT_RISK_SCORE = BPContext.getDefaultRiskScore();
 
-  private static final double TRANSMISSION_PROBABILITY = 0.7;
+  private static final double TRANSMISSION_PROBABILITY = BPContext.getTransmissionProbability();
 
-  private static final Instant CUTOFF = ExpiredFactorVertexFilter.getCutoff();
+  private static final Instant CUTOFF = BPContext.getOccurrenceLookbackCutoff();
 
   private static boolean isTransmitted() {
     return TRANSMISSION_PROBABILITY <= ThreadLocalRandom.current().nextDouble(1.0);
   }
 
   @Override
-  public void compute(Vertex<UserGroupWritableComparable, ContactWritable, NullWritable> vertex,
+  public void compute(Vertex<UserGroupWritableComparable, FactorGraphWritable, NullWritable> vertex,
       Iterable<SendableRiskScoresWritable> iterable) {
     Preconditions.checkNotNull(vertex);
     Preconditions.checkNotNull(iterable);
-    // TODO Move this two MasterComputer once the functionality is confirmed to work with two
-    //  different vertex classes
+
+    if (vertex.getValue().getType().equals(VertexType.VARIABLE)) {
+      vertex.voteToHalt();
+      return;
+    }
+
     if (0 == getSuperstep()) {
       filterExpiredVertexValues(vertex);
     }
-    Contact vertexValue = vertex.getValue().getContact();
+
+    Contact vertexValue = ((ContactWritable) vertex.getValue().getWrapped()).getContact();
     Collection<SendableRiskScores> incomingValues = getIncomingValues(iterable);
     Collection<SendableRiskScores> validMessages = retainValidMessages(vertexValue, incomingValues);
     sendMessages(validMessages);
@@ -77,13 +83,14 @@ public final class FactorVertexComputation extends
 
   // Remove occurrences from the Contact if they occurred before the expiration date.
   private void filterExpiredVertexValues(
-      Vertex<UserGroupWritableComparable, ContactWritable, NullWritable> vertex) {
-    SortedSet<Occurrence> values = new TreeSet<>(vertex.getValue().getContact().getOccurrences());
-    ContactWritable updateValue = Contact.copyOf(vertex.getValue().getContact())
+      Vertex<UserGroupWritableComparable, FactorGraphWritable, NullWritable> vertex) {
+    Contact value = ((ContactWritable) vertex.getValue().getWrapped()).getContact();
+    SortedSet<Occurrence> values = new TreeSet<>(value.getOccurrences());
+    ContactWritable updateValue = Contact.copyOf(value)
         .withOccurrences(values.stream()
             .filter(occurrence -> occurrence.getTime().isAfter(CUTOFF))
             .collect(Collectors.toSet())).wrap();
-    vertex.setValue(updateValue);
+    vertex.setValue(updateValue.wrap());
   }
 
   // Add incoming values into a Collection sub-interface for easier handling
@@ -99,13 +106,9 @@ public final class FactorVertexComputation extends
       Collection<SendableRiskScores> incomingValues) {
     Collection<SendableRiskScores> updatedBeforeLast = new HashSet<>();
     // If there are no occurrences return an empty set
-    try {
-      Instant lastTime = vertexValue.getOccurrences().first().getTime();
-      incomingValues.parallelStream()
-          .forEach(msg -> updatedBeforeLast.add(retainIfUpdatedBefore(msg, lastTime)));
-    } catch (NoSuchElementException e) {
-      LOGGER.debug(e.getLocalizedMessage());
-    }
+    Instant lastTime = vertexValue.getOccurrences().first().getTime();
+    incomingValues.parallelStream()
+        .forEach(msg -> updatedBeforeLast.add(retainIfUpdatedBefore(msg, lastTime)));
     return ImmutableSet.copyOf(updatedBeforeLast);
   }
 

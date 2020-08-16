@@ -8,6 +8,7 @@ import java.util.SortedSet;
 import org.immutables.value.Value;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import sharetrace.algorithm.beliefpropagation.format.writable.ContactWritable;
 import sharetrace.model.common.Wrappable;
 import sharetrace.model.identity.UserId;
 
@@ -19,9 +20,9 @@ import sharetrace.model.identity.UserId;
  * #getSecondUser} {@code u2} is considered equal to a different {@link Contact} with equal {@code
  * u1} and {@code u2} except assigned to the opposite field.
  */
-@Value.Immutable
 @JsonSerialize(as = Contact.class)
 @JsonDeserialize(as = Contact.class)
+@Value.Immutable
 public abstract class AbstractContact implements Wrappable<ContactWritable> {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(AbstractContact.class);

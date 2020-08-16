@@ -8,20 +8,23 @@ import java.util.Objects;
 import org.immutables.value.Value;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import sharetrace.common.Wrapped;
+import sharetrace.model.common.Wrapped;
 
 /**
  * An identifier for a user.
  *
  * @see Identifiable
  */
-@Value.Immutable
-@Wrapped
 @JsonSerialize(as = UserId.class)
 @JsonDeserialize(as = UserId.class)
+@Wrapped
+@Value.Immutable
 public abstract class AbstractUserId implements Identifiable<String>, Comparable<AbstractUserId> {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(AbstractUserId.class);
+
+  @Override
+  public abstract String getId();
 
   @Value.Check
   protected final void verifyInputArguments() {

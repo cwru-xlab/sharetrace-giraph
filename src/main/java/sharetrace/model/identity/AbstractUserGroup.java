@@ -7,6 +7,7 @@ import java.util.SortedSet;
 import org.immutables.value.Value;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import sharetrace.algorithm.beliefpropagation.format.writable.UserGroupWritableComparable;
 import sharetrace.model.common.Wrappable;
 
 /**
@@ -14,9 +15,9 @@ import sharetrace.model.common.Wrappable;
  *
  * @see UserId
  */
-@Value.Immutable
 @JsonSerialize(as = UserGroup.class)
 @JsonDeserialize(as = UserGroup.class)
+@Value.Immutable
 public abstract class AbstractUserGroup implements Wrappable<UserGroupWritableComparable> {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(AbstractUserGroup.class);

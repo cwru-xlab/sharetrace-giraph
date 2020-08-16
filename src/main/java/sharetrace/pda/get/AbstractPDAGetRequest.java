@@ -7,9 +7,9 @@ import com.google.common.base.Strings;
 import java.net.URL;
 import org.immutables.value.Value;
 
-@Value.Immutable
 @JsonSerialize(as = PDAGetRequest.class)
 @JsonDeserialize(as = PDAGetRequest.class)
+@Value.Immutable
 public abstract class AbstractPDAGetRequest {
 
   public abstract String getAccessToken();

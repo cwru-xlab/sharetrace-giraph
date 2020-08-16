@@ -15,12 +15,14 @@ import org.apache.hadoop.io.DoubleWritable;
 import org.apache.hadoop.io.NullWritable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import sharetrace.algorithm.beliefpropagation.format.vertex.VertexType;
+import sharetrace.algorithm.beliefpropagation.format.writable.FactorGraphWritable;
+import sharetrace.algorithm.beliefpropagation.format.writable.SendableRiskScoresWritable;
+import sharetrace.algorithm.beliefpropagation.format.writable.UserGroupWritableComparable;
 import sharetrace.model.identity.UserGroup;
-import sharetrace.model.identity.UserGroupWritableComparable;
 import sharetrace.model.identity.UserId;
 import sharetrace.model.score.RiskScore;
 import sharetrace.model.score.SendableRiskScores;
-import sharetrace.model.score.SendableRiskScoresWritable;
 
 /**
  * Computation performed at every factor {@link Vertex} of the factor graph. The following are the
@@ -39,7 +41,7 @@ import sharetrace.model.score.SendableRiskScoresWritable;
  * vertices.
  */
 public final class VariableVertexComputation extends
-    BasicComputation<UserGroupWritableComparable, SendableRiskScoresWritable, NullWritable, SendableRiskScoresWritable> {
+    BasicComputation<UserGroupWritableComparable, FactorGraphWritable, NullWritable, SendableRiskScoresWritable> {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(FactorVertexComputation.class);
 
@@ -50,11 +52,19 @@ public final class VariableVertexComputation extends
 
   @Override
   public void compute(
-      Vertex<UserGroupWritableComparable, SendableRiskScoresWritable, NullWritable> vertex,
+      Vertex<UserGroupWritableComparable, FactorGraphWritable, NullWritable> vertex,
       Iterable<SendableRiskScoresWritable> iterable) {
     Preconditions.checkNotNull(vertex);
     Preconditions.checkNotNull(iterable);
-    Collection<RiskScore> localValues = vertex.getValue().getSendableRiskScores().getMessage();
+
+    if (vertex.getValue().getType().equals(VertexType.FACTOR)) {
+      vertex.voteToHalt();
+      return;
+    }
+
+    SendableRiskScores value =
+        ((SendableRiskScoresWritable) vertex.getValue().getWrapped()).getSendableRiskScores();
+    Collection<RiskScore> localValues = value.getMessage();
     Collection<RiskScore> incomingValues = getIncomingValues(iterable);
     Collection<RiskScore> allValues = combineValues(localValues, incomingValues);
     Collection<UserId> vertexId = vertex.getId().getUserGroup().getUsers();
@@ -79,12 +89,13 @@ public final class VariableVertexComputation extends
   }
 
   private void updateVertexValue(
-      Vertex<UserGroupWritableComparable, SendableRiskScoresWritable, NullWritable> vertex,
+      Vertex<UserGroupWritableComparable, FactorGraphWritable, NullWritable> vertex,
       Collection<UserId> valueId, Collection<RiskScore> newValues) {
     vertex.setValue(SendableRiskScores.builder()
         .addAllMessage(newValues)
         .setSender(valueId)
         .build()
+        .wrap()
         .wrap());
   }
 

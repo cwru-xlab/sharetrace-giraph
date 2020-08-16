@@ -1,4 +1,4 @@
-package sharetrace.model.contact;
+package sharetrace.algorithm.beliefpropagation.format.writable;
 
 import com.google.common.base.Preconditions;
 import java.io.DataInput;
@@ -12,6 +12,12 @@ import java.util.TreeSet;
 import org.apache.hadoop.io.Writable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import sharetrace.algorithm.beliefpropagation.format.vertex.VertexType;
+import sharetrace.model.common.Wrappable;
+import sharetrace.model.contact.AbstractContact;
+import sharetrace.model.contact.AbstractOccurrence;
+import sharetrace.model.contact.Contact;
+import sharetrace.model.contact.Occurrence;
 import sharetrace.model.identity.UserId;
 
 /**
@@ -20,7 +26,7 @@ import sharetrace.model.identity.UserId;
  * @see Writable
  * @see Contact
  */
-public final class ContactWritable implements Writable {
+public final class ContactWritable implements Writable, Wrappable<FactorGraphWritable> {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(ContactWritable.class);
 
@@ -52,7 +58,7 @@ public final class ContactWritable implements Writable {
     dataOutput.writeUTF(contact.getSecondUser().getId());
     dataOutput.writeInt(contact.getOccurrences().size());
     for (AbstractOccurrence occurrence : contact.getOccurrences()) {
-      dataOutput.writeLong(occurrence.getTime().getEpochSecond());
+      dataOutput.writeLong(occurrence.getTime().toEpochMilli());
       dataOutput.writeLong(occurrence.getDuration().toMillis());
     }
   }
@@ -66,8 +72,8 @@ public final class ContactWritable implements Writable {
     Collection<Occurrence> occurrences = new TreeSet<>();
     for (int iOccurrence = 0; iOccurrence < nOccurrences; iOccurrence++) {
       Instant time = Instant.ofEpochMilli(dataInput.readLong());
-      Duration duration = Duration.ofSeconds(dataInput.readLong());
-      occurrences.add(Occurrence.of(time, duration));
+      Duration duration = Duration.ofMillis(dataInput.readLong());
+      occurrences.add(Occurrence.builder().setTime(time).setDuration(duration).build());
     }
     contact = Contact.builder()
         .setFirstUser(firstUser)
@@ -87,5 +93,10 @@ public final class ContactWritable implements Writable {
   @Override
   public String toString() {
     return MessageFormat.format("{0}'{'contact={1}'}'", getClass().getSimpleName(), contact);
+  }
+
+  @Override
+  public FactorGraphWritable wrap() {
+    return FactorGraphWritable.of(VertexType.FACTOR, this);
   }
 }

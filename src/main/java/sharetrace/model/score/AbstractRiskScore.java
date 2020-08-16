@@ -19,9 +19,9 @@ import sharetrace.model.identity.Identifiable;
  * comparable based on the former two criteria, the {@link #getId()} ()} ()} is used for
  * comparison.
  */
-@Value.Immutable
 @JsonSerialize(as = RiskScore.class)
 @JsonDeserialize(as = RiskScore.class)
+@Value.Immutable
 public abstract class AbstractRiskScore implements Updatable, Identifiable<String>,
     ComputedValue<Double>, Comparable<AbstractRiskScore> {
 

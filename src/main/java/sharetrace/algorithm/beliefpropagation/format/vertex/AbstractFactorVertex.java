@@ -8,12 +8,18 @@ import org.slf4j.LoggerFactory;
 import sharetrace.model.contact.Contact;
 import sharetrace.model.identity.UserGroup;
 
-@Value.Immutable
 @JsonSerialize(as = FactorVertex.class)
 @JsonDeserialize(as = FactorVertex.class)
-public abstract class AbstractFactorVertex implements Vertex<UserGroup, Contact> {
+@Value.Immutable
+public abstract class AbstractFactorVertex implements FactorGraphVertex<UserGroup, Contact> {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(AbstractFactorVertex.class);
+
+  @Value.Default
+  @Override
+  public VertexType getType(){
+    return VertexType.FACTOR;
+  }
 
   @Override
   public abstract UserGroup getVertexId();

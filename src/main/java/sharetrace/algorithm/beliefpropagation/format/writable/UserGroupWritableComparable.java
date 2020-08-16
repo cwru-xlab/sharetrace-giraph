@@ -1,4 +1,4 @@
-package sharetrace.model.identity;
+package sharetrace.algorithm.beliefpropagation.format.writable;
 
 import com.google.common.base.Preconditions;
 import java.io.DataInput;
@@ -12,6 +12,10 @@ import java.util.TreeSet;
 import org.apache.hadoop.io.WritableComparable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import sharetrace.model.identity.AbstractUserGroup;
+import sharetrace.model.identity.Identifiable;
+import sharetrace.model.identity.UserGroup;
+import sharetrace.model.identity.UserId;
 
 /**
  * Wrapper type for {@link UserGroup} that is used in Hadoop.
@@ -74,7 +78,7 @@ public final class UserGroupWritableComparable implements
     for (int iUserId = 0; iUserId < nUserIds; iUserId++) {
       userIds.add(UserId.of(dataInput.readUTF()));
     }
-    userGroup = UserGroup.of(userIds);
+    userGroup = UserGroup.builder().setUsers(userIds).build();
   }
 
   @Override

@@ -75,10 +75,16 @@ public class GeohashGetRequestHandler implements RequestHandler<PDAGetRequest, V
       GeohashPayload payload = OBJECT_MAPPER.readValue(bodyStream, GeohashPayload.class);
       Set<TemporalLocation> locations = payload.getGeohashes()
           .stream()
-          .map(hash -> TemporalLocation.of(hash.getHash(), hash.getTimestamp()))
+          .map(hash -> TemporalLocation.builder()
+              .setLocation(hash.getHash())
+              .setTime(hash.getTimestamp())
+              .build())
           .collect(Collectors.toSet());
       UserId userId = UserId.of(input.getUserId());
-      LocationHistory history = LocationHistory.of(userId, locations);
+      LocationHistory history = LocationHistory.builder()
+          .setId(userId)
+          .setHistory(locations)
+          .build();
       // TODO Save history to S3 bucket
     } catch (IOException e) {
       logger.log(e.getMessage());

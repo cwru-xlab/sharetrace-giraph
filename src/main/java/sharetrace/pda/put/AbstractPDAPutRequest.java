@@ -6,9 +6,9 @@ import java.net.URL;
 import org.immutables.value.Value;
 import sharetrace.model.score.RiskScore;
 
-@Value.Immutable
 @JsonSerialize(as = PDAPutRequest.class)
 @JsonDeserialize(as = PDAPutRequest.class)
+@Value.Immutable
 public abstract class AbstractPDAPutRequest {
 
   public abstract String getAccessToken();
