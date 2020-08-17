@@ -8,3 +8,8 @@
  */
 
 rootProject.name = 'sharetrace'
+include 'sharetrace-model'
+include 'sharetrace-contactmatching'
+include 'sharetrace-pda'
+include 'sharetrace-beliefpropagation'
+
