@@ -1,4 +1,4 @@
-package shareTrace.algorithm.beliefpropagation.format.vertex;
+package org.sharetrace.model.vertex;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -9,22 +9,19 @@ import java.time.Instant;
 import java.util.Collection;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import sharetrace.algorithm.beliefpropagation.format.vertex.VariableVertex;
-import sharetrace.algorithm.beliefpropagation.format.vertex.Vertex;
-import sharetrace.common.TestConstants;
-import sharetrace.model.identity.UserGroup;
-import sharetrace.model.identity.UserId;
-import sharetrace.model.score.RiskScore;
-import sharetrace.model.score.SendableRiskScores;
+import org.sharetrace.model.identity.IdGroup;
+import org.sharetrace.model.score.RiskScore;
+import org.sharetrace.model.score.SendableRiskScores;
+import org.sharetrace.model.util.TestConstants;
 
 class VariableVertexTests {
 
-  private final UserId userId1 = UserId.of(TestConstants.getUserId1String());
+  private final String userId1 = TestConstants.getId1();
 
-  private final UserId userId2 = UserId.of(TestConstants.getUserId2String());
+  private final String userId2 = TestConstants.getId2();
 
-  private final UserGroup userGroup = UserGroup.builder()
-      .addUsers(userId1, userId2)
+  private final IdGroup userGroup = IdGroup.builder()
+      .addIds(userId1, userId2)
       .build();
 
   private final Instant instant1 = TestConstants.getInstant1();
@@ -32,7 +29,7 @@ class VariableVertexTests {
   private final double minRiskScore = TestConstants.getMinRiskScore();
 
   private final RiskScore riskScore = RiskScore.builder()
-      .setId(userId1.getId())
+      .setId(userId1)
       .setUpdateTime(instant1)
       .setValue(minRiskScore)
       .build();
@@ -40,13 +37,13 @@ class VariableVertexTests {
   private final Collection<RiskScore> riskScores = ImmutableList.of(riskScore);
 
   private final SendableRiskScores sendableRiskScores = SendableRiskScores.builder()
-      .setSender(userGroup.getUsers())
+      .setSender(userGroup.getIds())
       .setMessage(riskScores)
       .build();
 
   private final ObjectMapper objectMapper = TestConstants.getObjectMapper();
 
-  private Vertex<UserGroup, SendableRiskScores> variableVertex;
+  private Vertex<IdGroup, SendableRiskScores> variableVertex;
 
   @BeforeEach
   final void beforeAEach() {

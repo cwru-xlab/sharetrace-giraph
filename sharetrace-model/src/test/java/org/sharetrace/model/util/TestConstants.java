@@ -1,4 +1,4 @@
-package sharetrace.common;
+package org.sharetrace.model.util;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.module.SimpleModule;
@@ -11,9 +11,9 @@ import java.time.Instant;
 
 public final class TestConstants {
 
-  private static final String USER_ID_1_STRING = "USER_ID_1";
+  private static final String ID_1 = "ID_1";
 
-  private static final String USER_ID_2_STRING = "USER_ID_2";
+  private static final String ID_2 = "ID_2";
 
   private static final Instant INSTANT_1 = Instant.ofEpochSecond(1234567890L);
 
@@ -35,7 +35,7 @@ public final class TestConstants {
 
   private static final double MAX_RISK_SCORE = 1.0;
 
-  private static final ObjectMapper OBJECT_MAPPER =
+  private static final ObjectMapper MAPPER =
       new ObjectMapper().registerModules(
           JAVA_TIME_MODULE,
           JDK8_MODULE,
@@ -58,16 +58,16 @@ public final class TestConstants {
     return DURATION_2;
   }
 
-  public static String getUserId1String() {
-    return USER_ID_1_STRING;
+  public static String getId1() {
+    return ID_1;
   }
 
-  public static String getUserId2String() {
-    return USER_ID_2_STRING;
+  public static String getId2() {
+    return ID_2;
   }
 
   public static ObjectMapper getObjectMapper() {
-    return OBJECT_MAPPER;
+    return MAPPER;
   }
 
   public static double getMinRiskScore() {
