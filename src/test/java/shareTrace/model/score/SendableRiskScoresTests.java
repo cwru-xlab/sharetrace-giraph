@@ -27,9 +27,17 @@ class SendableRiskScoresTests {
 
   private static final Instant INSTANT_1 = TestConstants.getInstant1();
 
-  private static final RiskScore RISK_SCORE_1 = RiskScore.of(USER_ID_1, INSTANT_1, MAX_RISK_SCORE);
+  private static final RiskScore RISK_SCORE_1 = RiskScore.builder()
+      .setId(USER_ID_1)
+      .setUpdateTime(INSTANT_1)
+      .setValue(MAX_RISK_SCORE)
+      .build();
 
-  private static final RiskScore RISK_SCORE_2 = RiskScore.of(USER_ID_2, INSTANT_1, MAX_RISK_SCORE);
+  private static final RiskScore RISK_SCORE_2 = RiskScore.builder()
+      .setId(USER_ID_2)
+      .setUpdateTime(INSTANT_1)
+      .setValue(MAX_RISK_SCORE)
+      .build();
 
   private static final Collection<RiskScore> RISK_SCORES = ImmutableSortedSet
       .of(RISK_SCORE_1, RISK_SCORE_2);
@@ -40,7 +48,10 @@ class SendableRiskScoresTests {
 
   @BeforeEach
   final void beforeEach() {
-    sendableRiskScores = SendableRiskScores.of(USER_GROUP.getUsers(), RISK_SCORES);
+    sendableRiskScores = SendableRiskScores.builder()
+        .setSender(USER_GROUP.getUsers())
+        .setMessage(RISK_SCORES)
+        .build();
   }
 
   @Test

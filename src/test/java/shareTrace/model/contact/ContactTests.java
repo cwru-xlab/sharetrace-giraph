@@ -43,8 +43,8 @@ class ContactTests {
   final void beforeEach() {
     userId1 = UserId.of(USER_ID_1_STRING);
     userId2 = UserId.of(USER_ID_2_STRING);
-    occurrence1 = Occurrence.of(TEST_INSTANT_1, TEST_DURATION_1);
-    occurrence2 = Occurrence.of(TEST_INSTANT_2, TEST_DURATION_2);
+    occurrence1 = Occurrence.builder().setTime(TEST_INSTANT_1).setDuration(TEST_DURATION_1).build();
+    occurrence2 = Occurrence.builder().setTime(TEST_INSTANT_2).setDuration(TEST_DURATION_2).build();
     contact = Contact.builder()
         .setFirstUser(userId1)
         .setSecondUser(userId2)

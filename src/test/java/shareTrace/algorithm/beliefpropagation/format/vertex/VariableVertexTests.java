@@ -31,12 +31,18 @@ class VariableVertexTests {
 
   private final double minRiskScore = TestConstants.getMinRiskScore();
 
-  private final RiskScore riskScore = RiskScore.of(userId1.getId(), instant1, minRiskScore);
+  private final RiskScore riskScore = RiskScore.builder()
+      .setId(userId1.getId())
+      .setUpdateTime(instant1)
+      .setValue(minRiskScore)
+      .build();
 
   private final Collection<RiskScore> riskScores = ImmutableList.of(riskScore);
 
-  private final SendableRiskScores sendableRiskScores = SendableRiskScores
-      .of(userGroup.getUsers(), riskScores);
+  private final SendableRiskScores sendableRiskScores = SendableRiskScores.builder()
+      .setSender(userGroup.getUsers())
+      .setMessage(riskScores)
+      .build();
 
   private final ObjectMapper objectMapper = TestConstants.getObjectMapper();
 
@@ -44,7 +50,10 @@ class VariableVertexTests {
 
   @BeforeEach
   final void beforeAEach() {
-    variableVertex = VariableVertex.of(userGroup, sendableRiskScores);
+    variableVertex = VariableVertex.builder()
+        .setVertexId(userGroup)
+        .setVertexValue(sendableRiskScores)
+        .build();
   }
 
   @Test

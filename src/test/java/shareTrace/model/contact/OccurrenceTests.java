@@ -29,8 +29,8 @@ class OccurrenceTests {
 
   @BeforeEach
   final void beforeEach() {
-    occurrence1 = Occurrence.of(TEST_INSTANT_1, TEST_DURATION_1);
-    occurrence2 = Occurrence.of(TEST_INSTANT_2, TEST_DURATION_2);
+    occurrence1 = Occurrence.builder().setTime(TEST_INSTANT_1).setDuration(TEST_DURATION_1).build();
+    occurrence2 = Occurrence.builder().setTime(TEST_INSTANT_2).setDuration(TEST_DURATION_2).build();
   }
 
   @Test
@@ -49,7 +49,10 @@ class OccurrenceTests {
 
   @Test
   final void compareTo_verifySemiEqualOccurrences_returnOneWhenComparedToOccurrenceWithSameTimeButLongerDuration() {
-    AbstractOccurrence occurrence2SameTime = Occurrence.of(TEST_INSTANT_1, TEST_DURATION_2);
+    AbstractOccurrence occurrence2SameTime = Occurrence.builder()
+        .setTime(TEST_INSTANT_1)
+        .setDuration(TEST_DURATION_2)
+        .build();
     assertEquals(1, occurrence2SameTime.compareTo(occurrence1),
         "Temporal occurrences that occur at the "
             + "same time should then compare by duration: longer "
