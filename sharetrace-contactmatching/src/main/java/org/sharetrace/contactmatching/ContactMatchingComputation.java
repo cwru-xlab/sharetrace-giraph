@@ -44,7 +44,7 @@ import org.sharetrace.model.location.TemporalLocation;
  */
 public class ContactMatchingComputation {
 
-  private final Duration durationThreshold = Duration.ofMinutes(15L);
+  private static final Duration durationThreshold = Duration.ofMinutes(15L);
 
   public Set<Contact> compute(List<LocationHistory> histories) {
     return getUniqueEntries(histories.size())
