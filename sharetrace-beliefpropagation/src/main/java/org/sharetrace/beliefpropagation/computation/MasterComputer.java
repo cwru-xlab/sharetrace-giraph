@@ -35,15 +35,24 @@ public final class MasterComputer extends DefaultMasterCompute {
   @Override
   public void compute() {
     DoubleWritable delta = getAggregatedValue(VERTEX_DELTA_AGGREGATOR);
-    if (HALT_THRESHOLD > delta.get() || MAX_ITERATIONS <= getSuperstep()) {
+    long superstep = getSuperstep();
+    if (HALT_THRESHOLD > delta.get()) {
+      LOGGER.debug(
+          "Halting computation: aggregated value " + delta.get() + " exceeds " + HALT_THRESHOLD);
       haltComputation();
+    } else if (MAX_ITERATIONS <= superstep) {
+      LOGGER
+          .debug("Halting computation: superstep " + superstep + " exceeds" + MAX_ITERATIONS);
     } else {
-      setComputation(getVertexComputation(getSuperstep()));
+      Class<? extends Computation<?, ?, ?, ?, ?>> computation = getVertexComputation(superstep);
+      LOGGER.debug("Setting computation to " + computation.getSimpleName());
+      setComputation(computation);
     }
   }
 
   @Override
   public void initialize() throws InstantiationException, IllegalAccessException {
+    LOGGER.debug("Initializing VertexValueDeltaAggregator...");
     registerPersistentAggregator(VERTEX_DELTA_AGGREGATOR, VertexValueDeltaAggregator.class);
   }
 

@@ -18,12 +18,16 @@ public final class VertexValueDeltaAggregator implements Aggregator<DoubleWritab
 
   @Override
   public void aggregate(DoubleWritable a) {
-    Preconditions.checkNotNull(a);
-    setAggregatedValue(new DoubleWritable(aggregatedValue.get() + a.get()));
+    Preconditions.checkNotNull(a, "Aggregated writable must not be null");
+    double prev = aggregatedValue.get();
+    double curr = prev + a.get();
+    LOGGER.debug("Setting aggregated value from " + prev + " to " + curr);
+    setAggregatedValue(new DoubleWritable(curr));
   }
 
   @Override
   public DoubleWritable createInitialValue() {
+    LOGGER.debug("Creating initial value for VertexValueDeltaAggregator");
     return new DoubleWritable(INITIAL_VALUE);
   }
 
@@ -34,12 +38,13 @@ public final class VertexValueDeltaAggregator implements Aggregator<DoubleWritab
 
   @Override
   public void setAggregatedValue(DoubleWritable a) {
-    Preconditions.checkNotNull(a);
+    Preconditions.checkNotNull(a, "Value of aggregated value cannot be null");
     aggregatedValue.set(a.get());
   }
 
   @Override
   public void reset() {
+    LOGGER.debug("Resetting aggregated value...");
     if (Optional.ofNullable(aggregatedValue).isPresent()) {
       aggregatedValue.set(INITIAL_VALUE);
     } else {

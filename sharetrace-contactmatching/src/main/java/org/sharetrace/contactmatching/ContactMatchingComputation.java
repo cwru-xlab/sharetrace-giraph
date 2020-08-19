@@ -1,5 +1,6 @@
 package org.sharetrace.contactmatching;
 
+import com.google.common.annotations.VisibleForTesting;
 import java.time.Duration;
 import java.util.AbstractMap;
 import java.util.Collection;
@@ -26,15 +27,16 @@ import org.sharetrace.model.location.TemporalLocation;
  * distinct user. Since a {@link Contact} is symmetric, only the unique pairs are considered to
  * prevent redundant computation.
  * <p>
- * Imagining two {@link LocationHistory} instances on a timeline, the algorithm iterates through
- * both histories once to find all occurrences. For any given entry, if both {@link LocationHistory}
- * instances have the same location and the occurrence has not begun, the start of the occurrence is
- * the later of the two instances. It is assumed that the user is in the same location until the
- * next location is recorded. Once the occurrence has begun, both {@link LocationHistory} instances
- * are iterated until the locations differ; this marks the end of the occurrence. The earlier of the
- * two {@link LocationHistory} instances is used to indicate the end of the occurrence. If this
- * interval is long enough, the interval is recorded as an official occurrence. This is repeated for
- * all uniques pairs supplied as input to the algorithm.
+ * This algorithm iterates through both histories to find all occurrences. For any given entry, if
+ * both {@link LocationHistory} instances have the same location and the occurrence has not begun,
+ * the start of the occurrence is the later of the two instances. It is assumed that the user is in
+ * the same location until the next location is recorded. Once the occurrence has begun, both {@link
+ * LocationHistory} instances are iterated until the locations differ; this marks the end of the
+ * occurrence. The earlier of the two {@link LocationHistory} instances is used to indicate the end
+ * of the occurrence. If this interval is long enough, the interval is recorded as an official
+ * occurrence. This is repeated for all uniques pairs supplied as input to the algorithm. In the
+ * case that the end of either {@link LocationHistory} is reached and the occurrence has begun, the
+ * same check is made to verify if the occurrence is long enough.
  * <p>
  * Given a list of {@link LocationHistory} instances of size N, the generation of unique pairs takes
  * O(N(N - 1) / 2) = O(N^2). Given two {@link LocationHistory} instances of size H1 and H2, the time
@@ -42,7 +44,7 @@ import org.sharetrace.model.location.TemporalLocation;
  */
 public class ContactMatchingComputation {
 
-  private static final Duration DURATION_THRESHOLD = Duration.ofMinutes(15L);
+  private final Duration durationThreshold = Duration.ofMinutes(15L);
 
   public Set<Contact> compute(List<LocationHistory> histories) {
     return getUniqueEntries(histories.size())
@@ -92,13 +94,16 @@ public class ContactMatchingComputation {
   }
 
   private Set<Occurrence> findOccurrences(LocationHistory history, LocationHistory otherHistory) {
+    Set<Occurrence> occurrences = new HashSet<>();
+    if (eitherHasNoHistory(history, otherHistory) || haveSameId(history, otherHistory)) {
+      return occurrences;
+    }
     Iterator<TemporalLocation> iter = history.getHistory().iterator();
     Iterator<TemporalLocation> otherIter = otherHistory.getHistory().iterator();
     TemporalLocation location = iter.next();
     TemporalLocation otherLocation = otherIter.next();
     boolean started = false;
     TemporalLocation start = getLater(location, otherLocation);
-    Set<Occurrence> occurrences = new HashSet<>();
     while (iter.hasNext() && otherIter.hasNext()) {
       if (location.hasSameLocation(otherLocation)) {
         // Case 1: locations are the same and the occurrence has started
@@ -134,7 +139,22 @@ public class ContactMatchingComputation {
         }
       }
     }
+    // Occurrence started but reached the end of either history
+    if (started) {
+      TemporalLocation end = getEarlier(location, otherLocation);
+      if (isLongEnough(start, end)) {
+        occurrences.add(createOccurrence(start, end));
+      }
+    }
     return occurrences;
+  }
+
+  private boolean eitherHasNoHistory(LocationHistory history, LocationHistory otherHistory) {
+    return history.getHistory().isEmpty() || otherHistory.getHistory().isEmpty();
+  }
+
+  private boolean haveSameId(LocationHistory history, LocationHistory otherHistory) {
+    return history.getId().equals(otherHistory.getId());
   }
 
   private TemporalLocation getLater(TemporalLocation location, TemporalLocation otherLocation) {
@@ -146,7 +166,7 @@ public class ContactMatchingComputation {
   }
 
   private boolean isLongEnough(TemporalLocation start, TemporalLocation end) {
-    return -1 < Duration.between(start.getTime(), end.getTime()).compareTo(DURATION_THRESHOLD);
+    return -1 < Duration.between(start.getTime(), end.getTime()).compareTo(getDurationThreshold());
   }
 
   private Occurrence createOccurrence(TemporalLocation start, TemporalLocation end) {
@@ -155,5 +175,10 @@ public class ContactMatchingComputation {
         .setTime(start.getTime())
         .setDuration(duration)
         .build();
+  }
+
+  @VisibleForTesting
+  Duration getDurationThreshold() {
+    return durationThreshold;
   }
 }

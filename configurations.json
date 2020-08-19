@@ -1,0 +1,8 @@
+[
+  {
+    "Classification": "mapred-site",
+    "Properties": {
+      "mapreduce.application.classpath": "s3://sharetrace-testing/bp-testing/sharetrace-bp.jar"
+    }
+  }
+]

@@ -1,4 +1,4 @@
-package sharetrace.model.contact;
+package org.sharetrace.model.contact;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -10,8 +10,7 @@ import java.time.Duration;
 import java.time.Instant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import sharetrace.common.TestConstants;
-import sharetrace.model.identity.UserId;
+import org.sharetrace.model.util.TestConstants;
 
 class ContactTests {
 
@@ -23,15 +22,15 @@ class ContactTests {
 
   private static final Duration TEST_DURATION_2 = TestConstants.getDuration2();
 
-  private static final String USER_ID_1_STRING = TestConstants.getUserId1String();
+  private static final String ID_1 = TestConstants.getId1();
 
-  private static final String USER_ID_2_STRING = TestConstants.getUserId2String();
+  private static final String ID_2 = TestConstants.getId2();
 
-  private static final ObjectMapper OBJECT_MAPPER = TestConstants.getObjectMapper();
+  private static final ObjectMapper MAPPER = TestConstants.getObjectMapper();
 
-  private UserId userId1;
+  private String userId1;
 
-  private UserId userId2;
+  private String userId2;
 
   private Occurrence occurrence1;
 
@@ -41,8 +40,8 @@ class ContactTests {
 
   @BeforeEach
   final void beforeEach() {
-    userId1 = UserId.of(USER_ID_1_STRING);
-    userId2 = UserId.of(USER_ID_2_STRING);
+    userId1 = ID_1;
+    userId2 = ID_2;
     occurrence1 = Occurrence.builder().setTime(TEST_INSTANT_1).setDuration(TEST_DURATION_1).build();
     occurrence2 = Occurrence.builder().setTime(TEST_INSTANT_2).setDuration(TEST_DURATION_2).build();
     contact = Contact.builder()
@@ -83,14 +82,14 @@ class ContactTests {
 
   @Test
   final void serialization_verifySerialization_doesNotThrowException() {
-    assertDoesNotThrow(() -> OBJECT_MAPPER.writeValueAsString(contact));
+    assertDoesNotThrow(() -> MAPPER.writeValueAsString(contact));
   }
 
   @Test
   final void deserialization_verifyDeserialization_returnsUserIdWithSameValue()
       throws JsonProcessingException {
-    String serialized = OBJECT_MAPPER.writeValueAsString(contact);
-    AbstractContact deserialized = OBJECT_MAPPER.readValue(serialized, Contact.class);
+    String serialized = MAPPER.writeValueAsString(contact);
+    AbstractContact deserialized = MAPPER.readValue(serialized, Contact.class);
     assertEquals(contact, deserialized, "Deserialized value should equal original value");
   }
 }

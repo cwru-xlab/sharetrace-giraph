@@ -31,7 +31,7 @@ public final class FactorVertexValue implements Writable {
   }
 
   private FactorVertexValue(Contact contact) {
-    Preconditions.checkNotNull(contact);
+    Preconditions.checkNotNull(contact, "Factor vertex value must not be null");
     this.contact = Contact.copyOf(contact);
   }
 
@@ -40,7 +40,6 @@ public final class FactorVertexValue implements Writable {
   }
 
   public static FactorVertexValue fromDataInput(DataInput dataInput) throws IOException {
-    Preconditions.checkNotNull(dataInput);
     FactorVertexValue writable = new FactorVertexValue();
     writable.readFields(dataInput);
     return writable;
@@ -48,7 +47,7 @@ public final class FactorVertexValue implements Writable {
 
   @Override
   public void write(DataOutput dataOutput) throws IOException {
-    Preconditions.checkNotNull(dataOutput);
+    Preconditions.checkNotNull(dataOutput, "DataOutput must not be null");
     dataOutput.writeUTF(contact.getFirstUser());
     dataOutput.writeUTF(contact.getSecondUser());
     dataOutput.writeInt(contact.getOccurrences().size());
@@ -60,7 +59,7 @@ public final class FactorVertexValue implements Writable {
 
   @Override
   public void readFields(DataInput dataInput) throws IOException {
-    Preconditions.checkNotNull(dataInput);
+    Preconditions.checkNotNull(dataInput, "DataInput must not be null to read fields");
     String firstUser = dataInput.readUTF();
     String secondUser = dataInput.readUTF();
     int nOccurrences = dataInput.readInt();

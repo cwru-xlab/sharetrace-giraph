@@ -1,4 +1,4 @@
-package sharetrace.model.contact;
+package org.sharetrace.model.contact;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -9,7 +9,7 @@ import java.time.Duration;
 import java.time.Instant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import sharetrace.common.TestConstants;
+import org.sharetrace.model.util.TestConstants;
 
 class OccurrenceTests {
 
@@ -21,7 +21,7 @@ class OccurrenceTests {
 
   private static final Duration TEST_DURATION_2 = TestConstants.getDuration2();
 
-  private static final ObjectMapper OBJECT_MAPPER = TestConstants.getObjectMapper();
+  private static final ObjectMapper MAPPER = TestConstants.getObjectMapper();
 
   private AbstractOccurrence occurrence1;
 
@@ -61,14 +61,14 @@ class OccurrenceTests {
 
   @Test
   final void serialization_verifySerialization_doesNotThrowException() {
-    assertDoesNotThrow(() -> OBJECT_MAPPER.writeValueAsString(occurrence1));
+    assertDoesNotThrow(() -> MAPPER.writeValueAsString(occurrence1));
   }
 
   @Test
   final void deserialization_verifyDeserialization_returnsUserIdWithSameValue()
       throws JsonProcessingException {
-    String serialized = OBJECT_MAPPER.writeValueAsString(occurrence1);
-    Occurrence deserialized = OBJECT_MAPPER.readValue(serialized, Occurrence.class);
+    String serialized = MAPPER.writeValueAsString(occurrence1);
+    Occurrence deserialized = MAPPER.readValue(serialized, Occurrence.class);
     assertEquals(occurrence1, deserialized, "Deserialized value should equal original value");
   }
 }

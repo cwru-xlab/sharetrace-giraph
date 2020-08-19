@@ -4,7 +4,6 @@ import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Preconditions;
-import com.google.common.base.Strings;
 import java.io.IOException;
 import org.apache.giraph.edge.Edge;
 import org.apache.giraph.io.formats.TextVertexInputFormat;
@@ -45,47 +44,57 @@ public class FactorGraphVertexInputFormat extends
 
     @Override
     protected FactorGraphVertexId getId(Text line) throws IOException {
+      Preconditions.checkNotNull(line, "Vertex id text must not be null");
       String text = line.toString();
-      Preconditions.checkArgument(!Strings.isNullOrEmpty(text));
+      LOGGER.debug("Parsing vertex id text...");
       JsonParser parser = MAPPER.createParser(text);
       JsonNode node = parser.getCodec().readTree(parser);
+      LOGGER.debug("Getting the type of the vertex...");
       String vertexType = node.get(TYPE).asText();
       FactorGraphVertexId vertexId;
       if (vertexType.equalsIgnoreCase(VertexType.FACTOR.toString())) {
+        LOGGER.debug("Vertex text is a factor vertex");
         if (factorVertex == null) {
           factorVertex = MAPPER.readValue(text, FactorVertex.class);
         }
         vertexId = FactorGraphVertexId.of(factorVertex.getVertexId());
       } else {
+        LOGGER.debug("Vertex text is a variable vertex");
         if (variableVertex == null) {
           variableVertex = MAPPER.readValue(text, VariableVertex.class);
         }
         vertexId = FactorGraphVertexId.of(variableVertex.getVertexId());
       }
+      LOGGER.debug("Vertex id has been successfully read");
       return vertexId;
     }
 
     @Override
     protected FactorGraphWritable getValue(Text line) throws IOException {
+      Preconditions.checkNotNull(line, "Vertex value text must not be null");
       String text = line.toString();
-      Preconditions.checkArgument(!Strings.isNullOrEmpty(text));
+      LOGGER.debug("Parsing vertex value text...");
       JsonParser parser = MAPPER.createParser(text);
       JsonNode node = parser.getCodec().readTree(parser);
+      LOGGER.debug("Getting the type of the vertex...");
       String vertexType = node.get(TYPE).asText();
       FactorGraphWritable writable;
       if (vertexType.equalsIgnoreCase(VertexType.FACTOR.toString())) {
+        LOGGER.debug("Vertex text is a factor vertex");
         if (factorVertex == null) {
           factorVertex = MAPPER.readValue(text, FactorVertex.class);
         }
         writable = FactorGraphWritable
             .ofFactorVertex(FactorVertexValue.of(factorVertex.getVertexValue()));
       } else {
+        LOGGER.debug("Vertex text is a variable vertex");
         if (variableVertex == null) {
           variableVertex = MAPPER.readValue(text, VariableVertex.class);
         }
         writable = FactorGraphWritable
             .ofVariableVertex(VariableVertexValue.of(variableVertex.getVertexValue()));
       }
+      LOGGER.debug("Vertex value has been successfully read");
       return writable;
     }
 
