@@ -53,10 +53,11 @@ public final class VariableVertexComputation extends
   public void compute(
       Vertex<FactorGraphVertexId, FactorGraphWritable, NullWritable> vertex,
       Iterable<VariableVertexValue> iterable) {
-    Preconditions.checkNotNull(vertex);
-    Preconditions.checkNotNull(iterable);
+    Preconditions.checkNotNull(vertex, "Vertex must not be null");
+    Preconditions.checkNotNull(iterable, "Messages must not be null");
 
     if (vertex.getValue().getType().equals(VertexType.FACTOR)) {
+      LOGGER.debug("Halting computation: vertex is not a variable vertex");
       vertex.voteToHalt();
       return;
     }
@@ -74,6 +75,7 @@ public final class VariableVertexComputation extends
   }
 
   private Collection<RiskScore> getIncomingValues(Iterable<VariableVertexValue> iterable) {
+    LOGGER.debug("Copying incoming messages to collection...");
     Collection<RiskScore> incoming = new TreeSet<>();
     iterable.forEach(msg -> incoming.addAll(msg.getSendableRiskScores().getMessage()));
     return ImmutableSortedSet.copyOf(incoming);
@@ -81,6 +83,7 @@ public final class VariableVertexComputation extends
 
   private Collection<RiskScore> combineValues(Collection<RiskScore> values,
       Collection<RiskScore> otherValues) {
+    LOGGER.debug("Combining local and incoming values...");
     SortedSet<RiskScore> combined = new TreeSet<>();
     combined.addAll(values);
     combined.addAll(otherValues);
@@ -90,22 +93,25 @@ public final class VariableVertexComputation extends
   private void updateVertexValue(
       Vertex<FactorGraphVertexId, FactorGraphWritable, NullWritable> vertex,
       Collection<String> valueId, Collection<RiskScore> newValues) {
+    LOGGER.debug("Updating vertex value...");
     vertex.setValue(
-        FactorGraphWritable.ofVariableVertex(VariableVertexValue.of(SendableRiskScores.builder()
+        FactorGraphWritable.ofVariableVertex(
+            VariableVertexValue.of(SendableRiskScores.builder()
             .addAllMessage(newValues)
             .setSender(valueId)
             .build())));
   }
 
   private void aggregate(Collection<RiskScore> values, Collection<RiskScore> otherValues) {
+    LOGGER.debug("Aggregating based on local vertex value change...");
     double localMax = Collections.max(values, COMPARE_BY_RISK_SCORE).getValue();
     double incomingMax = Collections.max(otherValues, COMPARE_BY_RISK_SCORE).getValue();
     aggregate(AGGREGATOR_NAME, new DoubleWritable(Math.abs(incomingMax - localMax)));
   }
 
   private void sendMessages(Collection<String> sender, Collection<RiskScore> messages) {
-    messages.parallelStream()
-        .forEach(msg -> sendMessage(wrapReceiver(msg), wrapMessage(sender, msg, messages)));
+    LOGGER.debug("Sending message from " + sender + "...");
+    messages.forEach(msg -> sendMessage(wrapReceiver(msg), wrapMessage(sender, msg, messages)));
   }
 
   private FactorGraphVertexId wrapReceiver(RiskScore value) {

@@ -61,15 +61,17 @@ public final class FactorVertexComputation extends
   @Override
   public void compute(Vertex<FactorGraphVertexId, FactorGraphWritable, NullWritable> vertex,
       Iterable<VariableVertexValue> iterable) {
-    Preconditions.checkNotNull(vertex);
-    Preconditions.checkNotNull(iterable);
+    Preconditions.checkNotNull(vertex, "Vertex must not be null");
+    Preconditions.checkNotNull(iterable, "Messages must not be null");
 
     if (vertex.getValue().getType().equals(VertexType.VARIABLE)) {
+      LOGGER.debug("Halting computation: vertex is not a factor vertex");
       vertex.voteToHalt();
       return;
     }
 
     if (0 == getSuperstep()) {
+      LOGGER.debug("Filtering expired vertex values on zeroth superstep");
       filterExpiredVertexValues(vertex);
     }
 
@@ -83,6 +85,7 @@ public final class FactorVertexComputation extends
   // Remove occurrences from the Contact if they occurred before the expiration date.
   private void filterExpiredVertexValues(
       Vertex<FactorGraphVertexId, FactorGraphWritable, NullWritable> vertex) {
+    LOGGER.debug("Removing expired vertex values...");
     Contact value = ((FactorVertexValue) vertex.getValue().getWrapped()).getContact();
     SortedSet<Occurrence> values = new TreeSet<>(value.getOccurrences());
     FactorVertexValue updateValue = FactorVertexValue.of(Contact.copyOf(value)
@@ -93,8 +96,7 @@ public final class FactorVertexComputation extends
   }
 
   // Add incoming values into a Collection sub-interface for easier handling
-  private Collection<SendableRiskScores> getIncomingValues(
-      Iterable<VariableVertexValue> iterable) {
+  private Collection<SendableRiskScores> getIncomingValues(Iterable<VariableVertexValue> iterable) {
     Set<SendableRiskScores> incoming = new HashSet<>();
     iterable.forEach(msg -> incoming.add(msg.getSendableRiskScores()));
     return ImmutableSet.copyOf(incoming);
@@ -103,10 +105,16 @@ public final class FactorVertexComputation extends
   // Combine all filtered messages into a single collection
   private Collection<SendableRiskScores> retainValidMessages(Contact vertexValue,
       Collection<SendableRiskScores> incomingValues) {
+    LOGGER.debug("Retaining valid messages...");
     Collection<SendableRiskScores> updatedBeforeLast = new HashSet<>();
-    // If there are no occurrences return an empty set
-    Instant lastTime = vertexValue.getOccurrences().first().getTime();
-    incomingValues.forEach(msg -> updatedBeforeLast.add(retainIfUpdatedBefore(msg, lastTime)));
+    SortedSet<Occurrence> occurrences = vertexValue.getOccurrences();
+    if (occurrences.isEmpty()) {
+      LOGGER.debug("No messages to retain since the vertex had no occurrences");
+      return ImmutableSet.of();
+    } else {
+      Instant lastTime = vertexValue.getOccurrences().first().getTime();
+      incomingValues.forEach(msg -> updatedBeforeLast.add(retainIfUpdatedBefore(msg, lastTime)));
+    }
     return ImmutableSet.copyOf(updatedBeforeLast);
   }
 
@@ -121,10 +129,12 @@ public final class FactorVertexComputation extends
 
   // Relay each variable vertex's message and indicate the message was sent from the factor vertex
   private void sendMessages(Iterable<SendableRiskScores> messages) {
+    LOGGER.debug("Sending messages...");
     for (SendableRiskScores senderMessage : messages) {
       for (SendableRiskScores receiverMessage : messages) {
         SortedSet<String> sender = senderMessage.getSender();
         if (!sender.equals(receiverMessage.getSender())) {
+          LOGGER.debug("Sending message from " + sender + " to " + receiverMessage.getSender());
           sendMessage(wrapReceiver(receiverMessage), wrapMessage(sender, receiverMessage));
         }
       }

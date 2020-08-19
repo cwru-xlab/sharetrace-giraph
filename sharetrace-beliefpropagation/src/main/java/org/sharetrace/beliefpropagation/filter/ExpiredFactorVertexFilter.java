@@ -1,5 +1,6 @@
 package org.sharetrace.beliefpropagation.filter;
 
+import com.google.common.base.Preconditions;
 import java.time.Instant;
 import java.util.SortedSet;
 import org.apache.giraph.graph.Vertex;
@@ -29,13 +30,25 @@ public class ExpiredFactorVertexFilter implements VertexInputFilter<FactorGraphV
   @Override
   public boolean dropVertex(
       Vertex<FactorGraphVertexId, FactorGraphWritable, NullWritable> vertex) {
+    Preconditions.checkNotNull(vertex, "Vertex must not be null");
     boolean shouldDrop;
     if (vertex.getValue().getType().equals(VertexType.VARIABLE)) {
-      shouldDrop = true;
+      LOGGER.debug("Variable vertex will not be dropped");
+      shouldDrop = false;
     } else {
       Contact factorData = ((FactorVertexValue) vertex.getValue().getWrapped()).getContact();
       SortedSet<Occurrence> occurrences = factorData.getOccurrences();
-      shouldDrop = occurrences.last().getTime().isBefore(CUTOFF);
+      if (occurrences.isEmpty()) {
+        LOGGER.debug("Factor vertex with no occurrences will be dropped");
+        shouldDrop = true;
+      } else {
+        shouldDrop = occurrences.last().getTime().isBefore(CUTOFF);
+        if (shouldDrop) {
+          LOGGER.debug("Factor vertex with no occurrences before cutoff will be dropped");
+        } else {
+          LOGGER.debug("Factor vertex with at least 1 occurrence after cutoff not be dropped");
+        }
+      }
     }
     return shouldDrop;
   }
