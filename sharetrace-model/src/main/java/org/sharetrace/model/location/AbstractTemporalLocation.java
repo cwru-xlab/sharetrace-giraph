@@ -7,11 +7,22 @@ import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Strings;
 import java.time.Instant;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Objects;
+import java.util.SortedMap;
+import java.util.SortedSet;
 import org.immutables.value.Value;
 
 /**
  * A pairing of a location with a time.
+ * <p>
+ * Note that {@link #compareTo(AbstractTemporalLocation)} first compares by time and then by
+ * location. In this way, a {@link SortedSet} or {@link SortedMap} will consider two {@link
+ * TemporalLocation}s that occurred at the same time to be equal from the perspective of the
+ * collection. {@link #hashCode()} still considers both time and location so a {@link HashSet} or
+ * {@link HashMap} will keep two {@link TemporalLocation}s that occurred at the same time, but at
+ * different locations.
  */
 @Value.Immutable
 @JsonSerialize(as = TemporalLocation.class)
