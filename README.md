@@ -20,8 +20,8 @@ operations, and performs CRUD operations with the UserPDAs.
 A Contact is simply a user-to-user interaction, with the Bluetooth IDs being
 used to represent each user.
 
-A ContactHistory is a dictionary with the key-value mapping of date-to-UserGroup.
-The resolution of the date is left for further implementation. A UserGroup is
+A ContactHistory is a dictionary with the key-value mapping of date-to-IdGroup.
+The resolution of the date is left for further implementation. A IdGroup is
 a generic collection of users that allows for assignment checking, adding, and
 removing.
 

@@ -16,14 +16,11 @@ public abstract class AbstractPDAGetRequest {
 
   public abstract URL getUrl();
 
-  public abstract String getUserId();
-
   @Value.Check
   protected final void verifyInputArguments() {
     Preconditions.checkArgument(Strings.isNullOrEmpty(getAccessToken()));
     Preconditions.checkNotNull(getUrl());
     Preconditions.checkArgument(Strings.isNullOrEmpty(getUrl().getPath()));
-    Preconditions.checkArgument(Strings.isNullOrEmpty(getUserId()));
   }
 
 }
