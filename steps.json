@@ -18,7 +18,7 @@
     "Jar": "s3://sharetrace-testing/bp-testing/sharetrace-bp.jar",
     "MainClass": "org.sharetrace.beliefpropagation.BeliefPropagationRunner",
     "Args": [
-      "sharetrace.algorithm.beliefpropagation.computation.VariableVertexComputation",
+      "org.sharetrace.beliefpropagation.computation.VariableVertexComputation",
       "-vif", "org.sharetrace.beliefpropagation.format.input.FactorGraphVertexInputFormat",
       "-vof", "org.sharetrace.beliefpropagation.format.output.FactorGraphVertexOutputFormat",
       "-vip", "input",
