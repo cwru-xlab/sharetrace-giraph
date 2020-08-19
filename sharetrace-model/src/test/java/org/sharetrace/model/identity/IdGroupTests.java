@@ -33,7 +33,6 @@ class IdGroupTests {
   final void deserialization_verifyDeserialization_returnsIdGroupWithSameValue()
       throws JsonProcessingException {
     String serialized = MAPPER.writeValueAsString(ids);
-    System.out.println(serialized);
     IdGroup deserialized = MAPPER.readValue(serialized, IdGroup.class);
     assertEquals(ids, deserialized, "Deserialized value should equal original value");
   }
