@@ -3,6 +3,7 @@ package org.sharetrace.pda;
 import com.amazonaws.regions.Regions;
 import com.amazonaws.services.lambda.AWSLambdaAsync;
 import com.amazonaws.services.lambda.AWSLambdaAsyncClientBuilder;
+import com.amazonaws.services.lambda.model.InvocationType;
 import com.amazonaws.services.lambda.model.InvokeRequest;
 import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.LambdaLogger;
@@ -10,7 +11,6 @@ import com.amazonaws.services.lambda.runtime.RequestHandler;
 import com.amazonaws.services.lambda.runtime.events.ScheduledEvent;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import java.io.IOException;
 import java.net.MalformedURLException;
@@ -21,66 +21,44 @@ import org.sharetrace.model.pda.request.ContractedPdaRequestBody;
 import org.sharetrace.model.pda.request.ShortLivedTokenRequest;
 import org.sharetrace.model.pda.response.ShortLivedTokenResponse;
 import org.sharetrace.model.util.ShareTraceUtil;
+import org.sharetrace.pda.util.LambdaHandlerLogging;
 
 /**
- * Retrieves
+ * Retrieves the short-lived token and list associated HATs to retrieve data from each PDA.
+ * <p>
+ * This Lambda function attempts to execute one or more worker Lambda functions that execute the
+ * read requests and store the data, if successful, in S3.
  */
 public class VentilatorReadRequestHandler implements RequestHandler<ScheduledEvent, String> {
 
-  private static final String INVALID_INPUT_MSG = "Input must not be null";
-
-  private static final String INVALID_CONTEXT_MSG = "Context must not be null";
-
-  private static final String ENVIRONMENT_VARIABLES = "ENVIRONMENT VARIABLES: ";
-
-  private static final String CONTEXT = "CONTEXT: ";
-
-  private static final String EVENT = "EVENT: ";
-
-  private static final String EVENT_TYPE = "EVENT_TYPE: ";
-
-  private static final String LONG_LIVED_TOKEN = "longLivedToken";
-
+  // Logging messages
   private static final String MISSING_TOKEN_MSG = "Long lived token is missing: \n";
-
   private static final String MALFORMED_URL_MSG = "Malformed contracts server URL: \n";
-
   private static final String INCOMPLETE_REQUEST_MSG =
       "Failed to complete short-lived token request: \n";
-
-  private static final String CONTRACTS_SERVER_URL = "contractsServerUrl";
-
-  private static final String FIRST_WORKER_LAMBDA = "lambdaWorker1";
-
-  private static final String SECOND_WORKER_LAMBDA = "lambdaWorker2";
-
-  private static final String CANNOT_FIND_LAMBDA_MSG =
-      "Unable to find AWS Lambda function. Check the environment variables: \n";
-
-  private static final String CONTRACT_ID = "contractId";
-
-  private static final String CANNOT_FIND_CONTRACT_ID_MSG =
-      "Failed to find contractId. Check the environment variables: \n";
-
+  private static final String CANNOT_FIND_ENV_VAR_MSG = "Unable to find environment variable: \n";
   private static final String FAILED_TO_SERIALIZE_MSG =
       "Failed to serialize request body: \n";
 
-  private static final int PARTITION_SIZE = 50;
+  // Environment variable keys
+  private static final String LONG_LIVED_TOKEN = "longLivedToken";
+  private static final String CONTRACTS_SERVER_URL = "contractsServerUrl";
+  private static final String FIRST_WORKER_LAMBDA = "lambdaWorker1";
+  private static final String SECOND_WORKER_LAMBDA = "lambdaWorker2";
+  private static final String CONTRACT_ID = "contractId";
 
-  private static final StringBuilder STRING_BUILDER = new StringBuilder();
-
+  // Clients
   private static final AWSLambdaAsync LAMBDA_CLIENT = AWSLambdaAsyncClientBuilder.standard()
       .withRegion(Regions.US_EAST_2).build();
-
   private static final ContractedPdaClient PDA_CLIENT = new ContractedPdaClient();
 
   private static final ObjectMapper MAPPER = ShareTraceUtil.getMapper();
 
+  private static final int PARTITION_SIZE = 50;
+
   @Override
   public String handleRequest(ScheduledEvent input, Context context) {
-    Preconditions.checkNotNull(input, INVALID_INPUT_MSG);
-    Preconditions.checkNotNull(context, INVALID_CONTEXT_MSG);
-    log(input, context);
+    LambdaHandlerLogging.logEnvironment(input, context);
     LambdaLogger logger = context.getLogger();
 
     ShortLivedTokenRequest tokenRequest = ShortLivedTokenRequest.builder()
@@ -104,45 +82,6 @@ public class VentilatorReadRequestHandler implements RequestHandler<ScheduledEve
       System.exit(1);
     }
     return null;
-  }
-
-  private void log(ScheduledEvent input, Context context) {
-    LambdaLogger logger = context.getLogger();
-    try {
-      String environmentVariablesLog = STRING_BUILDER
-          .append(ENVIRONMENT_VARIABLES)
-          .append(MAPPER.writeValueAsString(System.getenv()))
-          .toString();
-      logger.log(environmentVariablesLog);
-      resetStringBuilder();
-
-      String contextLog = STRING_BUILDER
-          .append(CONTEXT)
-          .append(MAPPER.writeValueAsString(context))
-          .toString();
-      logger.log(contextLog);
-      resetStringBuilder();
-
-      String eventLog = STRING_BUILDER
-          .append(EVENT)
-          .append(MAPPER.writeValueAsString(input))
-          .toString();
-      logger.log(eventLog);
-      resetStringBuilder();
-
-      String eventTypeLog = STRING_BUILDER
-          .append(EVENT_TYPE)
-          .append(input.getClass().getSimpleName())
-          .toString();
-      logger.log(eventTypeLog);
-      resetStringBuilder();
-    } catch (JsonProcessingException e) {
-      logger.log(e.getMessage());
-    }
-  }
-
-  private void resetStringBuilder() {
-    STRING_BUILDER.delete(0, STRING_BUILDER.length());
   }
 
   private String getLongLivedToken(LambdaLogger logger) {
@@ -201,7 +140,7 @@ public class VentilatorReadRequestHandler implements RequestHandler<ScheduledEve
         try {
           InvokeRequest invokeRequest = new InvokeRequest()
               .withFunctionName(workerNames.get(iWorker))
-              .withInvocationType(EVENT)
+              .withInvocationType(InvocationType.Event)
               .withPayload(MAPPER.writeValueAsString(requestBody));
           LAMBDA_CLIENT.invokeAsync(invokeRequest);
         } catch (JsonProcessingException e) {
@@ -218,7 +157,7 @@ public class VentilatorReadRequestHandler implements RequestHandler<ScheduledEve
       firstFunction = System.getenv(FIRST_WORKER_LAMBDA);
       secondFunction = System.getenv(SECOND_WORKER_LAMBDA);
     } catch (NullPointerException e) {
-      logger.log(CANNOT_FIND_LAMBDA_MSG + e.getMessage());
+      logger.log(CANNOT_FIND_ENV_VAR_MSG + e.getMessage());
       System.exit(1);
     }
     return ImmutableList.of(firstFunction, secondFunction);
@@ -229,7 +168,7 @@ public class VentilatorReadRequestHandler implements RequestHandler<ScheduledEve
     try {
       contractId = System.getenv(CONTRACT_ID);
     } catch (NullPointerException e) {
-      logger.log(CANNOT_FIND_CONTRACT_ID_MSG + e.getMessage());
+      logger.log(CANNOT_FIND_ENV_VAR_MSG + e.getMessage());
       System.exit(1);
     }
     return contractId;

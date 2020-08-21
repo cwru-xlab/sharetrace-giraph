@@ -8,13 +8,10 @@ import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3ClientBuilder;
 import com.amazonaws.services.s3.model.GetObjectRequest;
 import com.amazonaws.services.s3.model.PutObjectRequest;
-import com.amazonaws.services.s3.model.PutObjectResult;
 import com.amazonaws.services.s3.model.S3Object;
 import com.amazonaws.services.s3.model.S3ObjectInputStream;
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Charsets;
-import com.google.common.base.Preconditions;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
@@ -37,69 +34,47 @@ import org.sharetrace.model.pda.request.PdaRequestUrl;
 import org.sharetrace.model.pda.response.PdaReadResponse;
 import org.sharetrace.model.score.RiskScore;
 import org.sharetrace.model.util.ShareTraceUtil;
+import org.sharetrace.pda.util.LambdaHandlerLogging;
 
+/**
+ * Retrieves location and score data from a PDA. If successful, the data is stored in S3 for later
+ * processing.
+ * <p>
+ * This Lambda function is invoked by {@link VentilatorReadRequestHandler}.
+ */
 public class WorkerReadRequestHandler implements
     RequestHandler<ContractedPdaReadRequestBody, String> {
 
-  private static final String INVALID_INPUT_MSG = "Input must not be null";
-
-  private static final String INVALID_CONTEXT_MSG = "Context must not be null";
-
-  private static final String ENVIRONMENT_VARIABLES = "ENVIRONMENT VARIABLES: ";
-
-  private static final String CONTEXT = "CONTEXT: ";
-
-  private static final String EVENT = "EVENT: ";
-
-  private static final String EVENT_TYPE = "EVENT_TYPE: ";
-
-  private static final String LOCATIONS_ENDPOINT = "locationsEndpoint";
-
-  private static final String LOCATIONS_NAMESPACE = "locationsNamespace";
-
-  private static final String CANNOT_FIND_ENDPOINT_MSG =
-      "Unable to find endpoint. Check environment variables: \n";
-
-  private static final String CANNOT_FIND_NAMESPACE_MSG =
-      "Unable to find namespace. Check environment variables: \n";
-
-  private static final String IS_SANDBOX = "isSandbox";
-
-  private static final String MISSING_IS_SANDBOX_MSG =
-      "Unable to find isSandbox. Check environment variables: \n";
-
-  private static final String ORDER_BY = "TIMESTAMP";
-
-  private static final String HAT_CONTEXT_BUCKET = "s3://sharetrace/hatContext";
-
+  // Logging messages
+  private static final String CANNOT_FIND_ENV_VAR_MSG =
+      "Unable to environment variable: \n";
   private static final String CANNOT_DESERIALIZE = "Unable to deserialize: \n";
-
-  private static final String LOCATIONS_BUCKET = "s3://sharetrace/locations";
-
-  private static final String UNABLE_TO_WRITE_TO_S3_MSG = "Unable to write to S3: \n";
-
+  private static final String CANNOT_WRITE_TO_S3_MSG = "Unable to write to S3: \n";
   private static final String CANNOT_READ_FROM_PDA_MSG = "Unable to read data from PDA: \n";
 
+  // Environment variable keys
+  private static final String LOCATIONS_ENDPOINT = "locationsEndpoint";
+  private static final String LOCATIONS_NAMESPACE = "locationsNamespace";
+  private static final String IS_SANDBOX = "isSandbox";
+  private static final String HAT_CONTEXT_BUCKET = "sharetrace-hatContext";
+  private static final String LOCATIONS_BUCKET = "sharetrace-locations";
   private static final String SCORE_ENDPOINT = "scoreEndpoint";
-
   private static final String SCORE_NAMESPACE = "scoreNamespace";
+  private static final String SCORE_BUCKET = "sharetrace-scores";
 
-  private static final String SCORE_BUCKET = "s3://sharetrace/score/input";
-
-  private static final StringBuilder STRING_BUILDER = new StringBuilder();
-
+  // Client
   private static final AmazonS3 S3_CLIENT = AmazonS3ClientBuilder.standard()
       .withRegion(Regions.US_EAST_2).build();
-
   private static final ContractedPdaClient PDA_CLIENT = new ContractedPdaClient();
 
   private static final ObjectMapper MAPPER = ShareTraceUtil.getMapper();
 
+  private static final String ORDER_BY = "TIMESTAMP";
+  private static final String INPUT_SEGMENT = "input/";
+
   @Override
   public String handleRequest(ContractedPdaReadRequestBody input, Context context) {
-    Preconditions.checkNotNull(input, INVALID_INPUT_MSG);
-    Preconditions.checkNotNull(context, INVALID_CONTEXT_MSG);
-    log(input, context);
+    LambdaHandlerLogging.logEnvironment(input, context);
     LambdaLogger logger = context.getLogger();
 
     PdaRequestUrl.Builder commonBuilder = getCommonUrlBuilder(logger);
@@ -138,57 +113,17 @@ public class WorkerReadRequestHandler implements
     return null;
   }
 
-  private void log(ContractedPdaReadRequestBody input, Context context) {
-    LambdaLogger logger = context.getLogger();
-    try {
-      String environmentVariablesLog = STRING_BUILDER
-          .append(ENVIRONMENT_VARIABLES)
-          .append(MAPPER.writeValueAsString(System.getenv()))
-          .toString();
-      logger.log(environmentVariablesLog);
-      resetStringBuilder();
-
-      String contextLog = STRING_BUILDER
-          .append(CONTEXT)
-          .append(MAPPER.writeValueAsString(context))
-          .toString();
-      logger.log(contextLog);
-      resetStringBuilder();
-
-      String eventLog = STRING_BUILDER
-          .append(EVENT)
-          .append(MAPPER.writeValueAsString(input))
-          .toString();
-      logger.log(eventLog);
-      resetStringBuilder();
-
-      String eventTypeLog = STRING_BUILDER
-          .append(EVENT_TYPE)
-          .append(input.getClass().getSimpleName())
-          .toString();
-      logger.log(eventTypeLog);
-      resetStringBuilder();
-    } catch (JsonProcessingException e) {
-      logger.log(e.getMessage());
-    }
-  }
-
-  private void resetStringBuilder() {
-    STRING_BUILDER.delete(0, STRING_BUILDER.length());
-  }
-
   private PdaRequestUrl.Builder getCommonUrlBuilder(LambdaLogger logger) {
-    String isSandbox = null;
     PdaRequestUrl.Builder commonUrlBuilder = null;
     try {
-      isSandbox = System.getenv(IS_SANDBOX);
+      String isSandbox = System.getenv(IS_SANDBOX);
       boolean sandbox = Boolean.parseBoolean(isSandbox);
       commonUrlBuilder = PdaRequestUrl.builder()
           .contracted(true)
           .operation(Operation.READ)
           .sandbox(sandbox);
     } catch (NullPointerException e) {
-      logger.log(MISSING_IS_SANDBOX_MSG + e.getMessage());
+      logger.log(CANNOT_FIND_ENV_VAR_MSG + e.getMessage());
       System.exit(1);
     }
     return commonUrlBuilder;
@@ -199,7 +134,7 @@ public class WorkerReadRequestHandler implements
     try {
       endpoint = System.getenv(LOCATIONS_ENDPOINT);
     } catch (NullPointerException e) {
-      logger.log(CANNOT_FIND_ENDPOINT_MSG + e.getMessage());
+      logger.log(CANNOT_FIND_ENV_VAR_MSG + e.getMessage());
       System.exit(1);
     }
     return endpoint;
@@ -210,10 +145,36 @@ public class WorkerReadRequestHandler implements
     try {
       namespace = System.getenv(LOCATIONS_NAMESPACE);
     } catch (NullPointerException e) {
-      logger.log(CANNOT_FIND_NAMESPACE_MSG + e.getMessage());
+      logger.log(CANNOT_FIND_ENV_VAR_MSG + e.getMessage());
       System.exit(1);
     }
     return namespace;
+  }
+
+  private PdaRequestUrl getPdaRequestUrl(PdaRequestUrl.Builder builder, String endpoint,
+      String namespace) {
+    return builder
+        .endpoint(endpoint)
+        .namespace(namespace)
+        .build();
+  }
+
+  private int getSkipAmount(String hatName, LambdaLogger logger) {
+    String key = INPUT_SEGMENT + hatName;
+    GetObjectRequest objectRequest = new GetObjectRequest(HAT_CONTEXT_BUCKET, key);
+    S3Object object = S3_CLIENT.getObject(objectRequest);
+    S3ObjectInputStream input = object.getObjectContent();
+    int skipAmount = 0;
+    try {
+      BufferedReader reader = new BufferedReader(new InputStreamReader(input, Charsets.UTF_8));
+      HatContext hatContext = MAPPER.readValue(reader.readLine(), HatContext.class);
+      skipAmount = hatContext.getNumRecordsRead();
+      reader.close();
+    } catch (IOException e) {
+      logger.log(CANNOT_DESERIALIZE + e.getMessage());
+    }
+
+    return skipAmount;
   }
 
   private PdaReadResponse getPdaReadResponse(ContractedPdaReadRequest readRequest,
@@ -228,29 +189,6 @@ public class WorkerReadRequestHandler implements
     return response;
   }
 
-  private PdaRequestUrl getPdaRequestUrl(PdaRequestUrl.Builder builder, String endpoint,
-      String namespace) {
-    return builder
-        .endpoint(endpoint)
-        .namespace(namespace)
-        .build();
-  }
-
-  private int getSkipAmount(String hatName, LambdaLogger logger) {
-    GetObjectRequest objectRequest = new GetObjectRequest(HAT_CONTEXT_BUCKET, hatName);
-    S3Object locationsObject = S3_CLIENT.getObject(objectRequest);
-    S3ObjectInputStream inputStream = locationsObject.getObjectContent();
-    BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, Charsets.UTF_8));
-    int skipAmount = 0;
-    try {
-      HatContext hatContext = MAPPER.readValue(reader.readLine(), HatContext.class);
-      skipAmount = hatContext.getNumRecordsRead();
-    } catch (IOException e) {
-      logger.log(CANNOT_DESERIALIZE + e.getMessage());
-    }
-    return skipAmount;
-  }
-
   private void writeLocationsToS3(String hatName, PdaReadResponse response, LambdaLogger logger) {
     try {
       String readResponse = MAPPER.writeValueAsString(response);
@@ -259,7 +197,6 @@ public class WorkerReadRequestHandler implements
           .stream()
           .map(RawTemporalLocation::getData)
           .collect(Collectors.toSet());
-
       LocationHistory history = LocationHistory.builder()
           .id(hatName)
           .addAllHistory(locations)
@@ -269,9 +206,9 @@ public class WorkerReadRequestHandler implements
       BufferedWriter writer = new BufferedWriter(new FileWriter(file));
       writer.write(MAPPER.writeValueAsString(history));
       writer.close();
-      writeObjectRequest(LOCATIONS_BUCKET, hatName, file, logger);
+      writeObjectRequest(LOCATIONS_BUCKET, INPUT_SEGMENT + hatName, file);
     } catch (IOException e) {
-      logger.log(UNABLE_TO_WRITE_TO_S3_MSG + e.getMessage());
+      logger.log(CANNOT_WRITE_TO_S3_MSG + e.getMessage());
     }
   }
 
@@ -283,16 +220,15 @@ public class WorkerReadRequestHandler implements
       BufferedWriter writer = new BufferedWriter(new FileWriter(file));
       writer.write(MAPPER.writeValueAsString(score));
       writer.close();
-      writeObjectRequest(SCORE_BUCKET, hatName, file, logger);
+      writeObjectRequest(SCORE_BUCKET, INPUT_SEGMENT + hatName, file);
     } catch (IOException e) {
-      logger.log(UNABLE_TO_WRITE_TO_S3_MSG + e.getMessage());
+      logger.log(CANNOT_WRITE_TO_S3_MSG + e.getMessage());
     }
   }
 
-  private void writeObjectRequest(String bucket, String key, File file, LambdaLogger logger) {
+  private void writeObjectRequest(String bucket, String key, File file) {
     PutObjectRequest putObjectRequest = new PutObjectRequest(bucket, key, file);
-    PutObjectResult putObjectResult = S3_CLIENT.putObject(putObjectRequest);
-    logger.log("PutObjectResult: \n" + putObjectResult.toString());
+    S3_CLIENT.putObject(putObjectRequest);
   }
 
   private String getScoreEndpoint(LambdaLogger logger) {
@@ -300,7 +236,7 @@ public class WorkerReadRequestHandler implements
     try {
       endpoint = System.getenv(SCORE_ENDPOINT);
     } catch (NullPointerException e) {
-      logger.log(CANNOT_FIND_ENDPOINT_MSG + e.getMessage());
+      logger.log(CANNOT_FIND_ENV_VAR_MSG + e.getMessage());
       System.exit(1);
     }
     return endpoint;
@@ -311,7 +247,7 @@ public class WorkerReadRequestHandler implements
     try {
       namespace = System.getenv(SCORE_NAMESPACE);
     } catch (NullPointerException e) {
-      logger.log(CANNOT_FIND_NAMESPACE_MSG + e.getMessage());
+      logger.log(CANNOT_FIND_ENV_VAR_MSG + e.getMessage());
       System.exit(1);
     }
     return namespace;
