@@ -10,6 +10,7 @@ import com.amazonaws.services.s3.model.GetObjectRequest;
 import com.amazonaws.services.s3.model.PutObjectRequest;
 import com.amazonaws.services.s3.model.S3Object;
 import com.amazonaws.services.s3.model.S3ObjectInputStream;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Charsets;
 import java.io.BufferedReader;
@@ -18,12 +19,12 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.sharetrace.model.location.LocationHistory;
-import org.sharetrace.model.location.RawLocationHistory;
-import org.sharetrace.model.location.RawTemporalLocation;
 import org.sharetrace.model.location.TemporalLocation;
+import org.sharetrace.model.location.TemporalLocationRecord;
 import org.sharetrace.model.pda.HatContext;
 import org.sharetrace.model.pda.request.AbstractPdaReadRequestParameters.Ordering;
 import org.sharetrace.model.pda.request.AbstractPdaRequestUrl.Operation;
@@ -43,7 +44,7 @@ import org.sharetrace.pda.util.LambdaHandlerLogging;
  * This Lambda function is invoked by {@link VentilatorReadRequestHandler}.
  */
 public class WorkerReadRequestHandler implements
-    RequestHandler<ContractedPdaReadRequestBody, String> {
+    RequestHandler<List<ContractedPdaReadRequestBody>, String> {
 
   // Logging messages
   private static final String CANNOT_FIND_ENV_VAR_MSG =
@@ -73,16 +74,24 @@ public class WorkerReadRequestHandler implements
   private static final String INPUT_SEGMENT = "input/";
 
   @Override
-  public String handleRequest(ContractedPdaReadRequestBody input, Context context) {
+  public String handleRequest(List<ContractedPdaReadRequestBody> input, Context context) {
     LambdaHandlerLogging.logEnvironment(input, context);
     LambdaLogger logger = context.getLogger();
+    input.forEach(entry -> handleRequest(entry, logger));
+    return null;
+  }
 
-    PdaRequestUrl.Builder commonBuilder = getCommonUrlBuilder(logger);
-    String hatName = input.getHatName();
+  private void handleRequest(ContractedPdaReadRequestBody input, LambdaLogger logger) {
+    handleLocationsRequest(input, logger);
+    handleScoreRequest(input, logger);
+  }
 
+  private void handleLocationsRequest(ContractedPdaReadRequestBody input, LambdaLogger logger) {
     String locsEndpoint = getLocationsEndpoint(logger);
     String locsNamespace = getLocationNamespace(logger);
-    PdaRequestUrl locsUrl = getPdaRequestUrl(commonBuilder, locsEndpoint, locsNamespace);
+    PdaRequestUrl.Builder builder = getCommonUrlBuilder(logger);
+    PdaRequestUrl locsUrl = getPdaRequestUrl(builder, locsEndpoint, locsNamespace);
+    String hatName = input.getHatName();
     PdaReadRequestParameters parameters = PdaReadRequestParameters.builder()
         .orderBy(ORDER_BY)
         .ordering(Ordering.ASCENDING)
@@ -90,7 +99,7 @@ public class WorkerReadRequestHandler implements
         .build();
     ContractedPdaReadRequestBody body = ContractedPdaReadRequestBody.builder()
         .contractId(input.getContractId())
-        .hatName(input.getHatName())
+        .hatName(hatName)
         .shortLivedToken(input.getShortLivedToken())
         .parameters(parameters)
         .build();
@@ -100,17 +109,18 @@ public class WorkerReadRequestHandler implements
         .build();
     PdaReadResponse locationsResponse = getPdaReadResponse(locationsRequest, logger);
     writeLocationsToS3(hatName, locationsResponse, logger);
+  }
 
+  private void handleScoreRequest(ContractedPdaReadRequestBody input, LambdaLogger logger) {
     String scoreEndpoint = getScoreEndpoint(logger);
     String scoreNamespace = getScoreNamespace(logger);
-    PdaRequestUrl scoreUrl = getPdaRequestUrl(commonBuilder, scoreEndpoint, scoreNamespace);
+    PdaRequestUrl.Builder builder = getCommonUrlBuilder(logger);
+    PdaRequestUrl scoreUrl = getPdaRequestUrl(builder, scoreEndpoint, scoreNamespace);
     ContractedPdaReadRequest scoreRequest = ContractedPdaReadRequest.builder()
         .pdaRequestUrl(scoreUrl)
         .build();
     PdaReadResponse scoreResponse = getPdaReadResponse(scoreRequest, logger);
-    writeScoreToS3(hatName, scoreResponse, logger);
-
-    return null;
+    writeScoreToS3(input.getHatName(), scoreResponse, logger);
   }
 
   private PdaRequestUrl.Builder getCommonUrlBuilder(LambdaLogger logger) {
@@ -192,10 +202,12 @@ public class WorkerReadRequestHandler implements
   private void writeLocationsToS3(String hatName, PdaReadResponse response, LambdaLogger logger) {
     try {
       String readResponse = MAPPER.writeValueAsString(response);
-      RawLocationHistory locationHistory = MAPPER.readValue(readResponse, RawLocationHistory.class);
-      Set<TemporalLocation> locations = locationHistory.getRawHistory()
+      List<TemporalLocationRecord> locationHistory = MAPPER.readValue(readResponse,
+          new TypeReference<List<TemporalLocationRecord>>() {
+          });
+      Set<TemporalLocation> locations = locationHistory
           .stream()
-          .map(RawTemporalLocation::getData)
+          .map(TemporalLocationRecord::getData)
           .collect(Collectors.toSet());
       LocationHistory history = LocationHistory.builder()
           .id(hatName)
