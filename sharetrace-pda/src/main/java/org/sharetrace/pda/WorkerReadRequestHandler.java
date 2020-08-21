@@ -48,12 +48,12 @@ public class WorkerReadRequestHandler implements
     RequestHandler<List<ContractedPdaRequestBody>, String> {
 
   // Logging messages
-  private static final String CANNOT_FIND_ENV_VAR_MSG =
-      "Unable to environment variable: \n";
+  private static final String CANNOT_FIND_ENV_VAR_MSG = "Unable to environment variable: \n";
   private static final String CANNOT_DESERIALIZE = "Unable to deserialize: \n";
   private static final String CANNOT_WRITE_TO_S3_MSG = "Unable to write to S3: \n";
   private static final String CANNOT_READ_FROM_PDA_MSG = "Unable to read data from PDA: \n";
 
+  // TODO Finalize
   // Environment variable keys
   private static final String LOCATIONS_ENDPOINT = "locationsEndpoint";
   private static final String LOCATIONS_NAMESPACE = "locationsNamespace";
@@ -64,7 +64,7 @@ public class WorkerReadRequestHandler implements
   private static final String SCORE_NAMESPACE = "scoreNamespace";
   private static final String SCORE_BUCKET = "sharetrace-scores";
 
-  // Client
+  // Clients
   private static final AmazonS3 S3_CLIENT = AmazonS3ClientBuilder.standard()
       .withRegion(Regions.US_EAST_2).build();
   private static final ContractedPdaClient PDA_CLIENT = new ContractedPdaClient();
@@ -136,6 +136,7 @@ public class WorkerReadRequestHandler implements
 
   private int getSkipAmount(String hatName, LambdaLogger logger) {
     String key = INPUT_SEGMENT + hatName;
+    // TODO Update the count and write back
     GetObjectRequest objectRequest = new GetObjectRequest(HAT_CONTEXT_BUCKET, key);
     S3Object object = S3_CLIENT.getObject(objectRequest);
     S3ObjectInputStream input = object.getObjectContent();
