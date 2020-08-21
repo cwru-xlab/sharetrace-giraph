@@ -12,6 +12,7 @@ import okhttp3.RequestBody;
 import okhttp3.Response;
 import org.sharetrace.model.pda.request.AbstractContractedPdaRequestBody;
 import org.sharetrace.model.pda.request.ContractedPdaReadRequest;
+import org.sharetrace.model.pda.request.ContractedPdaRequestBody;
 import org.sharetrace.model.pda.request.ContractedPdaWriteRequest;
 import org.sharetrace.model.pda.request.PdaRequestUrl;
 import org.sharetrace.model.pda.request.ShortLivedTokenRequest;
@@ -57,22 +58,22 @@ public class ContractedPdaClient {
 
   public PdaReadResponse readFromContractedPda(ContractedPdaReadRequest request)
       throws IOException {
-    AbstractContractedPdaRequestBody body = request.getReadRequestBody();
     PdaRequestUrl url = request.getPdaRequestUrl();
-    InputStream responseBody = requestFromContractedPda(url, body);
+    AbstractContractedPdaRequestBody body = request.getReadRequestBody();
+    InputStream responseBody = requestFromContractedPda(url, ContractedPdaRequestBody.copyOf(body));
     return MAPPER.readValue(responseBody, PdaReadResponse.class);
   }
 
   public PdaWriteResponse writeToContractedPda(ContractedPdaWriteRequest request)
       throws IOException {
-    AbstractContractedPdaRequestBody body = request.getWriteRequestBody();
     PdaRequestUrl url = request.getPdaRequestUrl();
-    InputStream responseBody = requestFromContractedPda(url, body);
+    AbstractContractedPdaRequestBody body = request.getWriteRequestBody();
+    InputStream responseBody = requestFromContractedPda(url, ContractedPdaRequestBody.copyOf(body));
     return MAPPER.readValue(responseBody, PdaWriteResponse.class);
   }
 
-  private InputStream requestFromContractedPda(PdaRequestUrl url,
-      AbstractContractedPdaRequestBody body) throws IOException {
+  private InputStream requestFromContractedPda(PdaRequestUrl url, ContractedPdaRequestBody body)
+      throws IOException {
     String textBody = MAPPER.writeValueAsString(body);
     MediaType mediaType = MediaType.parse(CONTENT_TYPE);
     RequestBody requestBody = RequestBody.create(textBody, mediaType);

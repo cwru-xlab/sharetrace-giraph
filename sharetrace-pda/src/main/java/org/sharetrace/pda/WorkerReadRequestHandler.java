@@ -30,6 +30,7 @@ import org.sharetrace.model.pda.request.AbstractPdaReadRequestParameters.Orderin
 import org.sharetrace.model.pda.request.AbstractPdaRequestUrl.Operation;
 import org.sharetrace.model.pda.request.ContractedPdaReadRequest;
 import org.sharetrace.model.pda.request.ContractedPdaReadRequestBody;
+import org.sharetrace.model.pda.request.ContractedPdaRequestBody;
 import org.sharetrace.model.pda.request.PdaReadRequestParameters;
 import org.sharetrace.model.pda.request.PdaRequestUrl;
 import org.sharetrace.model.pda.response.PdaReadResponse;
@@ -44,7 +45,7 @@ import org.sharetrace.pda.util.LambdaHandlerLogging;
  * This Lambda function is invoked by {@link VentilatorReadRequestHandler}.
  */
 public class WorkerReadRequestHandler implements
-    RequestHandler<List<ContractedPdaReadRequestBody>, String> {
+    RequestHandler<List<ContractedPdaRequestBody>, String> {
 
   // Logging messages
   private static final String CANNOT_FIND_ENV_VAR_MSG =
@@ -74,19 +75,19 @@ public class WorkerReadRequestHandler implements
   private static final String INPUT_SEGMENT = "input/";
 
   @Override
-  public String handleRequest(List<ContractedPdaReadRequestBody> input, Context context) {
+  public String handleRequest(List<ContractedPdaRequestBody> input, Context context) {
     LambdaHandlerLogging.logEnvironment(input, context);
     LambdaLogger logger = context.getLogger();
     input.forEach(entry -> handleRequest(entry, logger));
     return null;
   }
 
-  private void handleRequest(ContractedPdaReadRequestBody input, LambdaLogger logger) {
+  private void handleRequest(ContractedPdaRequestBody input, LambdaLogger logger) {
     handleLocationsRequest(input, logger);
     handleScoreRequest(input, logger);
   }
 
-  private void handleLocationsRequest(ContractedPdaReadRequestBody input, LambdaLogger logger) {
+  private void handleLocationsRequest(ContractedPdaRequestBody input, LambdaLogger logger) {
     String locsEndpoint = getLocationsEndpoint(logger);
     String locsNamespace = getLocationNamespace(logger);
     PdaRequestUrl.Builder builder = getCommonUrlBuilder(logger);
@@ -111,34 +112,6 @@ public class WorkerReadRequestHandler implements
     writeLocationsToS3(hatName, locationsResponse, logger);
   }
 
-  private void handleScoreRequest(ContractedPdaReadRequestBody input, LambdaLogger logger) {
-    String scoreEndpoint = getScoreEndpoint(logger);
-    String scoreNamespace = getScoreNamespace(logger);
-    PdaRequestUrl.Builder builder = getCommonUrlBuilder(logger);
-    PdaRequestUrl scoreUrl = getPdaRequestUrl(builder, scoreEndpoint, scoreNamespace);
-    ContractedPdaReadRequest scoreRequest = ContractedPdaReadRequest.builder()
-        .pdaRequestUrl(scoreUrl)
-        .build();
-    PdaReadResponse scoreResponse = getPdaReadResponse(scoreRequest, logger);
-    writeScoreToS3(input.getHatName(), scoreResponse, logger);
-  }
-
-  private PdaRequestUrl.Builder getCommonUrlBuilder(LambdaLogger logger) {
-    PdaRequestUrl.Builder commonUrlBuilder = null;
-    try {
-      String isSandbox = System.getenv(IS_SANDBOX);
-      boolean sandbox = Boolean.parseBoolean(isSandbox);
-      commonUrlBuilder = PdaRequestUrl.builder()
-          .contracted(true)
-          .operation(Operation.READ)
-          .sandbox(sandbox);
-    } catch (NullPointerException e) {
-      logger.log(CANNOT_FIND_ENV_VAR_MSG + e.getMessage());
-      System.exit(1);
-    }
-    return commonUrlBuilder;
-  }
-
   private String getLocationsEndpoint(LambdaLogger logger) {
     String endpoint = null;
     try {
@@ -161,14 +134,6 @@ public class WorkerReadRequestHandler implements
     return namespace;
   }
 
-  private PdaRequestUrl getPdaRequestUrl(PdaRequestUrl.Builder builder, String endpoint,
-      String namespace) {
-    return builder
-        .endpoint(endpoint)
-        .namespace(namespace)
-        .build();
-  }
-
   private int getSkipAmount(String hatName, LambdaLogger logger) {
     String key = INPUT_SEGMENT + hatName;
     GetObjectRequest objectRequest = new GetObjectRequest(HAT_CONTEXT_BUCKET, key);
@@ -185,18 +150,6 @@ public class WorkerReadRequestHandler implements
     }
 
     return skipAmount;
-  }
-
-  private PdaReadResponse getPdaReadResponse(ContractedPdaReadRequest readRequest,
-      LambdaLogger logger) {
-    PdaReadResponse response = null;
-    try {
-      response = PDA_CLIENT.readFromContractedPda(readRequest);
-    } catch (IOException e) {
-      logger.log(CANNOT_READ_FROM_PDA_MSG + e.getMessage());
-      System.exit(1);
-    }
-    return response;
   }
 
   private void writeLocationsToS3(String hatName, PdaReadResponse response, LambdaLogger logger) {
@@ -222,6 +175,18 @@ public class WorkerReadRequestHandler implements
     } catch (IOException e) {
       logger.log(CANNOT_WRITE_TO_S3_MSG + e.getMessage());
     }
+  }
+
+  private void handleScoreRequest(ContractedPdaRequestBody input, LambdaLogger logger) {
+    String scoreEndpoint = getScoreEndpoint(logger);
+    String scoreNamespace = getScoreNamespace(logger);
+    PdaRequestUrl.Builder builder = getCommonUrlBuilder(logger);
+    PdaRequestUrl scoreUrl = getPdaRequestUrl(builder, scoreEndpoint, scoreNamespace);
+    ContractedPdaReadRequest scoreRequest = ContractedPdaReadRequest.builder()
+        .pdaRequestUrl(scoreUrl)
+        .build();
+    PdaReadResponse scoreResponse = getPdaReadResponse(scoreRequest, logger);
+    writeScoreToS3(input.getHatName(), scoreResponse, logger);
   }
 
   private void writeScoreToS3(String hatName, PdaReadResponse response, LambdaLogger logger) {
@@ -263,5 +228,41 @@ public class WorkerReadRequestHandler implements
       System.exit(1);
     }
     return namespace;
+  }
+
+  private PdaRequestUrl.Builder getCommonUrlBuilder(LambdaLogger logger) {
+    PdaRequestUrl.Builder commonUrlBuilder = null;
+    try {
+      String isSandbox = System.getenv(IS_SANDBOX);
+      boolean sandbox = Boolean.parseBoolean(isSandbox);
+      commonUrlBuilder = PdaRequestUrl.builder()
+          .contracted(true)
+          .operation(Operation.READ)
+          .sandbox(sandbox);
+    } catch (NullPointerException e) {
+      logger.log(CANNOT_FIND_ENV_VAR_MSG + e.getMessage());
+      System.exit(1);
+    }
+    return commonUrlBuilder;
+  }
+
+  private PdaRequestUrl getPdaRequestUrl(PdaRequestUrl.Builder builder, String endpoint,
+      String namespace) {
+    return builder
+        .endpoint(endpoint)
+        .namespace(namespace)
+        .build();
+  }
+
+  private PdaReadResponse getPdaReadResponse(ContractedPdaReadRequest readRequest,
+      LambdaLogger logger) {
+    PdaReadResponse response = null;
+    try {
+      response = PDA_CLIENT.readFromContractedPda(readRequest);
+    } catch (IOException e) {
+      logger.log(CANNOT_READ_FROM_PDA_MSG + e.getMessage());
+      System.exit(1);
+    }
+    return response;
   }
 }

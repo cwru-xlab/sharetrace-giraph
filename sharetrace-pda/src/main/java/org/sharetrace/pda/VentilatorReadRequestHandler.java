@@ -19,7 +19,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
-import org.sharetrace.model.pda.request.ContractedPdaReadRequestBody;
+import org.sharetrace.model.pda.request.ContractedPdaRequestBody;
 import org.sharetrace.model.pda.request.ShortLivedTokenRequest;
 import org.sharetrace.model.pda.response.ShortLivedTokenResponse;
 import org.sharetrace.model.util.ShareTraceUtil;
@@ -129,9 +129,9 @@ public class VentilatorReadRequestHandler implements RequestHandler<ScheduledEve
     for (int iPartition = 0; iPartition < nPartitions; iPartition++) {
       int startIndex = iPartition * PARTITION_SIZE;
       int endIndex = (iPartition + 1) * PARTITION_SIZE - 1;
-      List<ContractedPdaReadRequestBody> requestBodies = IntStream.range(startIndex, endIndex)
+      List<ContractedPdaRequestBody> requestBodies = IntStream.range(startIndex, endIndex)
           .mapToObj(hats::get)
-          .map(hat -> ContractedPdaReadRequestBody.builder()
+          .map(hat -> ContractedPdaRequestBody.builder()
               .contractId(contractId)
               .hatName(hat)
               .shortLivedToken(shortLivedToken)
