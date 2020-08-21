@@ -1,5 +1,6 @@
 package org.sharetrace.beliefpropagation.format.input;
 
+import com.fasterxml.jackson.core.JsonFactory;
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -11,11 +12,11 @@ import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.InputSplit;
 import org.apache.hadoop.mapreduce.TaskAttemptContext;
-import org.sharetrace.beliefpropagation.format.FormatUtils;
 import org.sharetrace.beliefpropagation.format.writable.FactorGraphVertexId;
 import org.sharetrace.beliefpropagation.format.writable.FactorGraphWritable;
 import org.sharetrace.beliefpropagation.format.writable.FactorVertexValue;
 import org.sharetrace.beliefpropagation.format.writable.VariableVertexValue;
+import org.sharetrace.model.util.ShareTraceUtil;
 import org.sharetrace.model.vertex.FactorVertex;
 import org.sharetrace.model.vertex.VariableVertex;
 import org.sharetrace.model.vertex.VertexType;
@@ -27,7 +28,7 @@ public class FactorGraphVertexInputFormat extends
 
   private static final Logger LOGGER = LoggerFactory.getLogger(FactorGraphVertexInputFormat.class);
 
-  private static final ObjectMapper MAPPER = FormatUtils.getObjectMapper();
+  private static final ObjectMapper MAPPER = ShareTraceUtil.getMapper();
 
   private static final String TYPE = "type";
 
@@ -47,7 +48,8 @@ public class FactorGraphVertexInputFormat extends
       Preconditions.checkNotNull(line, "Vertex id text must not be null");
       String text = line.toString();
       LOGGER.debug("Parsing vertex id text...");
-      JsonParser parser = MAPPER.createParser(text);
+      JsonFactory factory = MAPPER.getFactory();
+      JsonParser parser = factory.createParser(text);
       JsonNode node = parser.getCodec().readTree(parser);
       LOGGER.debug("Getting the type of the vertex...");
       String vertexType = node.get(TYPE).asText();
@@ -74,7 +76,8 @@ public class FactorGraphVertexInputFormat extends
       Preconditions.checkNotNull(line, "Vertex value text must not be null");
       String text = line.toString();
       LOGGER.debug("Parsing vertex value text...");
-      JsonParser parser = MAPPER.createParser(text);
+      JsonFactory factory = MAPPER.getFactory();
+      JsonParser parser = factory.createParser(text);
       JsonNode node = parser.getCodec().readTree(parser);
       LOGGER.debug("Getting the type of the vertex...");
       String vertexType = node.get(TYPE).asText();

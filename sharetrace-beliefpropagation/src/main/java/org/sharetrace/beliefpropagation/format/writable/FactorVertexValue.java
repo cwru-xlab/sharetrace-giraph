@@ -67,12 +67,12 @@ public final class FactorVertexValue implements Writable {
     for (int iOccurrence = 0; iOccurrence < nOccurrences; iOccurrence++) {
       Instant time = Instant.ofEpochMilli(dataInput.readLong());
       Duration duration = Duration.ofMillis(dataInput.readLong());
-      occurrences.add(Occurrence.builder().setTime(time).setDuration(duration).build());
+      occurrences.add(Occurrence.builder().time(time).duration(duration).build());
     }
     contact = Contact.builder()
-        .setFirstUser(firstUser)
-        .setSecondUser(secondUser)
-        .setOccurrences(occurrences)
+        .firstUser(firstUser)
+        .secondUser(secondUser)
+        .occurrences(occurrences)
         .build();
   }
 

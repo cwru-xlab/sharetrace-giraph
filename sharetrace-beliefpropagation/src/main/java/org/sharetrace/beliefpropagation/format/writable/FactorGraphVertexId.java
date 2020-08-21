@@ -74,7 +74,7 @@ public final class FactorGraphVertexId implements WritableComparable<FactorGraph
     for (int iUserId = 0; iUserId < nUserIds; iUserId++) {
       userIds.add(dataInput.readUTF());
     }
-    idGroup = IdGroup.builder().setIds(userIds).build();
+    idGroup = IdGroup.builder().ids(userIds).build();
   }
 
   @Override

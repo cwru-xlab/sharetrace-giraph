@@ -1,4 +1,9 @@
+
+sourceSets.main.java.srcDirs += 'src/main/generated'
+
 dependencies {
     // https://mvnrepository.com/artifact/org.immutables/value
-    implementation group: 'org.immutables', name: 'value', version: '2.8.8'
+    implementation('org.immutables:value:2.8.8')
+    // https://mvnrepository.com/artifact/com.squareup.okhttp3/okhttp
+    implementation('com.squareup.okhttp3:okhttp:4.8.1')
 }

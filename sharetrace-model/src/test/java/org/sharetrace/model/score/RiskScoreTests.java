@@ -37,24 +37,24 @@ class RiskScoreTests {
   @BeforeEach
   final void beforeEach() {
     earlyUser1MinRiskScore = RiskScore.builder()
-        .setId(ID_1)
-        .setUpdateTime(INSTANT_1)
-        .setValue(MIN_RISK_SCORE)
+        .id(ID_1)
+        .updateTime(INSTANT_1)
+        .value(MIN_RISK_SCORE)
         .build();
     earlyUser2MinRiskScore = RiskScore.builder()
-        .setId(ID_2)
-        .setUpdateTime(INSTANT_1)
-        .setValue(MIN_RISK_SCORE)
+        .id(ID_2)
+        .updateTime(INSTANT_1)
+        .value(MIN_RISK_SCORE)
         .build();
     earlyUser1MaxRiskScore = RiskScore.builder()
-        .setId(ID_1)
-        .setUpdateTime(INSTANT_1)
-        .setValue(MAX_RISK_SCORE)
+        .id(ID_1)
+        .updateTime(INSTANT_1)
+        .value(MAX_RISK_SCORE)
         .build();
     lateUser1MinRiskScore = RiskScore.builder()
-        .setId(ID_1)
-        .setUpdateTime(INSTANT_2)
-        .setValue(MIN_RISK_SCORE)
+        .id(ID_1)
+        .updateTime(INSTANT_2)
+        .value(MIN_RISK_SCORE)
         .build();
   }
 

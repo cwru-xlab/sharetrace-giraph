@@ -54,8 +54,7 @@ public final class BeliefPropagationRunner {
     config.setMasterComputeClass(MASTER_COMPUTE);
     config.setVertexValueCombinerClass(VERTEX_VALUE_COMBINER);
     config.setMaxNumberOfSupersteps(MAX_NUM_SUPERSTEPS);
-    config.COMPUTATION_CLASS
-        .setMany(config, FACTOR_VERTEX_COMPUTATION, VARIABLE_VERTEX_COMPUTATION);
+    config.COMPUTATION_CLASS.setMany(config, FACTOR_VERTEX_COMPUTATION, VARIABLE_VERTEX_COMPUTATION);
     Tool runner = new GiraphRunner();
     runner.setConf(config);
     try {
@@ -63,6 +62,5 @@ public final class BeliefPropagationRunner {
     } catch (Exception e) {
       e.printStackTrace();
     }
-
   }
 }

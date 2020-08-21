@@ -46,16 +46,16 @@ public class FactorGraphVertexOutputFormat extends
       if (writable.getType().equals(VertexType.FACTOR)) {
         LOGGER.debug("Vertex to write is a factor vertex");
         FactorVertex factor = FactorVertex.builder()
-            .setVertexId(vertexId)
-            .setVertexValue(((FactorVertexValue) writable.getWrapped()).getContact())
+            .vertexId(vertexId)
+            .vertexValue(((FactorVertexValue) writable.getWrapped()).getContact())
             .build();
         LOGGER.debug("Writing factor vertex as a String");
         text = MAPPER.writeValueAsString(factor);
       } else {
         LOGGER.debug("Vertex to write is a variable vertex");
         VariableVertex variable = VariableVertex.builder()
-            .setVertexId(vertexId)
-            .setVertexValue(
+            .vertexId(vertexId)
+            .vertexValue(
                 ((VariableVertexValue) writable.getWrapped()).getSendableRiskScores())
             .build();
         LOGGER.debug("Writing variable vertex as a String");

@@ -88,9 +88,9 @@ public class ContactMatchingComputation {
       return null;
     }
     return Contact.builder()
-        .setFirstUser(history.getId())
-        .setSecondUser(otherHistory.getId())
-        .setOccurrences(occurrences).build();
+        .firstUser(history.getId())
+        .secondUser(otherHistory.getId())
+        .occurrences(occurrences).build();
   }
 
   private Set<Occurrence> findOccurrences(LocationHistory history, LocationHistory otherHistory) {
@@ -171,10 +171,7 @@ public class ContactMatchingComputation {
 
   private Occurrence createOccurrence(TemporalLocation start, TemporalLocation end) {
     Duration duration = Duration.between(start.getTime(), end.getTime());
-    return Occurrence.builder()
-        .setTime(start.getTime())
-        .setDuration(duration)
-        .build();
+    return Occurrence.builder().time(start.getTime()).duration(duration).build();
   }
 
   @VisibleForTesting

@@ -78,15 +78,15 @@ public final class VariableVertexValue implements Writable {
     int nRiskScores = dataInput.readInt();
     for (int iRiskScore = 0; iRiskScore < nRiskScores; iRiskScore++) {
       RiskScore riskScore = RiskScore.builder()
-          .setId(dataInput.readUTF())
-          .setUpdateTime(Instant.ofEpochMilli(dataInput.readLong()))
-          .setValue(dataInput.readDouble())
+          .id(dataInput.readUTF())
+          .updateTime(Instant.ofEpochMilli(dataInput.readLong()))
+          .value(dataInput.readDouble())
           .build();
       riskScores.add(riskScore);
     }
     sendableRiskScores = SendableRiskScores.builder()
-        .setSender(userIds)
-        .setMessage(riskScores)
+        .sender(userIds)
+        .message(riskScores)
         .build();
     maxRiskScore = Collections.max(sendableRiskScores.getMessage(), COMPARE_BY_RISK_SCORE);
   }

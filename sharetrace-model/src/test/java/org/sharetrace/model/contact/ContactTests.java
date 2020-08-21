@@ -42,11 +42,11 @@ class ContactTests {
   final void beforeEach() {
     userId1 = ID_1;
     userId2 = ID_2;
-    occurrence1 = Occurrence.builder().setTime(TEST_INSTANT_1).setDuration(TEST_DURATION_1).build();
-    occurrence2 = Occurrence.builder().setTime(TEST_INSTANT_2).setDuration(TEST_DURATION_2).build();
+    occurrence1 = Occurrence.builder().time(TEST_INSTANT_1).duration(TEST_DURATION_1).build();
+    occurrence2 = Occurrence.builder().time(TEST_INSTANT_2).duration(TEST_DURATION_2).build();
     contact = Contact.builder()
-        .setFirstUser(userId1)
-        .setSecondUser(userId2)
+        .firstUser(userId1)
+        .secondUser(userId2)
         .addOccurrences(occurrence1, occurrence2)
         .build();
   }
@@ -55,8 +55,8 @@ class ContactTests {
   final void constructor_withSameUserAsBothUsers_throwsIllegalStateException() {
     assertThrows(IllegalStateException.class,
         () -> Contact.builder()
-            .setFirstUser(userId1)
-            .setSecondUser(userId1)
+            .firstUser(userId1)
+            .secondUser(userId1)
             .addOccurrences(occurrence1)
             .build());
   }
@@ -65,16 +65,16 @@ class ContactTests {
   final void constructor_withNoOccurrences_throwsIllegalStateException() {
     assertThrows(IllegalStateException.class,
         () -> Contact.builder()
-            .setFirstUser(userId1)
-            .setSecondUser(userId2)
+            .firstUser(userId1)
+            .secondUser(userId2)
             .build());
   }
 
   @Test
   final void equals_verifyDifferentUserOrderings_firstSecondEqualsSecondFirst() {
     AbstractContact swappedUsers = Contact.builder()
-        .setFirstUser(userId2)
-        .setSecondUser(userId1)
+        .firstUser(userId2)
+        .secondUser(userId1)
         .addOccurrences(occurrence1, occurrence2)
         .build();
     assertEquals(contact, swappedUsers, "Contacts with the same users should be equal");
