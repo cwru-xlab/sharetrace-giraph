@@ -22,13 +22,13 @@ class FactorVertexTests {
       .build();
 
   private final Occurrence occurrence = Occurrence.builder()
-      .setTime(TestConstants.getInstant1())
-      .setDuration(TestConstants.getDuration1())
+      .time(TestConstants.getInstant1())
+      .duration(TestConstants.getDuration1())
       .build();
 
   private final Contact contact = Contact.builder()
-      .setFirstUser(userId1)
-      .setSecondUser(userId2)
+      .firstUser(userId1)
+      .secondUser(userId2)
       .addOccurrences(occurrence)
       .build();
 
@@ -38,7 +38,7 @@ class FactorVertexTests {
 
   @BeforeEach
   final void beforeEach() {
-    factorVertex = FactorVertex.builder().setVertexId(userGroup).setVertexValue(contact).build();
+    factorVertex = FactorVertex.builder().vertexId(userGroup).vertexValue(contact).build();
   }
 
   @Test

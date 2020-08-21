@@ -53,7 +53,7 @@ public class ContactMatchingComputationTests {
   private static final Set<Contact> NO_CONTACT = ImmutableSet.of();
 
   private static final ImmutableSortedSet<Occurrence> OCCURRENCES = ImmutableSortedSet.of(
-      Occurrence.builder().setDuration(OCCURRENCE_THRESHOLD).setTime(TIME_1).build());
+      Occurrence.builder().duration(OCCURRENCE_THRESHOLD).time(TIME_1).build());
 
   private static final String ENTRY_EXISTS = "Size of at least 2 results in non-empty set";
 

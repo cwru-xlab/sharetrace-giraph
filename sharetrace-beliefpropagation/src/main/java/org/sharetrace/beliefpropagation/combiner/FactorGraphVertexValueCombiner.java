@@ -60,8 +60,8 @@ public class FactorGraphVertexValueCombiner implements VertexValueCombiner<Facto
     Preconditions.checkNotNull(original, "Null contact cannot be combined");
     Preconditions.checkNotNull(other, "Null contact cannot be combined");
     return FactorVertexValue.of(Contact.builder()
-        .setFirstUser(original.getFirstUser())
-        .setSecondUser(original.getSecondUser())
+        .firstUser(original.getFirstUser())
+        .secondUser(original.getSecondUser())
         .addAllOccurrences(original.getOccurrences())
         .addAllOccurrences(other.getOccurrences())
         .build());

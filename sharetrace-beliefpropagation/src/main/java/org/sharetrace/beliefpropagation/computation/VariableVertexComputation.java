@@ -98,7 +98,7 @@ public final class VariableVertexComputation extends
         FactorGraphWritable.ofVariableVertex(
             VariableVertexValue.of(SendableRiskScores.builder()
             .addAllMessage(newValues)
-            .setSender(valueId)
+            .sender(valueId)
             .build())));
   }
 
@@ -125,8 +125,8 @@ public final class VariableVertexComputation extends
     Collection<RiskScore> withoutReceiverMsg = new HashSet<>(messages);
     withoutReceiverMsg.removeIf(msg -> msg.getId().equals(fromReceiver.getId()));
     return VariableVertexValue.of(SendableRiskScores.builder()
-        .setSender(sender)
-        .setMessage(withoutReceiverMsg)
+        .sender(sender)
+        .message(withoutReceiverMsg)
         .build());
   }
 }

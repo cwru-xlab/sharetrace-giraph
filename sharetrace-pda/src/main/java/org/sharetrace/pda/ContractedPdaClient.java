@@ -1,0 +1,83 @@
+package org.sharetrace.pda;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.Objects;
+import okhttp3.HttpUrl;
+import okhttp3.MediaType;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.Response;
+import org.sharetrace.model.pda.request.AbstractContractedPdaRequestBody;
+import org.sharetrace.model.pda.request.ContractedPdaReadRequest;
+import org.sharetrace.model.pda.request.ContractedPdaWriteRequest;
+import org.sharetrace.model.pda.request.PdaRequestUrl;
+import org.sharetrace.model.pda.request.ShortLivedTokenRequest;
+import org.sharetrace.model.pda.response.PdaReadResponse;
+import org.sharetrace.model.pda.response.PdaWriteResponse;
+import org.sharetrace.model.pda.response.ShortLivedTokenResponse;
+import org.sharetrace.model.util.ShareTraceUtil;
+
+/**
+ * Client that is able to send requests to contracted PDAs and retrieve a short-lived token.
+ */
+public class ContractedPdaClient {
+
+  private static final ObjectMapper MAPPER = ShareTraceUtil.getMapper();
+
+  private static final OkHttpClient CLIENT = new OkHttpClient();
+
+  private static final String CONTRACTS_KEYRING = "contracts/keyring";
+
+  private static final String AUTH_HEADER = "Authorization: Bearer %s";
+
+  private static final String GET = "GET";
+
+  private static final String POST = "POST";
+
+  private static final String CONTENT_TYPE = "application/json";
+
+  public ShortLivedTokenResponse getShortLivedToken(ShortLivedTokenRequest request)
+      throws IOException {
+    HttpUrl url = new HttpUrl.Builder()
+        .addPathSegments(request.getContractsServerUrl().getPath())
+        .addPathSegments(CONTRACTS_KEYRING)
+        .build();
+    String token = request.getLongLivedToken();
+    Request formattedRequest = new Request.Builder()
+        .url(url)
+        .method(GET, null)
+        .addHeader(AUTH_HEADER, token).build();
+    Response response = CLIENT.newCall(formattedRequest).execute();
+    InputStream responseBody = Objects.requireNonNull(response.body()).byteStream();
+    return MAPPER.readValue(responseBody, ShortLivedTokenResponse.class);
+  }
+
+  public PdaReadResponse readFromContractedPda(ContractedPdaReadRequest request)
+      throws IOException {
+    AbstractContractedPdaRequestBody body = request.getReadRequestBody();
+    PdaRequestUrl url = request.getPdaRequestUrl();
+    InputStream responseBody = requestFromContractedPda(url, body);
+    return MAPPER.readValue(responseBody, PdaReadResponse.class);
+  }
+
+  public PdaWriteResponse writeToContractedPda(ContractedPdaWriteRequest request)
+      throws IOException {
+    AbstractContractedPdaRequestBody body = request.getWriteRequestBody();
+    PdaRequestUrl url = request.getPdaRequestUrl();
+    InputStream responseBody = requestFromContractedPda(url, body);
+    return MAPPER.readValue(responseBody, PdaWriteResponse.class);
+  }
+
+  private InputStream requestFromContractedPda(PdaRequestUrl url,
+      AbstractContractedPdaRequestBody body) throws IOException {
+    String textBody = MAPPER.writeValueAsString(body);
+    MediaType mediaType = MediaType.parse(CONTENT_TYPE);
+    RequestBody requestBody = RequestBody.create(textBody, mediaType);
+    Request request = new Request.Builder().url(url.toURL()).method(POST, requestBody).build();
+    Response response = CLIENT.newCall(request).execute();
+    return Objects.requireNonNull(response.body()).byteStream();
+  }
+}

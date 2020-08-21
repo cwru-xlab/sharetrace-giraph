@@ -1,5 +1,7 @@
 package org.sharetrace.model.score;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonProperty.Access;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.google.common.base.Preconditions;
@@ -34,12 +36,15 @@ public abstract class AbstractRiskScore implements Updatable, Identifiable<Strin
   private static final double MAX_RISK_SCORE = 1.0;
 
   @Override
+  @JsonProperty(value = "id", access = Access.READ_WRITE)
   public abstract String getId();
 
   @Override
+  @JsonProperty(value = "timestamp", access = Access.READ_WRITE)
   public abstract Instant getUpdateTime();
 
   @Override
+  @JsonProperty(value = "score", access = Access.READ_WRITE)
   public abstract Double getValue();
 
   @Value.Check

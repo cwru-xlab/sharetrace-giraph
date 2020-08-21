@@ -25,15 +25,15 @@ class SendableRiskScoresTests {
   private static final Instant INSTANT_1 = TestConstants.getInstant1();
 
   private static final RiskScore RISK_SCORE_1 = RiskScore.builder()
-      .setId(ID_1)
-      .setUpdateTime(INSTANT_1)
-      .setValue(MAX_RISK_SCORE)
+      .id(ID_1)
+      .updateTime(INSTANT_1)
+      .value(MAX_RISK_SCORE)
       .build();
 
   private static final RiskScore RISK_SCORE_2 = RiskScore.builder()
-      .setId(ID_2)
-      .setUpdateTime(INSTANT_1)
-      .setValue(MAX_RISK_SCORE)
+      .id(ID_2)
+      .updateTime(INSTANT_1)
+      .value(MAX_RISK_SCORE)
       .build();
 
   private static final Collection<RiskScore> RISK_SCORES = ImmutableSortedSet
@@ -46,8 +46,8 @@ class SendableRiskScoresTests {
   @BeforeEach
   final void beforeEach() {
     sendableRiskScores = SendableRiskScores.builder()
-        .setSender(ID_GROUP.getIds())
-        .setMessage(RISK_SCORES)
+        .sender(ID_GROUP.getIds())
+        .message(RISK_SCORES)
         .build();
   }
 

@@ -153,9 +153,9 @@ public final class FactorVertexComputation extends
     // Provide a default message if the messages is empty or the risk is not to be transmitted
     if (message.getMessage().isEmpty() || !isTransmitted()) {
       toSend = RiskScore.builder()
-          .setId(sender.first())
-          .setUpdateTime(MasterComputer.getInitializedAt())
-          .setValue(DEFAULT_RISK_SCORE)
+          .id(sender.first())
+          .updateTime(MasterComputer.getInitializedAt())
+          .value(DEFAULT_RISK_SCORE)
           .build();
     } else {
       // Otherwise select the message with the maximum value
