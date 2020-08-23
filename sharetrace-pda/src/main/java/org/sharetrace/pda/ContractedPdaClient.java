@@ -10,14 +10,13 @@ import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
-import org.sharetrace.model.pda.request.AbstractContractedPdaRequestBody;
 import org.sharetrace.model.pda.request.ContractedPdaReadRequest;
 import org.sharetrace.model.pda.request.ContractedPdaRequestBody;
 import org.sharetrace.model.pda.request.ContractedPdaWriteRequest;
 import org.sharetrace.model.pda.request.PdaRequestUrl;
 import org.sharetrace.model.pda.request.ShortLivedTokenRequest;
-import org.sharetrace.model.pda.response.PdaReadResponse;
-import org.sharetrace.model.pda.response.PdaWriteResponse;
+import org.sharetrace.model.pda.response.PdaResponse;
+import org.sharetrace.model.pda.response.ResponseUtil;
 import org.sharetrace.model.pda.response.ShortLivedTokenResponse;
 import org.sharetrace.model.util.ShareTraceUtil;
 
@@ -53,23 +52,21 @@ public class ContractedPdaClient {
         .addHeader(AUTH_HEADER, token).build();
     Response response = CLIENT.newCall(formattedRequest).execute();
     InputStream responseBody = Objects.requireNonNull(response.body()).byteStream();
-    return MAPPER.readValue(responseBody, ShortLivedTokenResponse.class);
+    return ResponseUtil.mapToShortLivedTokenResponse(responseBody);
   }
 
-  public PdaReadResponse readFromContractedPda(ContractedPdaReadRequest request)
-      throws IOException {
+  public <T> PdaResponse<T> read(ContractedPdaReadRequest request) throws IOException {
     PdaRequestUrl url = request.getPdaRequestUrl();
-    AbstractContractedPdaRequestBody body = request.getReadRequestBody();
-    InputStream responseBody = requestFromContractedPda(url, ContractedPdaRequestBody.copyOf(body));
-    return MAPPER.readValue(responseBody, PdaReadResponse.class);
+    ContractedPdaRequestBody body = request.getReadRequestBody().getBaseRequestBody();
+    InputStream response = requestFromContractedPda(url, body);
+    return ResponseUtil.mapToPdaResponse(response);
   }
 
-  public PdaWriteResponse writeToContractedPda(ContractedPdaWriteRequest request)
-      throws IOException {
+  public <T> PdaResponse<T> write(ContractedPdaWriteRequest<T> request) throws IOException {
     PdaRequestUrl url = request.getPdaRequestUrl();
-    AbstractContractedPdaRequestBody body = request.getWriteRequestBody();
-    InputStream responseBody = requestFromContractedPda(url, ContractedPdaRequestBody.copyOf(body));
-    return MAPPER.readValue(responseBody, PdaWriteResponse.class);
+    ContractedPdaRequestBody body = request.getWriteRequestBody().getBaseRequestBody();
+    InputStream response = requestFromContractedPda(url, body);
+    return ResponseUtil.mapToPdaResponse(response);
   }
 
   private InputStream requestFromContractedPda(PdaRequestUrl url, ContractedPdaRequestBody body)
