@@ -11,20 +11,16 @@ import java.util.Optional;
 import org.immutables.value.Value;
 
 /**
- * Response to a short-lived token request.
+ * A general response to a request made to a PDA.
  */
 @Value.Immutable
 @JsonInclude(Include.NON_ABSENT)
-@JsonSerialize(as = ShortLivedTokenResponse.class)
-@JsonDeserialize(as = ShortLivedTokenResponse.class)
-public abstract class AbstractShortLivedTokenResponse implements Response<String> {
+@JsonSerialize(as = PdaResponse.class)
+@JsonDeserialize(as = PdaResponse.class)
+public abstract class AbstractPdaResponse<T> implements Response<Record<T>> {
 
-  @JsonProperty(value = "token", access = Access.READ_WRITE)
-  public abstract Optional<String> getShortLivedToken();
-
-  @Override
-  @JsonProperty(value = "associatedHats", access = Access.READ_WRITE)
-  public abstract Optional<List<String>> getData();
+  @JsonProperty(value = "records", access = Access.READ_WRITE)
+  public abstract Optional<List<Record<T>>> getData();
 
   @Override
   public abstract Optional<String> getError();
