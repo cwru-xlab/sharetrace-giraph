@@ -7,13 +7,14 @@ import org.immutables.value.Value;
 
 /**
  * Write request to a contracted PDA.
+ * @param <T> Type of the data contained in the response.
  */
 @Value.Immutable
 @JsonSerialize(as = ContractedPdaWriteRequest.class)
 @JsonDeserialize(as = ContractedPdaWriteRequest.class)
-public abstract class AbstractContractedPdaWriteRequest {
+public abstract class AbstractContractedPdaWriteRequest<T> {
 
   public abstract PdaRequestUrl getPdaRequestUrl();
 
-  public abstract ContractedPdaWriteRequestBody getWriteRequestBody();
+  public abstract ContractedPdaWriteRequestBody<T> getWriteRequestBody();
 }

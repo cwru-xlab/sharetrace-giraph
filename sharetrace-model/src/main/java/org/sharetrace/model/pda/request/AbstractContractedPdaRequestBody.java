@@ -4,6 +4,8 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonProperty.Access;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import com.google.common.base.Preconditions;
+import com.google.common.base.Strings;
 import org.immutables.value.Value;
 
 /**
@@ -12,14 +14,27 @@ import org.immutables.value.Value;
 @Value.Immutable
 @JsonSerialize(as = ContractedPdaRequestBody.class)
 @JsonDeserialize(as = ContractedPdaRequestBody.class)
-public interface AbstractContractedPdaRequestBody {
+public abstract class AbstractContractedPdaRequestBody {
+
+  private static final String INVALID_TOKEN_MSG = "Token must not be empty String or null";
+
+  private static final String INVALID_CONTRACT_ID = "Contract ID must not be empty String or null";
+
+  private static final String INVALID_HAT_NAME = "HAT name must not be empty String or null";
 
   @JsonProperty(value = "token", access = Access.READ_WRITE)
-  String getShortLivedToken();
+  public abstract String getShortLivedToken();
 
   @JsonProperty(value = "contractId", access = Access.READ_WRITE)
-  String getContractId();
+  public abstract String getContractId();
 
   @JsonProperty(value = "hatName", access = Access.READ_WRITE)
-  String getHatName();
+  public abstract String getHatName();
+
+  @Value.Check
+  protected final void verifyInputArguments() {
+    Preconditions.checkArgument(!Strings.isNullOrEmpty(getShortLivedToken()), INVALID_TOKEN_MSG);
+    Preconditions.checkArgument(!Strings.isNullOrEmpty(getContractId()), INVALID_CONTRACT_ID);
+    Preconditions.checkArgument(!Strings.isNullOrEmpty(getHatName()), INVALID_HAT_NAME);
+  }
 }
