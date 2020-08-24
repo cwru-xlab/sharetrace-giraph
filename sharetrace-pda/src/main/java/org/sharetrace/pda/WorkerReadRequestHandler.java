@@ -10,7 +10,6 @@ import com.amazonaws.services.s3.model.GetObjectRequest;
 import com.amazonaws.services.s3.model.PutObjectRequest;
 import com.amazonaws.services.s3.model.S3Object;
 import com.amazonaws.services.s3.model.S3ObjectInputStream;
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Charsets;
 import java.io.BufferedReader;
@@ -20,12 +19,13 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.sharetrace.model.location.LocationHistory;
 import org.sharetrace.model.location.TemporalLocation;
-import org.sharetrace.model.location.TemporalLocationRecord;
 import org.sharetrace.model.pda.HatContext;
+import org.sharetrace.model.pda.Payload;
 import org.sharetrace.model.pda.request.AbstractPdaReadRequestParameters.Ordering;
 import org.sharetrace.model.pda.request.AbstractPdaRequestUrl.Operation;
 import org.sharetrace.model.pda.request.ContractedPdaReadRequest;
@@ -33,7 +33,8 @@ import org.sharetrace.model.pda.request.ContractedPdaReadRequestBody;
 import org.sharetrace.model.pda.request.ContractedPdaRequestBody;
 import org.sharetrace.model.pda.request.PdaReadRequestParameters;
 import org.sharetrace.model.pda.request.PdaRequestUrl;
-import org.sharetrace.model.pda.response.PdaReadResponse;
+import org.sharetrace.model.pda.response.PdaResponse;
+import org.sharetrace.model.pda.response.Record;
 import org.sharetrace.model.score.RiskScore;
 import org.sharetrace.model.util.ShareTraceUtil;
 import org.sharetrace.pda.util.LambdaHandlerLogging;
@@ -44,7 +45,7 @@ import org.sharetrace.pda.util.LambdaHandlerLogging;
  * <p>
  * This Lambda function is invoked by {@link VentilatorReadRequestHandler}.
  */
-public class WorkerReadRequestHandler implements
+public class WorkerReadRequestHandler<T> implements
     RequestHandler<List<ContractedPdaRequestBody>, String> {
 
   // Logging messages
@@ -71,7 +72,7 @@ public class WorkerReadRequestHandler implements
 
   private static final ObjectMapper MAPPER = ShareTraceUtil.getMapper();
 
-  private static final String ORDER_BY = "TIMESTAMP";
+  private static final String ORDER_BY = "timestamp";
   private static final String INPUT_SEGMENT = "input/";
 
   @Override
@@ -93,23 +94,27 @@ public class WorkerReadRequestHandler implements
     PdaRequestUrl.Builder builder = getCommonUrlBuilder(logger);
     PdaRequestUrl locsUrl = getPdaRequestUrl(builder, locsEndpoint, locsNamespace);
     String hatName = input.getHatName();
+    int skipAmount = getSkipAmount(hatName, logger);
     PdaReadRequestParameters parameters = PdaReadRequestParameters.builder()
         .orderBy(ORDER_BY)
         .ordering(Ordering.ASCENDING)
-        .skipAmount(getSkipAmount(hatName, logger))
+        .skipAmount(skipAmount)
         .build();
     ContractedPdaReadRequestBody body = ContractedPdaReadRequestBody.builder()
-        .contractId(input.getContractId())
-        .hatName(hatName)
-        .shortLivedToken(input.getShortLivedToken())
+        .baseRequestBody(input)
         .parameters(parameters)
         .build();
     ContractedPdaReadRequest locationsRequest = ContractedPdaReadRequest.builder()
         .pdaRequestUrl(locsUrl)
         .readRequestBody(body)
         .build();
-    PdaReadResponse locationsResponse = getPdaReadResponse(locationsRequest, logger);
-    writeLocationsToS3(hatName, locationsResponse, logger);
+    PdaResponse<TemporalLocation> locationsResponse = getLocationResponse(locationsRequest, logger);
+    int nLocationsWritten = writeLocationsToS3(locationsResponse, hatName, logger);
+    HatContext updatedContext = HatContext.builder()
+        .hatName(hatName)
+        .numRecordsRead(nLocationsWritten + skipAmount)
+        .build();
+    updateHatContext(updatedContext, logger);
   }
 
   private String getLocationsEndpoint(LambdaLogger logger) {
@@ -135,44 +140,75 @@ public class WorkerReadRequestHandler implements
   }
 
   private int getSkipAmount(String hatName, LambdaLogger logger) {
-    String key = INPUT_SEGMENT + hatName;
-    // TODO Update the count and write back
-    GetObjectRequest objectRequest = new GetObjectRequest(HAT_CONTEXT_BUCKET, key);
+    GetObjectRequest objectRequest = new GetObjectRequest(HAT_CONTEXT_BUCKET, getKey(hatName));
     S3Object object = S3_CLIENT.getObject(objectRequest);
     S3ObjectInputStream input = object.getObjectContent();
     int skipAmount = 0;
-    try {
-      BufferedReader reader = new BufferedReader(new InputStreamReader(input, Charsets.UTF_8));
+    try (BufferedReader reader = new BufferedReader(new InputStreamReader(input, Charsets.UTF_8))) {
       HatContext hatContext = MAPPER.readValue(reader.readLine(), HatContext.class);
       skipAmount = hatContext.getNumRecordsRead();
-      reader.close();
     } catch (IOException e) {
       logger.log(CANNOT_DESERIALIZE + e.getMessage());
     }
-
     return skipAmount;
   }
 
-  private void writeLocationsToS3(String hatName, PdaReadResponse response, LambdaLogger logger) {
-    try {
-      String readResponse = MAPPER.writeValueAsString(response);
-      List<TemporalLocationRecord> locationHistory = MAPPER.readValue(readResponse,
-          new TypeReference<List<TemporalLocationRecord>>() {
-          });
-      Set<TemporalLocation> locations = locationHistory
-          .stream()
-          .map(TemporalLocationRecord::getData)
-          .collect(Collectors.toSet());
-      LocationHistory history = LocationHistory.builder()
-          .id(hatName)
-          .addAllHistory(locations)
-          .build();
+  private String getKey(String hatName) {
+    return INPUT_SEGMENT + hatName;
+  }
 
-      File file = new File(hatName);
-      BufferedWriter writer = new BufferedWriter(new FileWriter(file));
-      writer.write(MAPPER.writeValueAsString(history));
-      writer.close();
-      writeObjectRequest(LOCATIONS_BUCKET, INPUT_SEGMENT + hatName, file);
+  private int writeLocationsToS3(PdaResponse<TemporalLocation> response, String hatName,
+      LambdaLogger logger) {
+    File file = new File(getKey(hatName));
+    int nLocationsWritten = 0;
+    try (BufferedWriter writer = new BufferedWriter(new FileWriter(file))) {
+      Optional<List<Record<TemporalLocation>>> records = response.getData();
+      if (records.isPresent() && records.get().size() > 0) {
+        LocationHistory history = transform(records.get(), hatName);
+        writer.write(MAPPER.writeValueAsString(history));
+        writeObjectRequest(LOCATIONS_BUCKET, getKey(hatName), file);
+        nLocationsWritten = history.getHistory().size();
+      } else {
+        logFailedResponse(response.getError(), response.getMessage(), response.getCause(), logger);
+      }
+    } catch (IOException e) {
+      logger.log(CANNOT_WRITE_TO_S3_MSG + e.getMessage());
+    }
+    return nLocationsWritten;
+  }
+
+  private LocationHistory transform(List<Record<TemporalLocation>> records, String hatName) {
+    Set<TemporalLocation> locations = records
+        .stream()
+        .map(Record::getPayload)
+        .map(Payload::getData)
+        .collect(Collectors.toSet());
+    return LocationHistory.builder()
+        .id(hatName)
+        .addAllHistory(locations)
+        .build();
+  }
+
+  private void logFailedResponse(Optional<String> error, Optional<String> message,
+      Optional<String> cause, LambdaLogger logger) {
+    if (error.isPresent()) {
+      String err = error.get();
+      if (message.isPresent()) {
+        logger.log(CANNOT_WRITE_TO_S3_MSG + err + "\n" + message.get());
+      } else if (cause.isPresent()) {
+        logger.log(CANNOT_WRITE_TO_S3_MSG + err + "\n" + cause.get());
+      } else {
+        logger.log(CANNOT_WRITE_TO_S3_MSG + err);
+      }
+    }
+  }
+
+  private void updateHatContext(HatContext updatedContext, LambdaLogger logger) {
+    String key = getKey(updatedContext.getHatName());
+    File updated = new File(key);
+    try (BufferedWriter writer = new BufferedWriter(new FileWriter(updated))) {
+      writer.write(MAPPER.writeValueAsString(updatedContext));
+      S3_CLIENT.putObject(HAT_CONTEXT_BUCKET, key, updated);
     } catch (IOException e) {
       logger.log(CANNOT_WRITE_TO_S3_MSG + e.getMessage());
     }
@@ -186,19 +222,23 @@ public class WorkerReadRequestHandler implements
     ContractedPdaReadRequest scoreRequest = ContractedPdaReadRequest.builder()
         .pdaRequestUrl(scoreUrl)
         .build();
-    PdaReadResponse scoreResponse = getPdaReadResponse(scoreRequest, logger);
-    writeScoreToS3(input.getHatName(), scoreResponse, logger);
+    PdaResponse<RiskScore> scoreResponse = getRiskScoreResponse(scoreRequest, logger);
+    writeScoreToS3(scoreResponse, input.getHatName(), logger);
   }
 
-  private void writeScoreToS3(String hatName, PdaReadResponse response, LambdaLogger logger) {
-    try {
-      String readResponse = MAPPER.writeValueAsString(response);
-      RiskScore score = MAPPER.readValue(readResponse, RiskScore.class);
-      File file = new File(hatName);
-      BufferedWriter writer = new BufferedWriter(new FileWriter(file));
-      writer.write(MAPPER.writeValueAsString(score));
-      writer.close();
-      writeObjectRequest(SCORE_BUCKET, INPUT_SEGMENT + hatName, file);
+  private void writeScoreToS3(PdaResponse<RiskScore> response, String hatName,
+      LambdaLogger logger) {
+    String key = getKey(hatName);
+    File file = new File(key);
+    try (BufferedWriter writer = new BufferedWriter(new FileWriter(file));) {
+      Optional<List<Record<RiskScore>>> records = response.getData();
+      if (records.isPresent() && records.get().size() > 0) {
+        RiskScore riskScore = records.get().get(0).getPayload().getData();
+        writer.write(MAPPER.writeValueAsString(riskScore));
+        writeObjectRequest(SCORE_BUCKET, key, file);
+      } else {
+        logFailedResponse(response.getError(), response.getMessage(), response.getCause(), logger);
+      }
     } catch (IOException e) {
       logger.log(CANNOT_WRITE_TO_S3_MSG + e.getMessage());
     }
@@ -255,11 +295,23 @@ public class WorkerReadRequestHandler implements
         .build();
   }
 
-  private PdaReadResponse getPdaReadResponse(ContractedPdaReadRequest readRequest,
+  private PdaResponse<TemporalLocation> getLocationResponse(ContractedPdaReadRequest readRequest,
       LambdaLogger logger) {
-    PdaReadResponse response = null;
+    PdaResponse<TemporalLocation> response = null;
     try {
-      response = PDA_CLIENT.readFromContractedPda(readRequest);
+      response = PDA_CLIENT.read(readRequest);
+    } catch (IOException e) {
+      logger.log(CANNOT_READ_FROM_PDA_MSG + e.getMessage());
+      System.exit(1);
+    }
+    return response;
+  }
+
+  private PdaResponse<RiskScore> getRiskScoreResponse(ContractedPdaReadRequest readRequest,
+      LambdaLogger logger) {
+    PdaResponse<RiskScore> response = null;
+    try {
+      response = PDA_CLIENT.read(readRequest);
     } catch (IOException e) {
       logger.log(CANNOT_READ_FROM_PDA_MSG + e.getMessage());
       System.exit(1);

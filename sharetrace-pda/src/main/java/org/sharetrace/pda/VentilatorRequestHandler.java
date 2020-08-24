@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -28,6 +29,7 @@ public class VentilatorRequestHandler {
   private static final String CANNOT_FIND_ENV_VAR_MSG = "Unable to find environment variable: \n";
   private static final String FAILED_TO_SERIALIZE_MSG =
       "Failed to serialize request body: \n";
+  private static final String NO_WORKERS_MSG = "No worker functions were found. Exiting handler.";
 
   // TODO Finalize
   // Environment variable keys
@@ -62,18 +64,24 @@ public class VentilatorRequestHandler {
         .build();
     ShortLivedTokenResponse tokenResponse = getShortLivedTokenResponse(tokenRequest);
 
-    Optional<List<String>> hatsOptional = tokenResponse.getHats();
+    Optional<List<String>> hatsOptional = tokenResponse.getData();
     Optional<String> shortLivedTokenOptional = tokenResponse.getShortLivedToken();
     Optional<String> errorOptional = tokenResponse.getError();
     Optional<String> messageOptional = tokenResponse.getMessage();
+    Optional<String> causeOptional = tokenResponse.getCause();
 
     if (hatsOptional.isPresent() && shortLivedTokenOptional.isPresent()) {
       invokeWorkers(hatsOptional.get(), shortLivedTokenOptional.get());
-    } else if (errorOptional.isPresent() && messageOptional.isPresent()) {
-      logger.log(errorOptional.get() + "\n" + messageOptional.get());
-      System.exit(1);
+    } else if (errorOptional.isPresent()) {
+      if (messageOptional.isPresent()) {
+        logger.log(errorOptional.get() + "\n" + messageOptional.get());
+        System.exit(1);
+      } else if (causeOptional.isPresent()) {
+        logger.log(errorOptional.get() + "\n" + causeOptional.get());
+        System.exit(1);
+      }
     } else {
-      logger.log(tokenResponse.getEmpty().toString());
+      logger.log(tokenResponse.getData().toString());
       System.exit(1);
     }
   }
@@ -114,7 +122,12 @@ public class VentilatorRequestHandler {
   private void invokeWorkers(List<String> hats, String shortLivedToken) {
     double nHats = hats.size();
     int nPartitions = (int) Math.ceil(nHats / partitionSize);
-    int nWorkers = getLambdaFunctionNames(lambdaWorkerKeys).size();
+    List<String> lambdaFunctionNames = getLambdaFunctionNames(lambdaWorkerKeys);
+    if (lambdaFunctionNames.isEmpty()) {
+      logger.log(NO_WORKERS_MSG);
+      System.exit(1);
+    }
+    int nWorkers = lambdaFunctionNames.size();
     String contractId = getContractId();
 
     for (int iPartition = 0; iPartition < nPartitions; iPartition++) {
@@ -132,7 +145,7 @@ public class VentilatorRequestHandler {
 
       try {
         InvokeRequest invokeRequest = new InvokeRequest()
-            .withFunctionName(lambdaWorkerKeys.get(iWorker))
+            .withFunctionName(lambdaFunctionNames.get(iWorker))
             .withInvocationType(InvocationType.Event)
             .withPayload(MAPPER.writeValueAsString(requestBodies));
         lambdaClient.invokeAsync(invokeRequest);
@@ -156,6 +169,7 @@ public class VentilatorRequestHandler {
   public List<String> getLambdaFunctionNames(List<String> environmentVariableKeys) {
     return environmentVariableKeys.stream()
         .map(this::getFunctionName)
+        .filter(Objects::nonNull)
         .collect(Collectors.toList());
   }
 
@@ -165,7 +179,6 @@ public class VentilatorRequestHandler {
       functionName = System.getenv(environmentVariableKey);
     } catch (NullPointerException e) {
       logger.log(CANNOT_FIND_ENV_VAR_MSG + e.getMessage());
-      System.exit(1);
     }
     return functionName;
   }

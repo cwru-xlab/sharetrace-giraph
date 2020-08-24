@@ -7,24 +7,24 @@ import com.amazonaws.services.lambda.runtime.RequestHandler;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3ClientBuilder;
 import com.amazonaws.services.s3.model.GetObjectRequest;
-import com.amazonaws.services.s3.model.S3Object;
 import com.amazonaws.services.s3.model.S3ObjectInputStream;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Charsets;
-import com.google.common.collect.ImmutableMap;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.time.Instant;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.function.Predicate;
+import org.sharetrace.model.pda.Payload;
 import org.sharetrace.model.pda.request.AbstractPdaRequestUrl.Operation;
 import org.sharetrace.model.pda.request.ContractedPdaRequestBody;
 import org.sharetrace.model.pda.request.ContractedPdaWriteRequest;
 import org.sharetrace.model.pda.request.ContractedPdaWriteRequestBody;
 import org.sharetrace.model.pda.request.PdaRequestUrl;
+import org.sharetrace.model.score.RiskScore;
 import org.sharetrace.model.util.ShareTraceUtil;
 import org.sharetrace.model.vertex.VariableVertex;
 import org.sharetrace.pda.util.LambdaHandlerLogging;
@@ -64,22 +64,19 @@ public class WorkerWriteRequestHandler implements
   }
 
   private void handleRequest(ContractedPdaRequestBody input, LambdaLogger logger) {
-    PdaRequestUrl url = getPdaRequestUrl(logger);
     String hatName = input.getHatName();
-    double riskScore = getRiskScoreFromS3(hatName, logger);
-    Map<String, Object> data = ImmutableMap.of(SCORE, riskScore);
-    ContractedPdaWriteRequestBody body = ContractedPdaWriteRequestBody.builder()
-        .contractId(input.getContractId())
-        .hatName(hatName)
-        .shortLivedToken(input.getShortLivedToken())
-        .putAllData(data)
-        .build();
-    ContractedPdaWriteRequest request = ContractedPdaWriteRequest.builder()
-        .pdaRequestUrl(url)
+    RiskScore riskScore = getRiskScoreFromS3(hatName, logger);
+    ContractedPdaWriteRequestBody<RiskScore> body =
+        ContractedPdaWriteRequestBody.<RiskScore>builder()
+            .baseRequestBody(input)
+            .payload(Payload.<RiskScore>builder().data(riskScore).build())
+            .build();
+    ContractedPdaWriteRequest<RiskScore> request = ContractedPdaWriteRequest.<RiskScore>builder()
+        .pdaRequestUrl(getPdaRequestUrl(logger))
         .writeRequestBody(body)
         .build();
     try {
-      PDA_CLIENT.writeToContractedPda(request);
+      PDA_CLIENT.write(request);
     } catch (IOException e) {
       logger.log(CANNOT_WRITE_TO_PDA_MSG + e.getMessage());
     }
@@ -104,23 +101,26 @@ public class WorkerWriteRequestHandler implements
     return url;
   }
 
-  private double getRiskScoreFromS3(String hatName, LambdaLogger logger) {
+  // TODO This assumes all scores are stored in one file (inefficient, but output of Giraph is
+  //  primarily one or a few files)
+  private RiskScore getRiskScoreFromS3(String hatName, LambdaLogger logger) {
     GetObjectRequest objectRequest = new GetObjectRequest(SCORE_BUCKET, OUTPUT);
-    S3Object object = S3_CLIENT.getObject(objectRequest);
-    S3ObjectInputStream input = object.getObjectContent();
-    double score = 0.0;
-
-    try {
-      BufferedReader reader = new BufferedReader(new InputStreamReader(input, Charsets.UTF_8));
-      Optional<Double> riskScore = reader.lines()
+    S3ObjectInputStream input = S3_CLIENT.getObject(objectRequest).getObjectContent();
+    RiskScore score = null;
+    try (BufferedReader reader = new BufferedReader(new InputStreamReader(input, Charsets.UTF_8))) {
+      Optional<RiskScore> riskScore = reader.lines()
           .filter(isForHatName(hatName, logger))
           .map(line -> toRiskScore(line, logger))
           .findFirst();
       // New PDA should have initial risk score of 0.0
-      score = riskScore.orElse(0.0);
-      reader.close();
+      score = riskScore.orElse(RiskScore.builder()
+          .id(hatName)
+          .value(0.0)
+          .updateTime(Instant.now())
+          .build());
     } catch (IOException e) {
       logger.log(CANNOT_DESERIALIZE + e.getMessage());
+      System.exit(1);
     }
     return score;
   }
@@ -137,13 +137,14 @@ public class WorkerWriteRequestHandler implements
     };
   }
 
-  private double toRiskScore(String s, LambdaLogger logger) {
-    double riskScore = 0.0;
+  private RiskScore toRiskScore(String s, LambdaLogger logger) {
+    RiskScore riskScore = null;
     try {
       VariableVertex vertex = MAPPER.readValue(s, VariableVertex.class);
-      riskScore = vertex.getVertexValue().getMessage().first().getValue();
+      return vertex.getVertexValue().getMessage().first();
     } catch (JsonProcessingException e) {
       logger.log(CANNOT_DESERIALIZE + e.getMessage());
+      System.exit(1);
     }
     return riskScore;
   }

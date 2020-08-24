@@ -38,6 +38,6 @@ public class VentilatorReadRequestHandler implements RequestHandler<ScheduledEve
     VentilatorRequestHandler handler =
         new VentilatorRequestHandler(LAMBDA_CLIENT, logger, WORKER_LAMBDAS, PARTITION_SIZE);
     handler.handleRequest();
-    return null;
+    return null; // TODO What should this return? Status code?
   }
 }
