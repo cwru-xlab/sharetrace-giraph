@@ -9,7 +9,7 @@ import com.amazonaws.services.lambda.runtime.RequestHandler;
 import com.amazonaws.services.lambda.runtime.events.ScheduledEvent;
 import com.google.common.collect.ImmutableList;
 import java.util.List;
-import org.sharetrace.pda.util.LambdaHandlerLogging;
+import org.sharetrace.pda.util.HandlerUtil;
 
 /**
  * Retrieves the short-lived token and list associated HATs to retrieve data from each PDA.
@@ -33,7 +33,7 @@ public class VentilatorReadRequestHandler implements RequestHandler<ScheduledEve
 
   @Override
   public String handleRequest(ScheduledEvent input, Context context) {
-    LambdaHandlerLogging.logEnvironment(input, context);
+    HandlerUtil.logEnvironment(input, context);
     LambdaLogger logger = context.getLogger();
     VentilatorRequestHandler handler =
         new VentilatorRequestHandler(LAMBDA_CLIENT, logger, WORKER_LAMBDAS, PARTITION_SIZE);

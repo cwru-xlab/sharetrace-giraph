@@ -37,7 +37,7 @@ import org.sharetrace.model.pda.response.PdaResponse;
 import org.sharetrace.model.pda.response.Record;
 import org.sharetrace.model.score.RiskScore;
 import org.sharetrace.model.util.ShareTraceUtil;
-import org.sharetrace.pda.util.LambdaHandlerLogging;
+import org.sharetrace.pda.util.HandlerUtil;
 
 /**
  * Retrieves location and score data from a PDA. If successful, the data is stored in S3 for later
@@ -49,7 +49,6 @@ public class WorkerReadRequestHandler<T> implements
     RequestHandler<List<ContractedPdaRequestBody>, String> {
 
   // Logging messages
-  private static final String CANNOT_FIND_ENV_VAR_MSG = "Unable to environment variable: \n";
   private static final String CANNOT_DESERIALIZE = "Unable to deserialize: \n";
   private static final String CANNOT_WRITE_TO_S3_MSG = "Unable to write to S3: \n";
   private static final String CANNOT_READ_FROM_PDA_MSG = "Unable to read data from PDA: \n";
@@ -77,7 +76,7 @@ public class WorkerReadRequestHandler<T> implements
 
   @Override
   public String handleRequest(List<ContractedPdaRequestBody> input, Context context) {
-    LambdaHandlerLogging.logEnvironment(input, context);
+    HandlerUtil.logEnvironment(input, context);
     LambdaLogger logger = context.getLogger();
     input.forEach(entry -> handleRequest(entry, logger));
     return null;
@@ -89,8 +88,8 @@ public class WorkerReadRequestHandler<T> implements
   }
 
   private void handleLocationsRequest(ContractedPdaRequestBody input, LambdaLogger logger) {
-    String locsEndpoint = getLocationsEndpoint(logger);
-    String locsNamespace = getLocationNamespace(logger);
+    String locsEndpoint = HandlerUtil.getEnvironmentVariable(LOCATIONS_ENDPOINT, logger);
+    String locsNamespace = HandlerUtil.getEnvironmentVariable(LOCATIONS_NAMESPACE, logger);
     PdaRequestUrl.Builder builder = getCommonUrlBuilder(logger);
     PdaRequestUrl locsUrl = getPdaRequestUrl(builder, locsEndpoint, locsNamespace);
     String hatName = input.getHatName();
@@ -117,28 +116,6 @@ public class WorkerReadRequestHandler<T> implements
     updateHatContext(updatedContext, logger);
   }
 
-  private String getLocationsEndpoint(LambdaLogger logger) {
-    String endpoint = null;
-    try {
-      endpoint = System.getenv(LOCATIONS_ENDPOINT);
-    } catch (NullPointerException e) {
-      logger.log(CANNOT_FIND_ENV_VAR_MSG + e.getMessage());
-      System.exit(1);
-    }
-    return endpoint;
-  }
-
-  private String getLocationNamespace(LambdaLogger logger) {
-    String namespace = null;
-    try {
-      namespace = System.getenv(LOCATIONS_NAMESPACE);
-    } catch (NullPointerException e) {
-      logger.log(CANNOT_FIND_ENV_VAR_MSG + e.getMessage());
-      System.exit(1);
-    }
-    return namespace;
-  }
-
   private int getSkipAmount(String hatName, LambdaLogger logger) {
     GetObjectRequest objectRequest = new GetObjectRequest(HAT_CONTEXT_BUCKET, getKey(hatName));
     S3Object object = S3_CLIENT.getObject(objectRequest);
@@ -163,13 +140,13 @@ public class WorkerReadRequestHandler<T> implements
     int nLocationsWritten = 0;
     try (BufferedWriter writer = new BufferedWriter(new FileWriter(file))) {
       Optional<List<Record<TemporalLocation>>> records = response.getData();
-      if (records.isPresent() && records.get().size() > 0) {
+      if (records.isPresent() && !records.get().isEmpty()) {
         LocationHistory history = transform(records.get(), hatName);
         writer.write(MAPPER.writeValueAsString(history));
         writeObjectRequest(LOCATIONS_BUCKET, getKey(hatName), file);
         nLocationsWritten = history.getHistory().size();
       } else {
-        logFailedResponse(response.getError(), response.getMessage(), response.getCause(), logger);
+        logFailedResponse(response.getError(), response.getCause(), logger);
       }
     } catch (IOException e) {
       logger.log(CANNOT_WRITE_TO_S3_MSG + e.getMessage());
@@ -189,17 +166,10 @@ public class WorkerReadRequestHandler<T> implements
         .build();
   }
 
-  private void logFailedResponse(Optional<String> error, Optional<String> message,
-      Optional<String> cause, LambdaLogger logger) {
-    if (error.isPresent()) {
-      String err = error.get();
-      if (message.isPresent()) {
-        logger.log(CANNOT_WRITE_TO_S3_MSG + err + "\n" + message.get());
-      } else if (cause.isPresent()) {
-        logger.log(CANNOT_WRITE_TO_S3_MSG + err + "\n" + cause.get());
-      } else {
-        logger.log(CANNOT_WRITE_TO_S3_MSG + err);
-      }
+  private void logFailedResponse(Optional<String> error, Optional<String> cause,
+      LambdaLogger logger) {
+    if (error.isPresent() && cause.isPresent()) {
+      logger.log(CANNOT_WRITE_TO_S3_MSG + error.get() + "\n" + cause.get());
     }
   }
 
@@ -215,8 +185,8 @@ public class WorkerReadRequestHandler<T> implements
   }
 
   private void handleScoreRequest(ContractedPdaRequestBody input, LambdaLogger logger) {
-    String scoreEndpoint = getScoreEndpoint(logger);
-    String scoreNamespace = getScoreNamespace(logger);
+    String scoreEndpoint = HandlerUtil.getEnvironmentVariable(SCORE_ENDPOINT, logger);
+    String scoreNamespace = HandlerUtil.getEnvironmentVariable(SCORE_NAMESPACE, logger);
     PdaRequestUrl.Builder builder = getCommonUrlBuilder(logger);
     PdaRequestUrl scoreUrl = getPdaRequestUrl(builder, scoreEndpoint, scoreNamespace);
     ContractedPdaReadRequest scoreRequest = ContractedPdaReadRequest.builder()
@@ -237,7 +207,7 @@ public class WorkerReadRequestHandler<T> implements
         writer.write(MAPPER.writeValueAsString(riskScore));
         writeObjectRequest(SCORE_BUCKET, key, file);
       } else {
-        logFailedResponse(response.getError(), response.getMessage(), response.getCause(), logger);
+        logFailedResponse(response.getError(), response.getCause(), logger);
       }
     } catch (IOException e) {
       logger.log(CANNOT_WRITE_TO_S3_MSG + e.getMessage());
@@ -249,42 +219,13 @@ public class WorkerReadRequestHandler<T> implements
     S3_CLIENT.putObject(putObjectRequest);
   }
 
-  private String getScoreEndpoint(LambdaLogger logger) {
-    String endpoint = null;
-    try {
-      endpoint = System.getenv(SCORE_ENDPOINT);
-    } catch (NullPointerException e) {
-      logger.log(CANNOT_FIND_ENV_VAR_MSG + e.getMessage());
-      System.exit(1);
-    }
-    return endpoint;
-  }
-
-  private String getScoreNamespace(LambdaLogger logger) {
-    String namespace = null;
-    try {
-      namespace = System.getenv(SCORE_NAMESPACE);
-    } catch (NullPointerException e) {
-      logger.log(CANNOT_FIND_ENV_VAR_MSG + e.getMessage());
-      System.exit(1);
-    }
-    return namespace;
-  }
-
   private PdaRequestUrl.Builder getCommonUrlBuilder(LambdaLogger logger) {
-    PdaRequestUrl.Builder commonUrlBuilder = null;
-    try {
-      String isSandbox = System.getenv(IS_SANDBOX);
-      boolean sandbox = Boolean.parseBoolean(isSandbox);
-      commonUrlBuilder = PdaRequestUrl.builder()
-          .contracted(true)
-          .operation(Operation.READ)
-          .sandbox(sandbox);
-    } catch (NullPointerException e) {
-      logger.log(CANNOT_FIND_ENV_VAR_MSG + e.getMessage());
-      System.exit(1);
-    }
-    return commonUrlBuilder;
+    String isSandbox = HandlerUtil.getEnvironmentVariable(IS_SANDBOX, logger);
+    boolean sandbox = Boolean.parseBoolean(isSandbox);
+    return PdaRequestUrl.builder()
+        .contracted(true)
+        .operation(Operation.READ)
+        .sandbox(sandbox);
   }
 
   private PdaRequestUrl getPdaRequestUrl(PdaRequestUrl.Builder builder, String endpoint,

@@ -26,9 +26,6 @@ public abstract class AbstractPdaResponse<T> implements Response<Record<T>> {
   public abstract Optional<String> getError();
 
   @Override
-  public abstract Optional<String> getMessage();
-
-  @Override
   public abstract Optional<String> getCause();
 
   @Value.Check

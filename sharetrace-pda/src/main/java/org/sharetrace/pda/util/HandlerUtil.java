@@ -7,11 +7,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Preconditions;
 import org.sharetrace.model.util.ShareTraceUtil;
 
-public final class LambdaHandlerLogging {
+public final class HandlerUtil {
 
   private static final String INVALID_INPUT_MSG = "Input must not be null";
 
   private static final String INVALID_CONTEXT_MSG = "Context must not be null";
+
+  private static final String CANNOT_FIND_ENV_VAR_MSG = "Unable to find environment variable: \n";
 
   private static final String ENVIRONMENT_VARIABLES = "ENVIRONMENT VARIABLES: ";
 
@@ -66,5 +68,14 @@ public final class LambdaHandlerLogging {
     STRING_BUILDER.delete(0, STRING_BUILDER.length());
   }
 
+  public static String getEnvironmentVariable(String envVarKey, LambdaLogger logger) {
+    String environmentVariableValue = null;
+    try {
+      environmentVariableValue = System.getenv(envVarKey);
+    } catch (NullPointerException e) {
+      logger.log(CANNOT_FIND_ENV_VAR_MSG + e.getMessage());
+    }
+    return environmentVariableValue;
+  }
 
 }

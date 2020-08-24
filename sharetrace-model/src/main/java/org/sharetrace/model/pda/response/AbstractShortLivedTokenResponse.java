@@ -30,9 +30,6 @@ public abstract class AbstractShortLivedTokenResponse implements Response<String
   public abstract Optional<String> getError();
 
   @Override
-  public abstract Optional<String> getMessage();
-
-  @Override
   public abstract Optional<String> getCause();
 
   @Value.Check

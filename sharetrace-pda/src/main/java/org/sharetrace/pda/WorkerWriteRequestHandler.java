@@ -27,7 +27,7 @@ import org.sharetrace.model.pda.request.PdaRequestUrl;
 import org.sharetrace.model.score.RiskScore;
 import org.sharetrace.model.util.ShareTraceUtil;
 import org.sharetrace.model.vertex.VariableVertex;
-import org.sharetrace.pda.util.LambdaHandlerLogging;
+import org.sharetrace.pda.util.HandlerUtil;
 
 public class WorkerWriteRequestHandler implements
     RequestHandler<List<ContractedPdaRequestBody>, String> {
@@ -52,12 +52,10 @@ public class WorkerWriteRequestHandler implements
   private static final ObjectMapper MAPPER = ShareTraceUtil.getMapper();
 
   private static final String OUTPUT = "output";
-
-  private static final String SCORE = "score";
-
+  
   @Override
   public String handleRequest(List<ContractedPdaRequestBody> input, Context context) {
-    LambdaHandlerLogging.logEnvironment(input, context);
+    HandlerUtil.logEnvironment(input, context);
     LambdaLogger logger = context.getLogger();
     input.forEach(entry -> handleRequest(entry, logger));
     return null;

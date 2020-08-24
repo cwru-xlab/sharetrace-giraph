@@ -18,15 +18,14 @@ import org.sharetrace.model.pda.request.ContractedPdaRequestBody;
 import org.sharetrace.model.pda.request.ShortLivedTokenRequest;
 import org.sharetrace.model.pda.response.ShortLivedTokenResponse;
 import org.sharetrace.model.util.ShareTraceUtil;
+import org.sharetrace.pda.util.HandlerUtil;
 
 public class VentilatorRequestHandler {
 
   // Logging messages
-  private static final String MISSING_TOKEN_MSG = "Long lived token is missing: \n";
   private static final String MALFORMED_URL_MSG = "Malformed contracts server URL: \n";
   private static final String INCOMPLETE_REQUEST_MSG =
       "Failed to complete short-lived token request: \n";
-  private static final String CANNOT_FIND_ENV_VAR_MSG = "Unable to find environment variable: \n";
   private static final String FAILED_TO_SERIALIZE_MSG =
       "Failed to serialize request body: \n";
   private static final String NO_WORKERS_MSG = "No worker functions were found. Exiting handler.";
@@ -59,42 +58,25 @@ public class VentilatorRequestHandler {
 
   public void handleRequest() {
     ShortLivedTokenRequest tokenRequest = ShortLivedTokenRequest.builder()
-        .longLivedToken(getLongLivedToken())
+        .longLivedToken(HandlerUtil.getEnvironmentVariable(LONG_LIVED_TOKEN, logger))
         .contractsServerUrl(getContractsServerUrl())
         .build();
     ShortLivedTokenResponse tokenResponse = getShortLivedTokenResponse(tokenRequest);
 
-    Optional<List<String>> hatsOptional = tokenResponse.getData();
-    Optional<String> shortLivedTokenOptional = tokenResponse.getShortLivedToken();
-    Optional<String> errorOptional = tokenResponse.getError();
-    Optional<String> messageOptional = tokenResponse.getMessage();
-    Optional<String> causeOptional = tokenResponse.getCause();
+    Optional<List<String>> hats = tokenResponse.getData();
+    Optional<String> shortLivedToken = tokenResponse.getShortLivedToken();
+    Optional<String> error = tokenResponse.getError();
+    Optional<String> cause = tokenResponse.getCause();
 
-    if (hatsOptional.isPresent() && shortLivedTokenOptional.isPresent()) {
-      invokeWorkers(hatsOptional.get(), shortLivedTokenOptional.get());
-    } else if (errorOptional.isPresent()) {
-      if (messageOptional.isPresent()) {
-        logger.log(errorOptional.get() + "\n" + messageOptional.get());
-        System.exit(1);
-      } else if (causeOptional.isPresent()) {
-        logger.log(errorOptional.get() + "\n" + causeOptional.get());
-        System.exit(1);
-      }
+    if (hats.isPresent() && shortLivedToken.isPresent()) {
+      invokeWorkers(hats.get(), shortLivedToken.get());
+    } else if (error.isPresent() && cause.isPresent()) {
+      logger.log(error.get() + "\n" + cause.get());
+      System.exit(1);
     } else {
       logger.log(tokenResponse.getData().toString());
       System.exit(1);
     }
-  }
-
-  private String getLongLivedToken() {
-    String longLivedToken = null;
-    try {
-      longLivedToken = System.getenv(LONG_LIVED_TOKEN);
-    } catch (NullPointerException e) {
-      logger.log(MISSING_TOKEN_MSG + e.getMessage());
-      System.exit(1);
-    }
-    return longLivedToken;
   }
 
   private URL getContractsServerUrl() {
@@ -128,7 +110,7 @@ public class VentilatorRequestHandler {
       System.exit(1);
     }
     int nWorkers = lambdaFunctionNames.size();
-    String contractId = getContractId();
+    String contractId = HandlerUtil.getEnvironmentVariable(CONTRACT_ID, logger);
 
     for (int iPartition = 0; iPartition < nPartitions; iPartition++) {
       int startIndex = iPartition * partitionSize;
@@ -155,31 +137,10 @@ public class VentilatorRequestHandler {
     }
   }
 
-  private String getContractId() {
-    String contractId = null;
-    try {
-      contractId = System.getenv(CONTRACT_ID);
-    } catch (NullPointerException e) {
-      logger.log(CANNOT_FIND_ENV_VAR_MSG + e.getMessage());
-      System.exit(1);
-    }
-    return contractId;
-  }
-
   public List<String> getLambdaFunctionNames(List<String> environmentVariableKeys) {
     return environmentVariableKeys.stream()
-        .map(this::getFunctionName)
+        .map(k -> HandlerUtil.getEnvironmentVariable(k, logger))
         .filter(Objects::nonNull)
         .collect(Collectors.toList());
-  }
-
-  private String getFunctionName(String environmentVariableKey) {
-    String functionName = null;
-    try {
-      functionName = System.getenv(environmentVariableKey);
-    } catch (NullPointerException e) {
-      logger.log(CANNOT_FIND_ENV_VAR_MSG + e.getMessage());
-    }
-    return functionName;
   }
 }

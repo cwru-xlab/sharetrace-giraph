@@ -1,5 +1,6 @@
 package org.sharetrace.model.pda.response;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonProperty.Access;
 import java.util.List;
@@ -17,11 +18,9 @@ public interface Response<T> {
 
   Optional<List<T>> getData();
 
+  @JsonAlias({"error", "message"})
   @JsonProperty(value = "error", access = Access.READ_WRITE)
   Optional<String> getError();
-
-  @JsonProperty(value = "message", access = Access.READ_WRITE)
-  Optional<String> getMessage();
 
   @JsonProperty(value = "cause", access = Access.READ_WRITE)
   Optional<String> getCause();

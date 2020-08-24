@@ -9,7 +9,7 @@ import com.amazonaws.services.lambda.runtime.RequestHandler;
 import com.amazonaws.services.lambda.runtime.events.S3Event;
 import com.google.common.collect.ImmutableList;
 import java.util.List;
-import org.sharetrace.pda.util.LambdaHandlerLogging;
+import org.sharetrace.pda.util.HandlerUtil;
 
 public class VentilatorWriteRequestHandler implements RequestHandler<S3Event, String> {
 
@@ -27,7 +27,7 @@ public class VentilatorWriteRequestHandler implements RequestHandler<S3Event, St
 
   @Override
   public String handleRequest(S3Event input, Context context) {
-    LambdaHandlerLogging.logEnvironment(input, context);
+    HandlerUtil.logEnvironment(input, context);
     LambdaLogger logger = context.getLogger();
     VentilatorRequestHandler handler =
         new VentilatorRequestHandler(LAMBDA_CLIENT, logger, WORKER_LAMBDAS, PARTITION_SIZE);

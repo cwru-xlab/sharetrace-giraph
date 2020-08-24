@@ -20,27 +20,25 @@ public final class ResponseUtil {
 
   private static final String ERROR = "error";
 
-  private static final String MESSAGE = "message";
-
   private static final String CAUSE = "cause";
 
   private static final ObjectMapper MAPPER = ShareTraceUtil.getMapper();
 
   static <T> void verifyInputArguments(Response<T> response) {
-    Optional<List<T>> dataOptional = response.getData();
-    Optional<String> errorOptional = response.getError();
-    Optional<String> messageOptional = response.getMessage();
-    Optional<String> causeOptional = response.getCause();
-    boolean dataResponse = dataOptional.isPresent();
-    boolean errorResponse =
-        errorOptional.isPresent() && (messageOptional.isPresent() || causeOptional.isPresent());
-    boolean dataOnly = dataResponse && !errorResponse;
-    boolean errorOnly = !dataResponse && errorResponse;
+    Optional<List<T>> data = response.getData();
+    Optional<String> error = response.getError();
+    Optional<String> cause = response.getCause();
+    boolean onlyError = error.isPresent() && cause.isPresent();
 
-    if (dataOptional.isPresent()) {
-      Preconditions.checkArgument(dataOnly, INVALID_SUCCESSFUL_RESPONSE_MSG);
+    if (data.isPresent()) {
+      if (data.get().isEmpty()) {
+        Preconditions.checkArgument(onlyError, INVALID_ERROR_RESPONSE_MSG);
+      } else {
+        boolean onlyData = !error.isPresent() && !cause.isPresent();
+        Preconditions.checkArgument(onlyData, INVALID_SUCCESSFUL_RESPONSE_MSG);
+      }
     } else {
-      Preconditions.checkArgument(errorOnly, INVALID_ERROR_RESPONSE_MSG);
+      Preconditions.checkArgument(onlyError, INVALID_SUCCESSFUL_RESPONSE_MSG);
     }
   }
 
@@ -67,22 +65,11 @@ public final class ResponseUtil {
 
   private static ShortLivedTokenResponse getFailedTokenResponse(InputStream response)
       throws IOException {
-    Map<String, String> failedResponse =
-        MAPPER.readValue(response, new TypeReference<Map<String, String>>() {
-        });
-    ShortLivedTokenResponse tokenResponse;
-    try {
-      tokenResponse = ShortLivedTokenResponse.builder()
-          .error(failedResponse.get(ERROR))
-          .message(failedResponse.get(MESSAGE))
-          .build();
-    } catch (NullPointerException e) {
-      tokenResponse = ShortLivedTokenResponse.builder()
-          .error(failedResponse.get(ERROR))
-          .cause(failedResponse.get(CAUSE))
-          .build();
-    }
-    return tokenResponse;
+    Map<String, String> failedResponse = getFailedResponse(response);
+    return ShortLivedTokenResponse.builder()
+        .error(failedResponse.get(ERROR))
+        .cause(failedResponse.get(CAUSE))
+        .build();
   }
 
   public static <T> PdaResponse<T> mapToPdaResponse(InputStream response) throws IOException {
@@ -102,23 +89,18 @@ public final class ResponseUtil {
     return PdaResponse.<T>builder().data(records).build();
   }
 
-  private static <T> PdaResponse<T> getFailedPdaResponse(InputStream response) throws IOException {
-    Map<String, String> failedResponse =
-        MAPPER.readValue(response, new TypeReference<Map<String, String>>() {
-        });
-    PdaResponse<T> pdaResponse;
-    try {
-      pdaResponse = PdaResponse.<T>builder()
-          .error(failedResponse.get(ERROR))
-          .message(failedResponse.get(MESSAGE))
-          .build();
-    } catch (NullPointerException e) {
-      pdaResponse = PdaResponse.<T>builder()
-          .error(failedResponse.get(ERROR))
-          .cause(failedResponse.get(CAUSE))
-          .build();
-    }
-    return pdaResponse;
+  private static <T> PdaResponse<T> getFailedPdaResponse(InputStream response) throws
+      IOException {
+    Map<String, String> failedResponse = getFailedResponse(response);
+    return PdaResponse.<T>builder()
+        .error(failedResponse.get(ERROR))
+        .cause(failedResponse.get(CAUSE))
+        .build();
+  }
+
+  private static Map<String, String> getFailedResponse(InputStream response) throws IOException {
+    return  MAPPER.readValue(response, new TypeReference<Map<String, String>>() {
+    });
   }
 }
 
