@@ -1,32 +1,18 @@
 # ShareTrace API
 
-## Repo Overview
-This is a location to add resources (i.e., design documentation, notes, external 
-links, code) related to the development of the ShareTrace contact tracing 
-application.
-
-## API 
-
-The API contains the primary elements that comprise contact tracing:
-
-* `ShareTraceServer`
-* `Contact`
-* `ContactHistory`
-* `UserPDA`
-
-The ShareTraceServer performs risk score calculations, interaction graph
-operations, and performs CRUD operations with the UserPDAs.
-
-A Contact is simply a user-to-user interaction, with the Bluetooth IDs being
-used to represent each user.
-
-A ContactHistory is a dictionary with the key-value mapping of date-to-IdGroup.
-The resolution of the date is left for further implementation. A IdGroup is
-a generic collection of users that allows for assignment checking, adding, and
-removing.
-
-A UserPDA contains the information about a user that is relevant to ShareTrace's
-contact tracing capabilities, such as diagnosis, symptoms, access token,
-Bluetooth ID, and contact history.
-
-See the sharetrace_api.py for docstrings for each class as well.
+## Building
+Note that the following instructions assumes IntelliJ is being used for the developer's IDE. This
+ project is built with Gradle.
+ 1. Clone the repo.
+ 2. Create a new project in IntelliJ (from existing sources).
+ 3. Select the folder that contains all of the repo contents.
+ 4. From "Import project from externel model," select Gradle.
+ 
+ To generate source code:
+ 1. Under Settings/Preferences > Build, Execution, Deployment > Compiler > Annotation Processor
+ , enable annotation processing.
+ 2. Select "Processor path."
+ 3. Select "Module output directory" for "Store generated sources relative to."
+ 4. Under Build, run "Build Project."
+ 4. Under Project Structure > Modules > sharetrace-model > main, mark the "generated" directory
+  as a "Sources," and mark "org" directory as "Excluded."
