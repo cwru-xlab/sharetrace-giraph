@@ -11,6 +11,11 @@ allprojects {
         mavenCentral()
     }
 
+    compileJava   {
+        sourceCompatibility = '1.8'
+        targetCompatibility = '1.8'
+    }
+
     dependencies {
         implementation('com.google.guava:guava:29.0-jre')
         // https://mvnrepository.com/artifact/com.fasterxml.jackson.core/jackson-databind

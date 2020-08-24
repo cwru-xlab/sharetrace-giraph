@@ -2,7 +2,7 @@
   {
     "Type": "CUSTOM_JAR",
     "Name": "UploadInputData",
-    "ActionOnFailure": "TERMINATE_CLUSTER",
+    "ActionOnFailure": "CANCEL_AND_WAIT",
     "Jar": "command-runner.jar",
     "Args": [
       "s3-dist-cp", "--s3Endpoint=s3.amazonaws.com",
@@ -14,23 +14,14 @@
   {
     "Type": "CUSTOM_JAR",
     "Name": "BeliefPropagation",
-    "ActionOnFailure": "TERMINATE_CLUSTER",
-    "Jar": "s3://sharetrace-testing/bp-testing/sharetrace-bp.jar",
-    "MainClass": "org.sharetrace.beliefpropagation.BeliefPropagationRunner",
-    "Args": [
-      "org.sharetrace.beliefpropagation.computation.VariableVertexComputation",
-      "-vif", "org.sharetrace.beliefpropagation.format.input.FactorGraphVertexInputFormat",
-      "-vof", "org.sharetrace.beliefpropagation.format.output.FactorGraphVertexOutputFormat",
-      "-vip", "input",
-      "-op", "output",
-      "-w", "2",
-      "-ca", "giraph.SplitMasterWorker=true"
-    ]
+    "ActionOnFailure": "CANCEL_AND_WAIT",
+    "Jar": "s3://sharetrace-testing/bp-testing/sharetrace-bp-main.jar",
+    "MainClass": "org.sharetrace.beliefpropagation.BeliefPropagationMain"
   },
   {
     "Type": "CUSTOM_JAR",
     "Name": "DownloadOutputData",
-    "ActionOnFailure": "TERMINATE_CLUSTER",
+    "ActionOnFailure": "CANCEL_AND_WAIT",
     "Jar": "command-runner.jar",
     "Args": [
       "s3-dist-cp", "--s3Endpoint=s3.amazonaws.com",
