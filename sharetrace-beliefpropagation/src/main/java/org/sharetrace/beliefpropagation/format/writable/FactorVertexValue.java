@@ -76,7 +76,7 @@ public final class FactorVertexValue implements Writable {
         .build();
   }
 
-  public Contact getContact() {
+  public Contact getValue() {
     return Contact.copyOf(contact);
   }
 

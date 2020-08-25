@@ -91,7 +91,7 @@ public final class VariableVertexValue implements Writable {
     maxRiskScore = Collections.max(sendableRiskScores.getMessage(), COMPARE_BY_RISK_SCORE);
   }
 
-  public SendableRiskScores getSendableRiskScores() {
+  public SendableRiskScores getValue() {
     return SendableRiskScores.copyOf(sendableRiskScores);
   }
 

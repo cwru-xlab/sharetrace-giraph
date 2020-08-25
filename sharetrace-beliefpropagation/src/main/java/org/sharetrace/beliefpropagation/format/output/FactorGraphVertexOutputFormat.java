@@ -47,7 +47,7 @@ public class FactorGraphVertexOutputFormat extends
         LOGGER.debug("Vertex to write is a factor vertex");
         FactorVertex factor = FactorVertex.builder()
             .vertexId(vertexId)
-            .vertexValue(((FactorVertexValue) writable.getWrapped()).getContact())
+            .vertexValue(((FactorVertexValue) writable.getWrapped()).getValue())
             .build();
         LOGGER.debug("Writing factor vertex as a String");
         text = MAPPER.writeValueAsString(factor);
@@ -56,7 +56,7 @@ public class FactorGraphVertexOutputFormat extends
         VariableVertex variable = VariableVertex.builder()
             .vertexId(vertexId)
             .vertexValue(
-                ((VariableVertexValue) writable.getWrapped()).getSendableRiskScores())
+                ((VariableVertexValue) writable.getWrapped()).getValue())
             .build();
         LOGGER.debug("Writing variable vertex as a String");
         text = MAPPER.writeValueAsString(variable);

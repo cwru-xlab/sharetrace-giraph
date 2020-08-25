@@ -1,7 +1,9 @@
-package org.sharetrace.beliefpropagation.computation;
+package org.sharetrace.beliefpropagation.compute;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableSet;
+import java.text.MessageFormat;
 import java.time.Instant;
 import java.util.Collection;
 import java.util.Collections;
@@ -11,6 +13,7 @@ import java.util.SortedSet;
 import java.util.TreeSet;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import org.apache.giraph.edge.Edge;
 import org.apache.giraph.graph.BasicComputation;
 import org.apache.giraph.graph.Vertex;
@@ -46,6 +49,18 @@ import org.slf4j.LoggerFactory;
 public final class FactorVertexComputation extends
     BasicComputation<FactorGraphVertexId, FactorGraphWritable, NullWritable, VariableVertexValue> {
 
+  // Logging messages
+  private static final String NULL_VERTEX_MSG = "Vertex must not be null";
+  private static final String NULL_MESSAGE_MSG = "Messages must not be null";
+  private static final String HALT_MSG = "Halting computation: vertex is not a factor vertex";
+  private static final String FILTER_MSG = "Filtering expired vertex values on zeroth superstep";
+  private static final String REMOVE_EXPIRED_MSG = "Removing expired vertex values...";
+  private static final String RETAIN_MSG = "Retaining valid messages...";
+  private static final String NO_OCCURRENCES_MSG =
+      "No messages to retain since the vertex had no occurrences";
+  private static final String SEND_MSG = "Sending messages...";
+  private static final String SEND_PATTERN = "Sending message from {0} to {1}";
+
   private static final Logger LOGGER = LoggerFactory.getLogger(FactorVertexComputation.class);
 
   private static final double DEFAULT_RISK_SCORE = BPContext.getDefaultRiskScore();
@@ -54,28 +69,24 @@ public final class FactorVertexComputation extends
 
   private static final Instant CUTOFF = BPContext.getOccurrenceLookbackCutoff();
 
-  private static boolean isTransmitted() {
-    return TRANSMISSION_PROBABILITY <= ThreadLocalRandom.current().nextDouble(1.0);
-  }
-
   @Override
   public void compute(Vertex<FactorGraphVertexId, FactorGraphWritable, NullWritable> vertex,
       Iterable<VariableVertexValue> iterable) {
-    Preconditions.checkNotNull(vertex, "Vertex must not be null");
-    Preconditions.checkNotNull(iterable, "Messages must not be null");
+    Preconditions.checkNotNull(vertex, NULL_VERTEX_MSG);
+    Preconditions.checkNotNull(iterable, NULL_MESSAGE_MSG);
 
     if (vertex.getValue().getType().equals(VertexType.VARIABLE)) {
-      LOGGER.debug("Halting computation: vertex is not a factor vertex");
+      LOGGER.debug(HALT_MSG);
       vertex.voteToHalt();
       return;
     }
 
     if (0 == getSuperstep()) {
-      LOGGER.debug("Filtering expired vertex values on zeroth superstep");
-      filterExpiredVertexValues(vertex);
+      LOGGER.debug(FILTER_MSG);
+      updateVertexValue(vertex);
     }
 
-    Contact vertexValue = ((FactorVertexValue) vertex.getValue().getWrapped()).getContact();
+    Contact vertexValue = ((FactorVertexValue) vertex.getValue().getWrapped()).getValue();
     Collection<SendableRiskScores> incomingValues = getIncomingValues(iterable);
     Collection<SendableRiskScores> validMessages = retainValidMessages(vertexValue, incomingValues);
     sendMessages(validMessages);
@@ -83,43 +94,54 @@ public final class FactorVertexComputation extends
   }
 
   // Remove occurrences from the Contact if they occurred before the expiration date.
-  private void filterExpiredVertexValues(
+  private void updateVertexValue(
       Vertex<FactorGraphVertexId, FactorGraphWritable, NullWritable> vertex) {
-    LOGGER.debug("Removing expired vertex values...");
-    Contact value = ((FactorVertexValue) vertex.getValue().getWrapped()).getContact();
-    SortedSet<Occurrence> values = new TreeSet<>(value.getOccurrences());
-    FactorVertexValue updateValue = FactorVertexValue.of(Contact.copyOf(value)
-        .withOccurrences(values.stream()
-            .filter(occurrence -> occurrence.getTime().isAfter(CUTOFF))
-            .collect(Collectors.toSet())));
-    vertex.setValue(FactorGraphWritable.ofFactorVertex(updateValue));
+    LOGGER.debug(REMOVE_EXPIRED_MSG);
+    Contact value = ((FactorVertexValue) vertex.getValue().getWrapped()).getValue();
+    vertex.setValue(FactorGraphWritable.ofFactorVertex(removedExpiredValues(value)));
+  }
+
+  @VisibleForTesting
+  FactorVertexValue removedExpiredValues(Contact value) {
+    Set<Occurrence> withoutExpiredValues = value.getOccurrences().stream()
+        .filter(occurrence -> occurrence.getTime().isAfter(getCutoff()))
+        .collect(Collectors.toSet());
+    return FactorVertexValue.of(Contact.copyOf(value).withOccurrences(withoutExpiredValues));
   }
 
   // Add incoming values into a Collection sub-interface for easier handling
-  private Collection<SendableRiskScores> getIncomingValues(Iterable<VariableVertexValue> iterable) {
+  @VisibleForTesting
+  Set<SendableRiskScores> getIncomingValues(Iterable<VariableVertexValue> iterable) {
     Set<SendableRiskScores> incoming = new HashSet<>();
-    iterable.forEach(msg -> incoming.add(msg.getSendableRiskScores()));
+    iterable.forEach(msg -> incoming.add(msg.getValue()));
     return ImmutableSet.copyOf(incoming);
   }
 
   // Combine all filtered messages into a single collection
-  private Collection<SendableRiskScores> retainValidMessages(Contact vertexValue,
+  @VisibleForTesting
+  Set<SendableRiskScores> retainValidMessages(Contact vertexValue,
       Collection<SendableRiskScores> incomingValues) {
-    LOGGER.debug("Retaining valid messages...");
-    Collection<SendableRiskScores> updatedBeforeLast = new HashSet<>();
+    LOGGER.debug(RETAIN_MSG);
     SortedSet<Occurrence> occurrences = vertexValue.getOccurrences();
+    Set<SendableRiskScores> retained = new HashSet<>();
     if (occurrences.isEmpty()) {
-      LOGGER.debug("No messages to retain since the vertex had no occurrences");
-      return ImmutableSet.of();
+      LOGGER.debug(NO_OCCURRENCES_MSG);
     } else {
-      Instant lastTime = vertexValue.getOccurrences().first().getTime();
-      incomingValues.forEach(msg -> updatedBeforeLast.add(retainIfUpdatedBefore(msg, lastTime)));
+      // Get the most recent time that the two users came into contact
+      Instant lastTime = vertexValue.getOccurrences().last().getTime();
+      // Retain only the scores that were updated before this point in time
+      retained = Stream.of(incomingValues)
+          .flatMap(Collection::stream)
+          .map(msg -> retainIfUpdatedBefore(msg, lastTime))
+          .filter(msg -> !msg.getMessage().isEmpty())
+          .collect(Collectors.toSet());
     }
-    return ImmutableSet.copyOf(updatedBeforeLast);
+    return ImmutableSet.copyOf(retained);
   }
 
   // Filter out messages updated after the provided cutoff time
-  private SendableRiskScores retainIfUpdatedBefore(SendableRiskScores messages, Instant cutoff) {
+  @VisibleForTesting
+  SendableRiskScores retainIfUpdatedBefore(SendableRiskScores messages, Instant cutoff) {
     return SendableRiskScores.copyOf(messages)
         .withMessage(messages.getMessage()
             .stream()
@@ -129,32 +151,32 @@ public final class FactorVertexComputation extends
 
   // Relay each variable vertex's message and indicate the message was sent from the factor vertex
   private void sendMessages(Iterable<SendableRiskScores> messages) {
-    LOGGER.debug("Sending messages...");
+    LOGGER.debug(SEND_MSG);
     for (SendableRiskScores senderMessage : messages) {
       for (SendableRiskScores receiverMessage : messages) {
         SortedSet<String> sender = senderMessage.getSender();
         if (!sender.equals(receiverMessage.getSender())) {
-          LOGGER.debug("Sending message from " + sender + " to " + receiverMessage.getSender());
+          LOGGER.debug(MessageFormat.format(SEND_PATTERN, sender, receiverMessage.getSender()));
           sendMessage(wrapReceiver(receiverMessage), wrapMessage(sender, receiverMessage));
         }
       }
     }
   }
 
-  private FactorGraphVertexId wrapReceiver(SendableRiskScores containsReceiver) {
-    return FactorGraphVertexId.of(IdGroup.builder()
-        .addAllIds(containsReceiver.getSender())
-        .build());
+  @VisibleForTesting
+  FactorGraphVertexId wrapReceiver(SendableRiskScores containsReceiver) {
+    return FactorGraphVertexId
+        .of(IdGroup.builder().addAllIds(containsReceiver.getSender()).build());
   }
 
-  private VariableVertexValue wrapMessage(SortedSet<String> sender,
-      SendableRiskScores message) {
+  @VisibleForTesting
+  VariableVertexValue wrapMessage(SortedSet<String> sender, SendableRiskScores message) {
     RiskScore toSend;
     // Provide a default message if the messages is empty or the risk is not to be transmitted
     if (message.getMessage().isEmpty() || !isTransmitted()) {
       toSend = RiskScore.builder()
           .id(sender.first())
-          .updateTime(MasterComputer.getInitializedAt())
+          .updateTime(getInitializedAt())
           .value(DEFAULT_RISK_SCORE)
           .build();
     } else {
@@ -166,5 +188,20 @@ public final class FactorVertexComputation extends
         .addAllSender(sender)
         .addMessage(toSend)
         .build());
+  }
+
+  @VisibleForTesting
+  Instant getCutoff() {
+    return CUTOFF;
+  }
+
+  @VisibleForTesting
+  boolean isTransmitted() {
+    return TRANSMISSION_PROBABILITY <= ThreadLocalRandom.current().nextDouble(1.0);
+  }
+
+  @VisibleForTesting
+  Instant getInitializedAt() {
+    return MasterComputer.getInitializedAt();
   }
 }

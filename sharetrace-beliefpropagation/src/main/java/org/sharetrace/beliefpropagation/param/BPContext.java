@@ -2,7 +2,7 @@ package org.sharetrace.beliefpropagation.param;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import org.sharetrace.beliefpropagation.computation.MasterComputer;
+import org.sharetrace.beliefpropagation.compute.MasterComputer;
 
 public class BPContext {
 

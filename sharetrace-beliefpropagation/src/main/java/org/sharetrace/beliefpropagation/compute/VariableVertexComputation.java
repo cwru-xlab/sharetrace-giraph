@@ -1,13 +1,16 @@
-package org.sharetrace.beliefpropagation.computation;
+package org.sharetrace.beliefpropagation.compute;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableSortedSet;
+import java.text.MessageFormat;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.HashSet;
 import java.util.SortedSet;
 import java.util.TreeSet;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import org.apache.giraph.edge.Edge;
 import org.apache.giraph.graph.BasicComputation;
 import org.apache.giraph.graph.Vertex;
@@ -42,6 +45,15 @@ import org.slf4j.LoggerFactory;
 public final class VariableVertexComputation extends
     BasicComputation<FactorGraphVertexId, FactorGraphWritable, NullWritable, VariableVertexValue> {
 
+  // Logging messages
+  private static final String NULL_VERTEX_MSG = "Vertex must not be null";
+  private static final String NULL_MESSAGE_MSG = "Messages must not be null";
+  private static final String HALTING_MSG = "Halting computation: vertex is not a variable vertex";
+  private static final String COPYING_MSG = "Copying incoming messages to collection...";
+  private static final String COMBINING_MSG = "Combining local and incoming values...";
+  private static final String UPDATING_MSG = "Updating vertex value...";
+  private static final String AGGREGATING_MSG = "Aggregating based on local vertex value change...";
+  private static final String SENDING_MSG = "Sending message from {0}...";
   private static final Logger LOGGER = LoggerFactory.getLogger(FactorVertexComputation.class);
 
   private static final String AGGREGATOR_NAME = MasterComputer.getVertexDeltaAggregatorName();
@@ -53,17 +65,17 @@ public final class VariableVertexComputation extends
   public void compute(
       Vertex<FactorGraphVertexId, FactorGraphWritable, NullWritable> vertex,
       Iterable<VariableVertexValue> iterable) {
-    Preconditions.checkNotNull(vertex, "Vertex must not be null");
-    Preconditions.checkNotNull(iterable, "Messages must not be null");
+    Preconditions.checkNotNull(vertex, NULL_VERTEX_MSG);
+    Preconditions.checkNotNull(iterable, NULL_MESSAGE_MSG);
 
     if (vertex.getValue().getType().equals(VertexType.FACTOR)) {
-      LOGGER.debug("Halting computation: vertex is not a variable vertex");
+      LOGGER.debug(HALTING_MSG);
       vertex.voteToHalt();
       return;
     }
 
     SendableRiskScores value =
-        ((VariableVertexValue) vertex.getValue().getWrapped()).getSendableRiskScores();
+        ((VariableVertexValue) vertex.getValue().getWrapped()).getValue();
     Collection<RiskScore> localValues = value.getMessage();
     Collection<RiskScore> incomingValues = getIncomingValues(iterable);
     Collection<RiskScore> allValues = combineValues(localValues, incomingValues);
@@ -74,59 +86,71 @@ public final class VariableVertexComputation extends
     vertex.voteToHalt();
   }
 
-  private Collection<RiskScore> getIncomingValues(Iterable<VariableVertexValue> iterable) {
-    LOGGER.debug("Copying incoming messages to collection...");
+  @VisibleForTesting
+  SortedSet<RiskScore> getIncomingValues(Iterable<VariableVertexValue> iterable) {
+    LOGGER.debug(COPYING_MSG);
     Collection<RiskScore> incoming = new TreeSet<>();
-    iterable.forEach(msg -> incoming.addAll(msg.getSendableRiskScores().getMessage()));
+    iterable.forEach(msg -> incoming.addAll(msg.getValue().getMessage()));
     return ImmutableSortedSet.copyOf(incoming);
   }
 
-  private Collection<RiskScore> combineValues(Collection<RiskScore> values,
+  @VisibleForTesting
+  SortedSet<RiskScore> combineValues(Collection<RiskScore> values,
       Collection<RiskScore> otherValues) {
-    LOGGER.debug("Combining local and incoming values...");
-    SortedSet<RiskScore> combined = new TreeSet<>();
-    combined.addAll(values);
-    combined.addAll(otherValues);
-    return ImmutableSortedSet.copyOf(combined);
+    LOGGER.debug(COMBINING_MSG);
+    return ImmutableSortedSet.copyOf(Stream.of(values, otherValues)
+        .flatMap(Collection::stream)
+        .collect(Collectors.toSet()));
   }
 
   private void updateVertexValue(
       Vertex<FactorGraphVertexId, FactorGraphWritable, NullWritable> vertex,
       Collection<String> valueId, Collection<RiskScore> newValues) {
-    LOGGER.debug("Updating vertex value...");
-    vertex.setValue(
-        FactorGraphWritable.ofVariableVertex(
-            VariableVertexValue.of(SendableRiskScores.builder()
-            .addAllMessage(newValues)
-            .sender(valueId)
-            .build())));
+    LOGGER.debug(UPDATING_MSG);
+    vertex.setValue(FactorGraphWritable.ofVariableVertex(getUpdatedValue(valueId, newValues)));
+  }
+
+  @VisibleForTesting
+  VariableVertexValue getUpdatedValue(Collection<String> valueId,
+      Collection<RiskScore> newValues) {
+    return VariableVertexValue.of(SendableRiskScores.builder()
+        .addAllMessage(newValues)
+        .sender(valueId)
+        .build());
   }
 
   private void aggregate(Collection<RiskScore> values, Collection<RiskScore> otherValues) {
-    LOGGER.debug("Aggregating based on local vertex value change...");
+    LOGGER.debug(AGGREGATING_MSG);
+    aggregate(AGGREGATOR_NAME, new DoubleWritable(getMaxValueDelta(values, otherValues)));
+  }
+
+  @VisibleForTesting
+  double getMaxValueDelta(Collection<RiskScore> values, Collection<RiskScore> otherValues) {
     double localMax = Collections.max(values, COMPARE_BY_RISK_SCORE).getValue();
     double incomingMax = Collections.max(otherValues, COMPARE_BY_RISK_SCORE).getValue();
-    aggregate(AGGREGATOR_NAME, new DoubleWritable(Math.abs(incomingMax - localMax)));
+    return Math.abs(incomingMax - localMax);
   }
 
   private void sendMessages(Collection<String> sender, Collection<RiskScore> messages) {
-    LOGGER.debug("Sending message from " + sender + "...");
+    LOGGER.debug(MessageFormat.format(SENDING_MSG, sender));
     messages.forEach(msg -> sendMessage(wrapReceiver(msg), wrapMessage(sender, msg, messages)));
   }
 
-  private FactorGraphVertexId wrapReceiver(RiskScore value) {
+  @VisibleForTesting
+  FactorGraphVertexId wrapReceiver(RiskScore value) {
     return FactorGraphVertexId.of(IdGroup.builder()
         .addId(value.getId())
         .build());
   }
 
-  private VariableVertexValue wrapMessage(Collection<String> sender, RiskScore fromReceiver,
+  @VisibleForTesting
+  VariableVertexValue wrapMessage(Collection<String> sender, RiskScore fromReceiver,
       Collection<RiskScore> messages) {
-    Collection<RiskScore> withoutReceiverMsg = new HashSet<>(messages);
-    withoutReceiverMsg.removeIf(msg -> msg.getId().equals(fromReceiver.getId()));
     return VariableVertexValue.of(SendableRiskScores.builder()
         .sender(sender)
-        .message(withoutReceiverMsg)
+        .message(messages.stream()
+            .filter(msg -> !msg.getId().equals(fromReceiver.getId()))
+            .collect(Collectors.toSet()))
         .build());
   }
 }

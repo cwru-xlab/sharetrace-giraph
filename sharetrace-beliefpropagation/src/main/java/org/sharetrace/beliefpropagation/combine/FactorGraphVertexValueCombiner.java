@@ -1,4 +1,4 @@
-package org.sharetrace.beliefpropagation.combiner;
+package org.sharetrace.beliefpropagation.combine;
 
 import com.google.common.base.Preconditions;
 import java.time.Instant;
@@ -26,6 +26,19 @@ import org.slf4j.LoggerFactory;
  */
 public class FactorGraphVertexValueCombiner implements VertexValueCombiner<FactorGraphWritable> {
 
+  // Logging messages
+  private static final String CHECKING_IF_SAME_MSG =
+      "Combiner checking if vertex types are the same...";
+  private static final String PROCEEDING_MSG =
+      "Combiner proceeding since vertex types are the same";
+  private static final String COMBINING_FACTORS_MSG = "Combining factor vertices...";
+  private static final String COMBINING_VARIABLES_MSG = "Combining variable vertices...";
+  private static final String SUCCESSFULLY_COMBINED_MSG = "Successfully combined vertices";
+  private static final String STOPPED_EXECUTION_MSG =
+      "Combiner stopped execution since vertex types are different";
+  private static final String NULL_CONTACT_MSG = "Null contact cannot be combined";
+  private static final String NULL_SCORE_MSG = "Null risk scores cannot be combined";
+
   private static final Logger LOGGER =
       LoggerFactory.getLogger(FactorGraphVertexValueCombiner.class);
 
@@ -33,32 +46,32 @@ public class FactorGraphVertexValueCombiner implements VertexValueCombiner<Facto
   public void combine(FactorGraphWritable original, FactorGraphWritable other) {
     VertexType originalType = original.getType();
     VertexType otherType = other.getType();
-    LOGGER.debug("Combiner checking if vertex types are the same...");
+    LOGGER.debug(CHECKING_IF_SAME_MSG);
     if (originalType.equals(otherType)) {
-      LOGGER.debug("Combiner proceeding since vertex types are the same");
+      LOGGER.debug(PROCEEDING_MSG);
       Writable combined;
       if (originalType.equals(VertexType.FACTOR)) {
-        LOGGER.debug("Combining factor vertices...");
-        Contact originalValue = ((FactorVertexValue) original.getWrapped()).getContact();
-        Contact otherValue = ((FactorVertexValue) other.getWrapped()).getContact();
+        LOGGER.debug(COMBINING_FACTORS_MSG);
+        Contact originalValue = ((FactorVertexValue) original.getWrapped()).getValue();
+        Contact otherValue = ((FactorVertexValue) other.getWrapped()).getValue();
         combined = combine(originalValue, otherValue);
       } else {
-        LOGGER.debug("Combining variable vertices...");
+        LOGGER.debug(COMBINING_VARIABLES_MSG);
         SendableRiskScores originalValue =
-            ((VariableVertexValue) original.getWrapped()).getSendableRiskScores();
+            ((VariableVertexValue) original.getWrapped()).getValue();
         SendableRiskScores otherValue =
-            ((VariableVertexValue) other.getWrapped()).getSendableRiskScores();
+            ((VariableVertexValue) other.getWrapped()).getValue();
         combined = combine(originalValue, otherValue);
       }
-      LOGGER.debug("Successfully combined vertices");
+      LOGGER.debug(SUCCESSFULLY_COMBINED_MSG);
       original.setWrapped(combined);
     }
-    LOGGER.debug("Combiner stopped execution since vertex types are different");
+    LOGGER.debug(STOPPED_EXECUTION_MSG);
   }
 
   private Writable combine(Contact original, Contact other) {
-    Preconditions.checkNotNull(original, "Null contact cannot be combined");
-    Preconditions.checkNotNull(other, "Null contact cannot be combined");
+    Preconditions.checkNotNull(original, NULL_CONTACT_MSG);
+    Preconditions.checkNotNull(other, NULL_CONTACT_MSG);
     return FactorVertexValue.of(Contact.builder()
         .firstUser(original.getFirstUser())
         .secondUser(original.getSecondUser())
@@ -68,8 +81,8 @@ public class FactorGraphVertexValueCombiner implements VertexValueCombiner<Facto
   }
 
   private Writable combine(SendableRiskScores original, SendableRiskScores other) {
-    Preconditions.checkNotNull(original, "Null risk scores cannot be combined");
-    Preconditions.checkNotNull(other, "Null risk scores cannot be combined");
+    Preconditions.checkNotNull(original, NULL_SCORE_MSG);
+    Preconditions.checkNotNull(other, NULL_SCORE_MSG);
     return VariableVertexValue.of(getMoreRecent(original, other));
   }
 
