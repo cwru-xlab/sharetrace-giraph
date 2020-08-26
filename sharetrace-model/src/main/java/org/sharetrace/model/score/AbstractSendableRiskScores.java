@@ -29,6 +29,5 @@ public abstract class AbstractSendableRiskScores implements
   protected final void verifyInputArguments() {
     Preconditions.checkState(!getSender().isEmpty());
     getSender().forEach(s -> Preconditions.checkArgument(!Strings.isNullOrEmpty(s)));
-    Preconditions.checkState(!getMessage().isEmpty());
   }
 }
