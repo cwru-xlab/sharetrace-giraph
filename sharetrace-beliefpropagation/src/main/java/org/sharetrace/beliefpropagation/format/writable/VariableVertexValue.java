@@ -6,8 +6,6 @@ import java.io.DataOutput;
 import java.io.IOException;
 import java.text.MessageFormat;
 import java.time.Instant;
-import java.util.Collections;
-import java.util.Comparator;
 import java.util.SortedSet;
 import java.util.TreeSet;
 import org.apache.hadoop.io.Writable;
@@ -22,16 +20,13 @@ import org.slf4j.LoggerFactory;
  * @see Writable
  * @see SendableRiskScores
  */
+// TODO Combine this so that it's just the SendableRiskScores -- max can be gotten by getting the
+//  last element
 public final class VariableVertexValue implements Writable {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(VariableVertexValue.class);
 
-  private static final Comparator<? super RiskScore> COMPARE_BY_RISK_SCORE =
-      Comparator.comparing(RiskScore::getValue);
-
   private SendableRiskScores sendableRiskScores;
-
-  private RiskScore maxRiskScore;
 
   private VariableVertexValue() {
   }
@@ -39,7 +34,6 @@ public final class VariableVertexValue implements Writable {
   private VariableVertexValue(SendableRiskScores sendableRiskScores) {
     Preconditions.checkNotNull(sendableRiskScores);
     this.sendableRiskScores = SendableRiskScores.copyOf(sendableRiskScores);
-    this.maxRiskScore = Collections.max(sendableRiskScores.getMessage(), COMPARE_BY_RISK_SCORE);
   }
 
   public static VariableVertexValue of(SendableRiskScores sendableRiskScores) {
@@ -88,7 +82,6 @@ public final class VariableVertexValue implements Writable {
         .sender(userIds)
         .message(riskScores)
         .build();
-    maxRiskScore = Collections.max(sendableRiskScores.getMessage(), COMPARE_BY_RISK_SCORE);
   }
 
   public SendableRiskScores getValue() {
@@ -97,7 +90,6 @@ public final class VariableVertexValue implements Writable {
 
   @Override
   public String toString() {
-    return MessageFormat.format("{0}'{'sendableRiskScores={1}, maxRiskScore={2}'}'",
-        getClass().getSimpleName(), sendableRiskScores, maxRiskScore);
+    return MessageFormat.format("{0}'{'sendableRiskScores={1}'}'", getClass().getSimpleName(), sendableRiskScores);
   }
 }
