@@ -115,6 +115,7 @@ public class VentilatorRequestHandler {
     for (int iPartition = 0; iPartition < nPartitions; iPartition++) {
       int startIndex = iPartition * partitionSize;
       int endIndex = (iPartition + 1) * partitionSize - 1;
+      // TODO Generify the payload type for a worker Lambda function
       List<ContractedPdaRequestBody> requestBodies = IntStream.range(startIndex, endIndex)
           .mapToObj(hats::get)
           .map(hat -> ContractedPdaRequestBody.builder()

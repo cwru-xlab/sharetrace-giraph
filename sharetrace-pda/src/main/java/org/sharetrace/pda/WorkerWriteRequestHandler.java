@@ -37,14 +37,14 @@ public class WorkerWriteRequestHandler implements
   private static final String CANNOT_DESERIALIZE = "Unable to deserialize: \n";
   private static final String CANNOT_WRITE_TO_PDA_MSG = "Unable to write data to PDA: \n";
 
-  // TODO Finalize -- writing risk score back will use different namespace than reading
   // Environment variable keys
   private static final String SCORE_ENDPOINT = "scoreEndpoint";
   private static final String SCORE_NAMESPACE = "scoreNamespace";
-  private static final String SCORE_BUCKET = "sharetrace-scores";
+  private static final String SCORE_BUCKET = "sharetrace-output";
   private static final String IS_SANDBOX = "isSandbox";
 
   // Clients
+  // TODO Finalize S3 client -- dependency injection?
   private static final AmazonS3 S3_CLIENT = AmazonS3ClientBuilder.standard()
       .withRegion(Regions.US_EAST_2).build();
   private static final ContractedPdaClient PDA_CLIENT = new ContractedPdaClient();
@@ -58,7 +58,7 @@ public class WorkerWriteRequestHandler implements
     HandlerUtil.logEnvironment(input, context);
     LambdaLogger logger = context.getLogger();
     input.forEach(entry -> handleRequest(entry, logger));
-    return null;
+    return null; // TODO What should be returned? Status code?
   }
 
   private void handleRequest(ContractedPdaRequestBody input, LambdaLogger logger) {

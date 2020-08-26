@@ -29,9 +29,13 @@ public class VentilatorWriteRequestHandler implements RequestHandler<S3Event, St
   public String handleRequest(S3Event input, Context context) {
     HandlerUtil.logEnvironment(input, context);
     LambdaLogger logger = context.getLogger();
+    // Same basic partitioning strategy, except that the payload to a worker is a RiskScore, not
+    // a ContractedPdaRequestBody. In order for this to work, the handler needs to be able to map
+    // a HAT name to a payload type. However, mapping HAT name to ContractedPdaRequestBody
+    // requires the contract ID (env var) and short lived token (from response).
     VentilatorRequestHandler handler =
         new VentilatorRequestHandler(LAMBDA_CLIENT, logger, WORKER_LAMBDAS, PARTITION_SIZE);
     handler.handleRequest();
-    return null;
+    return null; // TODO What should this return? Status code?
   }
 }

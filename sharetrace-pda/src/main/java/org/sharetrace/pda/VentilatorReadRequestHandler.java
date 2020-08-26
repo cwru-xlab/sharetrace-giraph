@@ -29,6 +29,7 @@ public class VentilatorReadRequestHandler implements RequestHandler<ScheduledEve
   private static final List<String> WORKER_LAMBDAS =
       ImmutableList.of(FIRST_WORKER_LAMBDA, SECOND_WORKER_LAMBDA);
 
+  // TODO Finalize
   private static final int PARTITION_SIZE = 50;
 
   @Override

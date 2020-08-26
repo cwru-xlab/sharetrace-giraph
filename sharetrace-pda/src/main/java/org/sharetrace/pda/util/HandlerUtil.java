@@ -69,13 +69,13 @@ public final class HandlerUtil {
   }
 
   public static String getEnvironmentVariable(String envVarKey, LambdaLogger logger) {
-    String environmentVariableValue = null;
+    String envVarValue = null;
     try {
-      environmentVariableValue = System.getenv(envVarKey);
+      envVarValue = System.getenv(envVarKey);
     } catch (NullPointerException e) {
       logger.log(CANNOT_FIND_ENV_VAR_MSG + e.getMessage());
     }
-    return environmentVariableValue;
+    return envVarValue;
   }
 
 }

@@ -62,7 +62,8 @@ public class ContractedPdaClient {
     return ResponseUtil.mapToPdaResponse(response);
   }
 
-  public <T> PdaResponse<T> write(ContractedPdaWriteRequest<T> request) throws IOException {
+  public <T> PdaResponse<? extends T> write(ContractedPdaWriteRequest<T> request)
+      throws IOException {
     PdaRequestUrl url = request.getPdaRequestUrl();
     ContractedPdaRequestBody body = request.getWriteRequestBody().getBaseRequestBody();
     InputStream response = requestFromContractedPda(url, body);
