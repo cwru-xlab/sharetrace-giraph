@@ -20,9 +20,13 @@ public abstract class AbstractPdaRequestUrl {
 
   private static final String INVALID_ENDPOINT_MSG = "Endpoint must not be empty String or null";
 
+  private static final String INVALID_HAT_NAME_MSG = "Hat name must not be empty String or null";
+
   private static final String API_VERSION = "v2.6";
 
   private static final String SCHEME = "https";
+
+  private static final String HAT_DOMAIN_DELIMITER = ".";
 
   private static final String SANDBOX_DOMAIN = "hubat.net";
 
@@ -51,12 +55,13 @@ public abstract class AbstractPdaRequestUrl {
   public abstract Operation getOperation();
 
   @Value.Derived
-  public URL toURL() {
+  public URL toURL(String hatName) {
+    Preconditions.checkArgument(!Strings.isNullOrEmpty(hatName), INVALID_HAT_NAME_MSG);
     HttpUrl.Builder builder = new HttpUrl.Builder().scheme(SCHEME);
     if (isSandbox()) {
-      builder.host(SANDBOX_DOMAIN);
+      builder.host(formatDomainWithHat(hatName, SANDBOX_DOMAIN));
     } else {
-      builder.host(PROD_DOMAIN);
+      builder.host(formatDomainWithHat(hatName, PROD_DOMAIN));
     }
     builder.addPathSegment(API).addPathSegment(API_VERSION);
     if (isContracted()) {
@@ -69,6 +74,10 @@ public abstract class AbstractPdaRequestUrl {
         .addPathSegment(getEndpoint())
         .build()
         .url();
+  }
+
+  private String formatDomainWithHat(String hatName, String domain) {
+    return hatName + HAT_DOMAIN_DELIMITER + domain;
   }
 
   @Value.Check

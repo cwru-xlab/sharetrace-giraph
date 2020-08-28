@@ -164,9 +164,8 @@ public final class FactorVertexComputation extends
   }
 
   @VisibleForTesting
-  FactorGraphVertexId wrapReceiver(SendableRiskScores containsReceiver) {
-    return FactorGraphVertexId
-        .of(IdGroup.builder().addAllIds(containsReceiver.getSender()).build());
+  FactorGraphVertexId wrapReceiver(SendableRiskScores receiver) {
+    return FactorGraphVertexId.of(IdGroup.builder().addAllIds(receiver.getSender()).build());
   }
 
   @VisibleForTesting

@@ -1,4 +1,4 @@
-package org.sharetrace.pda;
+package org.sharetrace.pda.common;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
@@ -39,8 +39,7 @@ public class ContractedPdaClient {
 
   private static final String CONTENT_TYPE = "application/json";
 
-  public ShortLivedTokenResponse getShortLivedToken(ShortLivedTokenRequest request)
-      throws IOException {
+  public ShortLivedTokenResponse getShortLivedToken(ShortLivedTokenRequest request) throws IOException {
     HttpUrl url = new HttpUrl.Builder()
         .addPathSegments(request.getContractsServerUrl().getPath())
         .addPathSegments(CONTRACTS_KEYRING)
@@ -58,24 +57,25 @@ public class ContractedPdaClient {
   public <T> PdaResponse<T> read(ContractedPdaReadRequest request) throws IOException {
     PdaRequestUrl url = request.getPdaRequestUrl();
     ContractedPdaRequestBody body = request.getReadRequestBody().getBaseRequestBody();
-    InputStream response = requestFromContractedPda(url, body);
+    InputStream response = request(url, body);
     return ResponseUtil.mapToPdaResponse(response);
   }
 
-  public <T> PdaResponse<? extends T> write(ContractedPdaWriteRequest<T> request)
-      throws IOException {
+  public <T> PdaResponse<T> write(ContractedPdaWriteRequest<T> request) throws IOException {
     PdaRequestUrl url = request.getPdaRequestUrl();
     ContractedPdaRequestBody body = request.getWriteRequestBody().getBaseRequestBody();
-    InputStream response = requestFromContractedPda(url, body);
+    InputStream response = request(url, body);
     return ResponseUtil.mapToPdaResponse(response);
   }
 
-  private InputStream requestFromContractedPda(PdaRequestUrl url, ContractedPdaRequestBody body)
-      throws IOException {
+  private InputStream request(PdaRequestUrl url, ContractedPdaRequestBody body) throws IOException {
     String textBody = MAPPER.writeValueAsString(body);
     MediaType mediaType = MediaType.parse(CONTENT_TYPE);
     RequestBody requestBody = RequestBody.create(textBody, mediaType);
-    Request request = new Request.Builder().url(url.toURL()).method(POST, requestBody).build();
+    Request request = new Request.Builder()
+        .url(url.toURL(body.getHatName()))
+        .method(POST, requestBody)
+        .build();
     Response response = CLIENT.newCall(request).execute();
     return Objects.requireNonNull(response.body()).byteStream();
   }

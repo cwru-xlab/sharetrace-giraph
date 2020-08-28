@@ -79,7 +79,6 @@ public class ContactMatchingComputation {
     return IntStream.range(0, nIndicesInRow)
         .mapToObj(iIndex -> new AbstractMap.SimpleImmutableEntry<>(rowIndex, upperIndex - iIndex))
         .collect(Collectors.toCollection(() -> new HashSet<>(nIndicesInRow)));
-
   }
 
   private Contact findContact(LocationHistory history, LocationHistory otherHistory) {

@@ -2,7 +2,6 @@ allprojects {
     apply plugin: 'java'
     apply plugin: 'idea'
     apply plugin: 'checkstyle'
-    apply plugin: 'jacoco'
 
     group = 'org.sharetrace'
     version = '1.0-SNAPSHOT'
@@ -17,6 +16,7 @@ allprojects {
     }
 
     dependencies {
+        // https://mvnrepository.com/artifact/com.google.guava/guava
         implementation('com.google.guava:guava:29.0-jre')
         // https://mvnrepository.com/artifact/com.fasterxml.jackson.core/jackson-databind
         implementation('com.fasterxml.jackson.core:jackson-databind:2.10.3')
@@ -30,6 +30,12 @@ allprojects {
         implementation('com.fasterxml.jackson.datatype:jackson-datatype-jsr310:2.10.3')
         // https://mvnrepository.com/artifact/com.fasterxml.jackson.datatype/jackson-datatype-jdk8
         implementation('com.fasterxml.jackson.datatype:jackson-datatype-jdk8:2.10.3')
+        // https://mvnrepository.com/artifact/org.apache.logging.log4j/log4j-core
+        implementation('org.apache.logging.log4j:log4j-core:2.13.3')
+        // https://mvnrepository.com/artifact/org.slf4j/slf4j-api
+        implementation('org.slf4j:slf4j-api:1.7.30')
+        // https://mvnrepository.com/artifact/org.slf4j/slf4j-log4j12
+        implementation('org.slf4j:slf4j-log4j12:1.7.30')
         // https://mvnrepository.com/artifact/org.junit.jupiter/junit-jupiter-engine
         testRuntime('org.junit.jupiter:junit-jupiter-engine:5.6.2')
         // https://mvnrepository.com/artifact/org.junit.jupiter/junit-jupiter-api
@@ -40,12 +46,6 @@ allprojects {
         testImplementation('org.mockito:mockito-junit-jupiter:3.5.0')
         // https://mvnrepository.com/artifact/org.mockito/mockito-inline
         testImplementation('org.mockito:mockito-inline:3.5.0')
-        // https://mvnrepository.com/artifact/org.apache.logging.log4j/log4j-core
-        implementation('org.apache.logging.log4j:log4j-core:2.13.3')
-        // https://mvnrepository.com/artifact/org.slf4j/slf4j-api
-        implementation('org.slf4j:slf4j-api:1.7.30')
-        // https://mvnrepository.com/artifact/org.slf4j/slf4j-log4j12
-        implementation('org.slf4j:slf4j-log4j12:1.7.30')
     }
 
     test {
@@ -62,10 +62,34 @@ project(':sharetrace-beliefpropagation') {
 project(':sharetrace-contactmatching') {
     dependencies {
         implementation project(':sharetrace-model')
+        implementation project(':sharetrace-lambda-common')
     }
 }
 
-project(':sharetrace-pda') {
+project(':sharetrace-pda-read') {
+    dependencies {
+        implementation project(':sharetrace-pda-common')
+        implementation project(':sharetrace-lambda-common')
+        implementation project(':sharetrace-model')
+    }
+}
+
+project(':sharetrace-pda-write') {
+    dependencies {
+        implementation project(':sharetrace-pda-common')
+        implementation project(':sharetrace-lambda-common')
+        implementation project(':sharetrace-model')
+    }
+}
+
+project(':sharetrace-pda-common') {
+    dependencies {
+        implementation project(':sharetrace-model')
+        implementation project(':sharetrace-lambda-common')
+    }
+}
+
+project(':sharetrace-lambda-common') {
     dependencies {
         implementation project(':sharetrace-model')
     }

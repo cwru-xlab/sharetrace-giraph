@@ -10,6 +10,8 @@
 rootProject.name = 'sharetrace'
 include 'sharetrace-model'
 include 'sharetrace-contactmatching'
-include 'sharetrace-pda'
 include 'sharetrace-beliefpropagation'
-
+include 'sharetrace-pda-read'
+include 'sharetrace-pda-write'
+include 'sharetrace-pda-common'
+include 'sharetrace-lambda-common'
