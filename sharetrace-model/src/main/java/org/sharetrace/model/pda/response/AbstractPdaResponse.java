@@ -19,6 +19,7 @@ import org.immutables.value.Value;
 @JsonDeserialize(as = PdaResponse.class)
 public abstract class AbstractPdaResponse<T> implements Response<Record<T>> {
 
+  @Override
   @JsonProperty(value = "records", access = Access.READ_WRITE)
   public abstract Optional<List<Record<T>>> getData();
 
@@ -31,5 +32,11 @@ public abstract class AbstractPdaResponse<T> implements Response<Record<T>> {
   @Value.Check
   protected final void verifyInputArguments() {
     ResponseUtil.verifyInputArguments(this);
+  }
+
+  public boolean isSuccess() {
+    boolean dataPresent = getData().isPresent() && !getData().get().isEmpty();
+    boolean errorAbsent = !getError().isPresent() && !getCause().isPresent();
+    return dataPresent && errorAbsent;
   }
 }

@@ -1,16 +1,17 @@
-package org.sharetrace.pda;
+package org.sharetrace.pda.write;
 
 import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.LambdaLogger;
 import com.amazonaws.services.lambda.runtime.RequestHandler;
 import java.io.IOException;
 import java.util.List;
+import org.sharetrace.lambda.common.util.HandlerUtil;
 import org.sharetrace.model.pda.request.AbstractPdaRequestUrl.Operation;
 import org.sharetrace.model.pda.request.ContractedPdaWriteRequest;
 import org.sharetrace.model.pda.request.ContractedPdaWriteRequestBody;
 import org.sharetrace.model.pda.request.PdaRequestUrl;
 import org.sharetrace.model.score.RiskScore;
-import org.sharetrace.pda.util.HandlerUtil;
+import org.sharetrace.pda.common.ContractedPdaClient;
 
 /**
  * Worker function that sends a write request to a contracted PDA.

@@ -41,7 +41,7 @@ import org.sharetrace.model.location.LocationHistory;
 import org.sharetrace.model.util.ShareTraceUtil;
 
 /*
-TODO Add the functionality to take MULTIPLE pairs of unqiue entries to handle per worker payload.
+TODO Add the functionality to take MULTIPLE pairs of unique entries to handle per worker payload.
  This allows the flexibility of "combining" many small files written earlier by the ReadWorker
  into fewer, larger files.
 

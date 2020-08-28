@@ -1,4 +1,4 @@
-package org.sharetrace.pda;
+package org.sharetrace.pda.read;
 
 import com.amazonaws.AmazonServiceException;
 import com.amazonaws.regions.Regions;
@@ -23,6 +23,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.sharetrace.lambda.common.util.HandlerUtil;
 import org.sharetrace.model.location.LocationHistory;
 import org.sharetrace.model.location.TemporalLocation;
 import org.sharetrace.model.pda.HatContext;
@@ -38,7 +39,7 @@ import org.sharetrace.model.pda.response.PdaResponse;
 import org.sharetrace.model.pda.response.Record;
 import org.sharetrace.model.score.RiskScore;
 import org.sharetrace.model.util.ShareTraceUtil;
-import org.sharetrace.pda.util.HandlerUtil;
+import org.sharetrace.pda.common.ContractedPdaClient;
 
 /**
  * Retrieves location and score data from a PDA. If successful, the data is stored in S3 for later

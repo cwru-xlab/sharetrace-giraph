@@ -1,4 +1,4 @@
-package org.sharetrace.pda;
+package org.sharetrace.lambda.common;
 
 import java.util.Collection;
 import java.util.List;

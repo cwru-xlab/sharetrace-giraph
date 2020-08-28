@@ -1,4 +1,4 @@
-package org.sharetrace.pda;
+package org.sharetrace.pda.write;
 
 import com.amazonaws.regions.Regions;
 import com.amazonaws.services.lambda.AWSLambdaAsync;
@@ -26,12 +26,13 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import org.sharetrace.lambda.common.util.HandlerUtil;
 import org.sharetrace.model.pda.Payload;
 import org.sharetrace.model.pda.request.ContractedPdaRequestBody;
 import org.sharetrace.model.pda.request.ContractedPdaWriteRequestBody;
 import org.sharetrace.model.score.RiskScore;
 import org.sharetrace.model.util.ShareTraceUtil;
-import org.sharetrace.pda.util.HandlerUtil;
+import org.sharetrace.pda.common.ContractedPdaVentilator;
 
 /**
  * This Lambda function attempts to execute one or more worker Lambda functions that execute the

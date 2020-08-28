@@ -14,7 +14,7 @@ import org.sharetrace.model.util.ShareTraceUtil;
 public final class ResponseUtil {
 
   private static final String INVALID_SUCCESSFUL_RESPONSE_MSG =
-      "A successful response must only contain data of the response, and not an error code with a message/cause";
+      "A success response must only contain data of the response, and not an error code with a message/cause";
 
   private static final String INVALID_ERROR_RESPONSE_MSG =
       "An error response must only contain an error code and a message/cause, and not the data of the response";

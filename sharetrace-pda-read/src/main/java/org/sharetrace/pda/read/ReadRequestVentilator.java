@@ -1,4 +1,4 @@
-package org.sharetrace.pda;
+package org.sharetrace.pda.read;
 
 import com.amazonaws.regions.Regions;
 import com.amazonaws.services.lambda.AWSLambdaAsync;
@@ -8,8 +8,9 @@ import com.amazonaws.services.lambda.runtime.RequestHandler;
 import com.amazonaws.services.lambda.runtime.events.ScheduledEvent;
 import com.google.common.collect.ImmutableList;
 import java.util.List;
+import org.sharetrace.lambda.common.util.HandlerUtil;
 import org.sharetrace.model.pda.request.ContractedPdaRequestBody;
-import org.sharetrace.pda.util.HandlerUtil;
+import org.sharetrace.pda.common.ContractedPdaVentilator;
 
 /**
  * Retrieves the short-lived token and list of associated HATs to retrieve data from each PDA.
