@@ -14,5 +14,4 @@ Note that the following instructions assumes IntelliJ is being used for the deve
  2. Select "Obtain processors from project classpath."
  3. Select "Module content root" for "Store generated sources relative to" and specify the desired directories to store the generated code.
  4. Under Build, run "Build Project."
- 4. Under Project Structure > Modules > sharetrace-model > main, mark the "generated" directory
-  as a "Sources," and mark "org" directory as "Excluded."
+ 4. Under Project Structure > Modules > sharetrace-model > main, mark the directory specified as a generated source.
