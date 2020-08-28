@@ -62,8 +62,7 @@ public final class VariableVertexComputation extends
       Comparator.comparing(RiskScore::getValue);
 
   @Override
-  public void compute(
-      Vertex<FactorGraphVertexId, FactorGraphWritable, NullWritable> vertex,
+  public void compute(Vertex<FactorGraphVertexId, FactorGraphWritable, NullWritable> vertex,
       Iterable<VariableVertexValue> iterable) {
     Preconditions.checkNotNull(vertex, NULL_VERTEX_MSG);
     Preconditions.checkNotNull(iterable, NULL_MESSAGE_MSG);
@@ -74,8 +73,7 @@ public final class VariableVertexComputation extends
       return;
     }
 
-    SendableRiskScores value =
-        ((VariableVertexValue) vertex.getValue().getWrapped()).getValue();
+    SendableRiskScores value = ((VariableVertexValue) vertex.getValue().getWrapped()).getValue();
     Collection<RiskScore> localValues = value.getMessage();
     Collection<RiskScore> incomingValues = getIncomingValues(iterable);
     Collection<RiskScore> allValues = combineValues(localValues, incomingValues);
@@ -111,8 +109,7 @@ public final class VariableVertexComputation extends
   }
 
   @VisibleForTesting
-  VariableVertexValue getUpdatedValue(Collection<String> valueId,
-      Collection<RiskScore> newValues) {
+  VariableVertexValue getUpdatedValue(Collection<String> valueId, Collection<RiskScore> newValues) {
     return VariableVertexValue.of(SendableRiskScores.builder()
         .addAllMessage(newValues)
         .sender(valueId)
@@ -138,9 +135,7 @@ public final class VariableVertexComputation extends
 
   @VisibleForTesting
   FactorGraphVertexId wrapReceiver(RiskScore value) {
-    return FactorGraphVertexId.of(IdGroup.builder()
-        .addId(value.getId())
-        .build());
+    return FactorGraphVertexId.of(IdGroup.builder().addId(value.getId()).build());
   }
 
   @VisibleForTesting
