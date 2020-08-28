@@ -48,6 +48,7 @@ public class ReadRequestWorker implements
     RequestHandler<List<ContractedPdaRequestBody>, String> {
 
   // Logging messages
+  private static final String CANNOT_FIND_ENV_VAR_MSG = "Unable to environment variable: \n";
   private static final String CANNOT_DESERIALIZE = "Unable to deserialize: \n";
   private static final String CANNOT_WRITE_TO_S3_MSG = "Unable to write to S3: \n";
   private static final String CANNOT_READ_FROM_PDA_MSG = "Unable to read data from PDA: \n";
@@ -70,10 +71,14 @@ public class ReadRequestWorker implements
 
   private static final String ORDER_BY = "timestamp";
 
-  private static final String INPUT_SEGMENT = "input/";
-
   private LambdaLogger logger;
 
+  // TODO Actually, want write all bodies to the SAME file, not individual files. For risk
+  //  scores, it doesn't matter which partition it's written to. For geohashes, assuming the
+  //  partitions are over written with each write, it doesn't matter. HOWEVER, when merging the
+  //  contact data, we do need a way to at least retrieve which partition a contact belongs to.
+  //  This could be done with a "lookup" file that the ventilator can refer to in order to decide
+  //  the partition assignment
   @Override
   public String handleRequest(List<ContractedPdaRequestBody> input, Context context) {
     HandlerUtil.logEnvironment(input, context);
@@ -88,8 +93,8 @@ public class ReadRequestWorker implements
   }
 
   private void handleLocationsRequest(ContractedPdaRequestBody input) {
-    String endpoint = HandlerUtil.getEnvironmentVariable(LOCATIONS_ENDPOINT);
-    String namespace = HandlerUtil.getEnvironmentVariable(LOCATIONS_NAMESPACE);
+    String endpoint = getEnvironmentVariable(LOCATIONS_ENDPOINT);
+    String namespace = getEnvironmentVariable(LOCATIONS_NAMESPACE);
     PdaRequestUrl url = getPdaRequestUrl(endpoint, namespace);
     String hatName = input.getHatName();
     int skipAmount = getSkipAmount(hatName);
@@ -116,18 +121,17 @@ public class ReadRequestWorker implements
   }
 
   private PdaRequestUrl getPdaRequestUrl(String endpoint, String namespace) {
-    boolean sandbox = Boolean.parseBoolean(HandlerUtil.getEnvironmentVariable(IS_SANDBOX));
     return PdaRequestUrl.builder()
         .contracted(true)
         .operation(Operation.READ)
-        .sandbox(sandbox)
+        .sandbox(Boolean.parseBoolean(getEnvironmentVariable(IS_SANDBOX)))
         .endpoint(endpoint)
         .namespace(namespace)
         .build();
   }
 
   private int getSkipAmount(String hatName) {
-    S3Object object = S3_CLIENT.getObject(HAT_CONTEXT_BUCKET, getKey(hatName));
+    S3Object object = S3_CLIENT.getObject(HAT_CONTEXT_BUCKET, hatName);
     S3ObjectInputStream input = object.getObjectContent();
     int skipAmount = 0;
     try (BufferedReader reader = new BufferedReader(new InputStreamReader(input, Charsets.UTF_8))) {
@@ -137,10 +141,6 @@ public class ReadRequestWorker implements
       logger.log(CANNOT_DESERIALIZE + e.getMessage());
     }
     return skipAmount;
-  }
-
-  private String getKey(String hatName) {
-    return INPUT_SEGMENT + hatName;
   }
 
   private PdaResponse<TemporalLocation> getLocationResponse(ContractedPdaReadRequest readRequest) {
@@ -156,14 +156,13 @@ public class ReadRequestWorker implements
 
   private int writeLocationsToS3(PdaResponse<TemporalLocation> response, String hatName) {
     int nLocationsWritten = 0;
-    String key = getKey(hatName);
-    File file = new File(key);
+    File file = new File(hatName);
     try (BufferedWriter writer = new BufferedWriter(new FileWriter(file))) {
       Optional<List<Record<TemporalLocation>>> records = response.getData();
       if (records.isPresent() && !records.get().isEmpty()) {
         LocationHistory history = transform(records.get(), hatName);
         writer.write(MAPPER.writeValueAsString(history));
-        S3_CLIENT.putObject(LOCATIONS_BUCKET, key, file);
+        S3_CLIENT.putObject(LOCATIONS_BUCKET, hatName, file);
         nLocationsWritten = history.getHistory().size();
       } else {
         logFailedResponse(response.getError(), response.getCause());
@@ -192,7 +191,7 @@ public class ReadRequestWorker implements
   }
 
   private void updateHatContext(HatContext updatedContext) {
-    String key = getKey(updatedContext.getHatName());
+    String key = updatedContext.getHatName();
     File updated = new File(key);
     try (BufferedWriter writer = new BufferedWriter(new FileWriter(updated))) {
       writer.write(MAPPER.writeValueAsString(updatedContext));
@@ -203,8 +202,8 @@ public class ReadRequestWorker implements
   }
 
   private void handleScoreRequest(ContractedPdaRequestBody input) {
-    String scoreEndpoint = HandlerUtil.getEnvironmentVariable(SCORE_ENDPOINT);
-    String scoreNamespace = HandlerUtil.getEnvironmentVariable(SCORE_NAMESPACE);
+    String scoreEndpoint = getEnvironmentVariable(SCORE_ENDPOINT);
+    String scoreNamespace = getEnvironmentVariable(SCORE_NAMESPACE);
     PdaRequestUrl scoreUrl = getPdaRequestUrl(scoreEndpoint, scoreNamespace);
     ContractedPdaReadRequest scoreRequest = ContractedPdaReadRequest.builder()
         .pdaRequestUrl(scoreUrl)
@@ -214,14 +213,13 @@ public class ReadRequestWorker implements
   }
 
   private void writeScoreToS3(PdaResponse<RiskScore> response, String hatName) {
-    String key = getKey(hatName);
-    File file = new File(key);
+    File file = new File(hatName);
     try (BufferedWriter writer = new BufferedWriter(new FileWriter(file));) {
       Optional<List<Record<RiskScore>>> records = response.getData();
       if (records.isPresent() && !records.get().isEmpty()) {
         RiskScore riskScore = records.get().get(0).getPayload().getData();
         writer.write(MAPPER.writeValueAsString(riskScore));
-        S3_CLIENT.putObject(SCORE_BUCKET, key, file);
+        S3_CLIENT.putObject(SCORE_BUCKET, hatName, file);
       } else {
         logFailedResponse(response.getError(), response.getCause());
       }
@@ -239,5 +237,15 @@ public class ReadRequestWorker implements
       System.exit(1);
     }
     return response;
+  }
+
+  private String getEnvironmentVariable(String key) {
+    String value = null;
+    try {
+      value = HandlerUtil.getEnvironmentVariable(key);
+    } catch (NullPointerException e) {
+      logger.log(CANNOT_FIND_ENV_VAR_MSG + e.getMessage());
+    }
+    return value;
   }
 }
