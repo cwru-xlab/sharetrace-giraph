@@ -36,6 +36,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
+import org.sharetrace.lambda.common.util.HandlerUtil;
 import org.sharetrace.model.contact.Contact;
 import org.sharetrace.model.location.LocationHistory;
 import org.sharetrace.model.util.ShareTraceUtil;
@@ -56,16 +57,6 @@ TODO Add the functionality to take MULTIPLE pairs of unique entries to handle pe
  */
 public class ContactMatchingHandler implements RequestHandler<S3Event, String> {
 
-  private static final String ENVIRONMENT_VARIABLES = "ENVIRONMENT VARIABLES: ";
-
-  private static final String CONTEXT = "CONTEXT: ";
-
-  private static final String EVENT = "EVENT: ";
-
-  private static final String EVENT_TYPE = "EVENT_TYPE: ";
-
-  private static final StringBuilder STRING_BUILDER = new StringBuilder();
-
   private static final AmazonS3 S3 = AmazonS3ClientBuilder.standard()
       .withRegion(Regions.US_EAST_2).build();
 
@@ -81,7 +72,7 @@ public class ContactMatchingHandler implements RequestHandler<S3Event, String> {
 
   @Override
   public String handleRequest(S3Event input, Context context) {
-    log(input, context);
+    HandlerUtil.logEnvironment(input, context);
     LambdaLogger logger = context.getLogger();
     String bucketName = getBucketName(input);
     List<S3ObjectSummary> objects = S3.listObjectsV2(bucketName).getObjectSummaries();
@@ -114,48 +105,7 @@ public class ContactMatchingHandler implements RequestHandler<S3Event, String> {
 
     S3.completeMultipartUpload(
         new CompleteMultipartUploadRequest(bucketName, KEY_NAME, uploadId, tags));
-    return null;
-  }
-
-  private void log(S3Event input, Context context) {
-    LambdaLogger logger = context.getLogger();
-    try {
-      String environmentVariablesLog = STRING_BUILDER
-          .append(ENVIRONMENT_VARIABLES)
-          .append(MAPPER.writeValueAsString(System.getenv()))
-          .toString();
-      logger.log(environmentVariablesLog);
-      resetStringBuilder();
-
-      String contextLog = STRING_BUILDER
-          .append(CONTEXT)
-          .append(MAPPER.writeValueAsString(context))
-          .toString();
-      logger.log(contextLog);
-      resetStringBuilder();
-
-      String eventLog = STRING_BUILDER
-          .append(EVENT)
-          .append(MAPPER.writeValueAsString(input))
-          .toString();
-      logger.log(eventLog);
-      resetStringBuilder();
-
-      String eventTypeLog = STRING_BUILDER
-          .append(EVENT_TYPE)
-          .append(input.getClass().getSimpleName())
-          .toString();
-      logger.log(eventTypeLog);
-      resetStringBuilder();
-
-    } catch (JsonProcessingException e) {
-      logger.log(e.getMessage());
-      logger.log(Arrays.toString(e.getStackTrace()));
-    }
-  }
-
-  private void resetStringBuilder() {
-    STRING_BUILDER.delete(0, STRING_BUILDER.length());
+    return HandlerUtil.get200Ok();
   }
 
   private String getBucketName(S3Event input) {
