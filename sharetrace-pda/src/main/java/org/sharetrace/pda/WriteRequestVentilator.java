@@ -45,6 +45,9 @@ public class WriteRequestVentilator
     extends ContractedPdaVentilator<ContractedPdaWriteRequestBody<RiskScore>>
     implements RequestHandler<S3Event, String> {
 
+  // Logging messages
+  private static final String CANNOT_DESERIALIZE = "Unable to deserialize: \n";
+
   // Environment variable keys
   private static final String FIRST_WORKER_LAMBDA = "lambdaWriter1";
   private static final String SECOND_WORKER_LAMBDA = "lambdaWriter2";
@@ -60,7 +63,7 @@ public class WriteRequestVentilator
 
   private static final int PARTITION_SIZE = 50;
 
-  private static final String OUTPUT_KEY = "output";
+  private static final String OUTPUT_KEY = "output.txt";
 
   private Map<String, RiskScore> output;
 
@@ -100,7 +103,7 @@ public class WriteRequestVentilator
     try {
       mapped = MAPPER.readValue(s, RiskScore.class);
     } catch (JsonProcessingException e) {
-      getLogger().log(e.getMessage());
+      getLogger().log(CANNOT_DESERIALIZE + e.getMessage());
       getLogger().log(Arrays.toString(e.getStackTrace()));
     }
     return mapped;
@@ -108,13 +111,13 @@ public class WriteRequestVentilator
 
   @Override
   public ContractedPdaWriteRequestBody<RiskScore> mapToPayload(String hat, String shortLivedToken) {
-    ContractedPdaRequestBody baseRequestBody = ContractedPdaRequestBody.builder()
-        .hatName(hat)
-        .contractId(getContractId())
-        .shortLivedToken(shortLivedToken)
-        .build();
     ContractedPdaWriteRequestBody<RiskScore> requestBody = null;
     if (output.containsKey(hat)) {
+      ContractedPdaRequestBody baseRequestBody = ContractedPdaRequestBody.builder()
+          .hatName(hat)
+          .contractId(getContractId())
+          .shortLivedToken(shortLivedToken)
+          .build();
       requestBody = ContractedPdaWriteRequestBody.<RiskScore>builder()
           .baseRequestBody(baseRequestBody)
           .payload(Payload.<RiskScore>builder().data(output.get(hat)).build())
