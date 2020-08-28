@@ -5,9 +5,7 @@ import com.amazonaws.services.lambda.runtime.LambdaLogger;
 import com.amazonaws.services.lambda.runtime.RequestHandler;
 import java.io.IOException;
 import java.util.List;
-import org.sharetrace.model.pda.Payload;
 import org.sharetrace.model.pda.request.AbstractPdaRequestUrl.Operation;
-import org.sharetrace.model.pda.request.ContractedPdaRequestBody;
 import org.sharetrace.model.pda.request.ContractedPdaWriteRequest;
 import org.sharetrace.model.pda.request.ContractedPdaWriteRequestBody;
 import org.sharetrace.model.pda.request.PdaRequestUrl;
@@ -43,15 +41,9 @@ public class WriteRequestWorker implements
   }
 
   private void handleRequest(ContractedPdaWriteRequestBody<RiskScore> input) {
-    ContractedPdaRequestBody baseRequestBody = input.getBaseRequestBody();
-    Payload<RiskScore> payload = input.getPayload();
-    ContractedPdaWriteRequestBody<RiskScore> body = ContractedPdaWriteRequestBody.<RiskScore>builder()
-        .baseRequestBody(baseRequestBody)
-        .payload(payload)
-        .build();
     ContractedPdaWriteRequest<RiskScore> request = ContractedPdaWriteRequest.<RiskScore>builder()
         .pdaRequestUrl(getPdaRequestUrl())
-        .writeRequestBody(body)
+        .writeRequestBody(input)
         .build();
     try {
       PDA_CLIENT.write(request);
