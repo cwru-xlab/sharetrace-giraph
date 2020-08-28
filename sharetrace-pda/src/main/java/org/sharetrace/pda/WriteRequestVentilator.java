@@ -74,7 +74,6 @@ public class WriteRequestVentilator
     setLogger(context.getLogger());
     S3EventNotificationRecord record = input.getRecords().get(0);
     String bucketName = record.getS3().getBucket().getName();
-    // TODO Verify number of files output by Giraph
     S3Object object = S3.getObject(bucketName, OUTPUT_KEY);
     output = mapObject(object);
     handleRequest();

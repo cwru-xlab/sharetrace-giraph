@@ -29,6 +29,7 @@ import org.sharetrace.pda.util.HandlerUtil;
 public abstract class ContractedPdaVentilator<T> implements Ventilator<T> {
 
   // Logging messages
+  private static final String CANNOT_FIND_ENV_VAR_MSG = "Unable to environment variable: \n";
   private static final String MALFORMED_URL_MSG = "Malformed contracts server URL: \n";
   private static final String INCOMPLETE_REQUEST_MSG = "Failed to complete short-lived token request: \n";
   private static final String FAILED_TO_SERIALIZE_MSG = "Failed to serialize request body: \n";
@@ -62,7 +63,7 @@ public abstract class ContractedPdaVentilator<T> implements Ventilator<T> {
   @Override
   public void handleRequest() {
     ShortLivedTokenRequest tokenRequest = ShortLivedTokenRequest.builder()
-        .longLivedToken(HandlerUtil.getEnvironmentVariable(LONG_LIVED_TOKEN))
+        .longLivedToken(getEnvironmentVariable(LONG_LIVED_TOKEN))
         .contractsServerUrl(getContractsServerUrl())
         .build();
     ShortLivedTokenResponse response = getShortLivedTokenResponse(tokenRequest);
@@ -86,7 +87,7 @@ public abstract class ContractedPdaVentilator<T> implements Ventilator<T> {
   private URL getContractsServerUrl() {
     URL contractsServerUrl = null;
     try {
-      contractsServerUrl = new URL(HandlerUtil.getEnvironmentVariable(CONTRACTS_SERVER_URL));
+      contractsServerUrl = new URL(getEnvironmentVariable(CONTRACTS_SERVER_URL));
     } catch (MalformedURLException e) {
       log(MALFORMED_URL_MSG + e.getMessage());
       System.exit(1);
@@ -129,9 +130,7 @@ public abstract class ContractedPdaVentilator<T> implements Ventilator<T> {
 
   @Override
   public List<String> getWorkers() {
-    return lambdaWorkerKeys.stream()
-        .map(HandlerUtil::getEnvironmentVariable)
-        .collect(Collectors.toList());
+    return lambdaWorkerKeys.stream().map(this::getEnvironmentVariable).collect(Collectors.toList());
   }
 
   abstract T mapToPayload(String hat, String shortLivedToken);
@@ -150,7 +149,17 @@ public abstract class ContractedPdaVentilator<T> implements Ventilator<T> {
   }
 
   String getContractId() {
-    return HandlerUtil.getEnvironmentVariable(CONTRACT_ID);
+    return getEnvironmentVariable(CONTRACT_ID);
+  }
+
+  String getEnvironmentVariable(String key) {
+    String value = null;
+    try {
+      value = HandlerUtil.getEnvironmentVariable(key);
+    } catch (NullPointerException e) {
+      log(CANNOT_FIND_ENV_VAR_MSG + e.getMessage());
+    }
+    return value;
   }
 
   private void log(String message) {

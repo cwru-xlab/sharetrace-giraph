@@ -44,7 +44,7 @@ import org.sharetrace.pda.util.HandlerUtil;
  * <p>
  * This Lambda function is invoked by {@link ReadRequestVentilator}.
  */
-public class WorkerReadRequestHandler implements
+public class ReadRequestWorker implements
     RequestHandler<List<ContractedPdaRequestBody>, String> {
 
   // Logging messages
@@ -87,7 +87,6 @@ public class WorkerReadRequestHandler implements
     handleScoreRequest(input);
   }
 
-  // TODO Add try-catch for NullPointerException for environment variables?
   private void handleLocationsRequest(ContractedPdaRequestBody input) {
     String endpoint = HandlerUtil.getEnvironmentVariable(LOCATIONS_ENDPOINT);
     String namespace = HandlerUtil.getEnvironmentVariable(LOCATIONS_NAMESPACE);

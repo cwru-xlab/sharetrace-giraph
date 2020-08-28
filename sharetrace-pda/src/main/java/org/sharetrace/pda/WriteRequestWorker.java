@@ -17,7 +17,7 @@ import org.sharetrace.pda.util.HandlerUtil;
 /**
  * Worker function that sends a write request to a contracted PDA.
  */
-public class WorkerWriteRequestHandler implements
+public class WriteRequestWorker implements
     RequestHandler<List<ContractedPdaWriteRequestBody<RiskScore>>, String> {
 
   // Logging messages
