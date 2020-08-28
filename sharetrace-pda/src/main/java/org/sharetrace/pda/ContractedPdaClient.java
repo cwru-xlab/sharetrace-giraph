@@ -39,7 +39,7 @@ public class ContractedPdaClient {
 
   private static final String CONTENT_TYPE = "application/json";
 
-  public ShortLivedTokenResponse getShortLivedToken(ShortLivedTokenRequest request)
+  ShortLivedTokenResponse getShortLivedToken(ShortLivedTokenRequest request)
       throws IOException {
     HttpUrl url = new HttpUrl.Builder()
         .addPathSegments(request.getContractsServerUrl().getPath())
@@ -55,14 +55,14 @@ public class ContractedPdaClient {
     return ResponseUtil.mapToShortLivedTokenResponse(responseBody);
   }
 
-  public <T> PdaResponse<T> read(ContractedPdaReadRequest request) throws IOException {
+  <T> PdaResponse<T> read(ContractedPdaReadRequest request) throws IOException {
     PdaRequestUrl url = request.getPdaRequestUrl();
     ContractedPdaRequestBody body = request.getReadRequestBody().getBaseRequestBody();
     InputStream response = requestFromContractedPda(url, body);
     return ResponseUtil.mapToPdaResponse(response);
   }
 
-  public <T> PdaResponse<? extends T> write(ContractedPdaWriteRequest<T> request)
+  <T> PdaResponse<? extends T> write(ContractedPdaWriteRequest<T> request)
       throws IOException {
     PdaRequestUrl url = request.getPdaRequestUrl();
     ContractedPdaRequestBody body = request.getWriteRequestBody().getBaseRequestBody();
@@ -70,7 +70,7 @@ public class ContractedPdaClient {
     return ResponseUtil.mapToPdaResponse(response);
   }
 
-  private InputStream requestFromContractedPda(PdaRequestUrl url, ContractedPdaRequestBody body)
+  InputStream requestFromContractedPda(PdaRequestUrl url, ContractedPdaRequestBody body)
       throws IOException {
     String textBody = MAPPER.writeValueAsString(body);
     MediaType mediaType = MediaType.parse(CONTENT_TYPE);
