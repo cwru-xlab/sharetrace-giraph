@@ -61,7 +61,7 @@ public class ContractedPdaClient {
     return ResponseUtil.mapToPdaResponse(response);
   }
 
-  <T> PdaResponse<? extends T> write(ContractedPdaWriteRequest<T> request) throws IOException {
+  <T> PdaResponse<T> write(ContractedPdaWriteRequest<T> request) throws IOException {
     PdaRequestUrl url = request.getPdaRequestUrl();
     ContractedPdaRequestBody body = request.getWriteRequestBody().getBaseRequestBody();
     InputStream response = request(url, body);
@@ -72,7 +72,10 @@ public class ContractedPdaClient {
     String textBody = MAPPER.writeValueAsString(body);
     MediaType mediaType = MediaType.parse(CONTENT_TYPE);
     RequestBody requestBody = RequestBody.create(textBody, mediaType);
-    Request request = new Request.Builder().url(url.toURL()).method(POST, requestBody).build();
+    Request request = new Request.Builder()
+        .url(url.toURL(body.getHatName()))
+        .method(POST, requestBody)
+        .build();
     Response response = CLIENT.newCall(request).execute();
     return Objects.requireNonNull(response.body()).byteStream();
   }
