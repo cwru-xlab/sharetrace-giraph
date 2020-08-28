@@ -66,7 +66,7 @@ public abstract class ContractedPdaVentilator<T> implements Ventilator<T> {
         .longLivedToken(getEnvironmentVariable(LONG_LIVED_TOKEN))
         .contractsServerUrl(getContractsServerUrl())
         .build();
-    ShortLivedTokenResponse response = getShortLivedTokenResponse(tokenRequest);
+    ShortLivedTokenResponse response = getShortLivedToken(tokenRequest);
 
     Optional<List<String>> hats = response.getData();
     Optional<String> shortLivedToken = response.getShortLivedToken();
@@ -95,7 +95,7 @@ public abstract class ContractedPdaVentilator<T> implements Ventilator<T> {
     return contractsServerUrl;
   }
 
-  private ShortLivedTokenResponse getShortLivedTokenResponse(ShortLivedTokenRequest request) {
+  private ShortLivedTokenResponse getShortLivedToken(ShortLivedTokenRequest request) {
     ShortLivedTokenResponse tokenResponse = null;
     try {
       tokenResponse = PDA_CLIENT.getShortLivedToken(request);
