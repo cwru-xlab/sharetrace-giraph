@@ -13,8 +13,6 @@ public final class HandlerUtil {
 
   private static final String INVALID_CONTEXT_MSG = "Context must not be null";
 
-  private static final String CANNOT_FIND_ENV_VAR_MSG = "Unable to find environment variable: \n";
-
   private static final String ENVIRONMENT_VARIABLES = "ENVIRONMENT VARIABLES: ";
 
   private static final String CONTEXT = "CONTEXT: ";
@@ -22,6 +20,8 @@ public final class HandlerUtil {
   private static final String EVENT = "EVENT: ";
 
   private static final String EVENT_TYPE = "EVENT_TYPE: ";
+
+  private static final String SUCCESS_200_OK = "200 OK";
 
   private static final StringBuilder STRING_BUILDER = new StringBuilder();
 
@@ -68,14 +68,11 @@ public final class HandlerUtil {
     STRING_BUILDER.delete(0, STRING_BUILDER.length());
   }
 
-  public static String getEnvironmentVariable(String envVarKey, LambdaLogger logger) {
-    String envVarValue = null;
-    try {
-      envVarValue = System.getenv(envVarKey);
-    } catch (NullPointerException e) {
-      logger.log(CANNOT_FIND_ENV_VAR_MSG + e.getMessage());
-    }
-    return envVarValue;
+  public static String getEnvironmentVariable(String envVarKey) {
+    return System.getenv(envVarKey);
   }
 
+  public static String get200Ok() {
+    return SUCCESS_200_OK;
+  }
 }
