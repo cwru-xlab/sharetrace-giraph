@@ -46,7 +46,7 @@ public abstract class ContractedPdaVentilator<T> implements Ventilator<T> {
 
   private final AWSLambdaAsync lambdaClient;
 
-  private final List<String> lambdaWorkerKeys;
+  private final List<String> workerKeys;
 
   private final int partitionSize;
 
@@ -56,7 +56,7 @@ public abstract class ContractedPdaVentilator<T> implements Ventilator<T> {
       List<String> lambdaWorkerKeys, int partitionSize) {
     this.logger = logger;
     this.lambdaClient = lambdaClient;
-    this.lambdaWorkerKeys = lambdaWorkerKeys;
+    this.workerKeys = lambdaWorkerKeys;
     this.partitionSize = partitionSize;
   }
 
@@ -67,12 +67,10 @@ public abstract class ContractedPdaVentilator<T> implements Ventilator<T> {
         .contractsServerUrl(getContractsServerUrl())
         .build();
     ShortLivedTokenResponse response = getShortLivedToken(tokenRequest);
-
     Optional<List<String>> hats = response.getData();
     Optional<String> shortLivedToken = response.getShortLivedToken();
     Optional<String> error = response.getError();
     Optional<String> cause = response.getCause();
-
     if (hats.isPresent() && shortLivedToken.isPresent()) {
       invokeWorkers(hats.get(), shortLivedToken.get());
     } else if (error.isPresent() && cause.isPresent()) {
@@ -130,7 +128,7 @@ public abstract class ContractedPdaVentilator<T> implements Ventilator<T> {
 
   @Override
   public List<String> getWorkers() {
-    return lambdaWorkerKeys.stream().map(this::getEnvironmentVariable).collect(Collectors.toList());
+    return workerKeys.stream().map(this::getEnvironmentVariable).collect(Collectors.toList());
   }
 
   abstract T mapToPayload(String hat, String shortLivedToken);
