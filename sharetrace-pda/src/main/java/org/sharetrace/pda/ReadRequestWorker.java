@@ -61,9 +61,15 @@ public class ReadRequestWorker implements RequestHandler<List<ContractedPdaReque
   private static final String LOCATIONS_NAMESPACE = "locationsNamespace";
   private static final String SCORE_ENDPOINT = "scoreEndpoint";
   private static final String SCORE_NAMESPACE = "scoreNamespace";
+
   private static final String HAT_CONTEXT_BUCKET = "sharetrace-hatContext";
   private static final String LOCATIONS_BUCKET = "sharetrace-locations";
   private static final String SCORE_BUCKET = "sharetrace-input";
+  private static final String SCORE_PREFIX = "score-";
+  private static final String LOCATION_PREFIX = "location-";
+  private static final String FILE_FORMAT = ".txt";
+
+  private static final String ORDER_BY = "timestamp";
 
   private static final AmazonS3 S3_CLIENT = AmazonS3ClientBuilder.standard()
       .withRegion(Regions.US_EAST_2).build();
@@ -71,17 +77,8 @@ public class ReadRequestWorker implements RequestHandler<List<ContractedPdaReque
 
   private static final ObjectMapper MAPPER = ShareTraceUtil.getMapper();
 
-  private static final String FILE_FORMAT = ".txt";
-
-  private static final String ORDER_BY = "timestamp";
-
   private LambdaLogger logger;
 
-  /*
-  TODO When merging the contact data, we do need a way to at least retrieve which partition a
-   contact belongs to. This could be done with a "lookup" file that the ventilator can refer to
-   in order to decide the partition assignment
-  */
   @Override
   public String handleRequest(List<ContractedPdaRequestBody> input, Context context) {
     HandlerUtil.logEnvironment(input, context);
@@ -97,13 +94,13 @@ public class ReadRequestWorker implements RequestHandler<List<ContractedPdaReque
 
   private void handleLocationsRequest(List<ContractedPdaRequestBody> input) {
     PdaRequestUrl url = getPdaRequestUrl(LOCATIONS_ENDPOINT, LOCATIONS_NAMESPACE);
-    File file = createRandomTextFile();
+    File file = createRandomTextFile(LOCATION_PREFIX);
     try (BufferedWriter writer = new BufferedWriter(new FileWriter(file))) {
       for (ContractedPdaRequestBody entry : input) {
         String hatName = entry.getHatName();
         int skipAmount = getSkipAmount(hatName);
         ContractedPdaReadRequest request = createLocationsRequest(entry, url, skipAmount);
-        PdaResponse<TemporalLocation> response = getLocationResponse(request);
+        PdaResponse<TemporalLocation> response = getLocation(request);
         int nLocationsWritten = 0;
         if (response.isSuccess()) {
           LocationHistory history = transform(response.getData().get(), hatName);
@@ -121,8 +118,8 @@ public class ReadRequestWorker implements RequestHandler<List<ContractedPdaReque
     S3_CLIENT.putObject(LOCATIONS_BUCKET, file.getName(), file);
   }
 
-  private File createRandomTextFile() {
-    return new File(formatKey(UUID.randomUUID().toString()));
+  private File createRandomTextFile(String prefix) {
+    return new File(prefix + formatKey(UUID.randomUUID().toString()));
   }
 
   private ContractedPdaReadRequest createLocationsRequest(ContractedPdaRequestBody body,
@@ -178,7 +175,7 @@ public class ReadRequestWorker implements RequestHandler<List<ContractedPdaReque
     return nRecordsRead;
   }
 
-  private PdaResponse<TemporalLocation> getLocationResponse(ContractedPdaReadRequest readRequest) {
+  private PdaResponse<TemporalLocation> getLocation(ContractedPdaReadRequest readRequest) {
     PdaResponse<TemporalLocation> response = null;
     try {
       response = PDA_CLIENT.read(readRequest);
@@ -203,6 +200,8 @@ public class ReadRequestWorker implements RequestHandler<List<ContractedPdaReque
   private void logFailedResponse(Optional<String> error, Optional<String> cause) {
     if (error.isPresent() && cause.isPresent()) {
       logger.log(CANNOT_WRITE_TO_S3_MSG + error.get() + "\n" + cause.get());
+    } else {
+      logger.log(CANNOT_WRITE_TO_S3_MSG);
     }
   }
 
@@ -222,12 +221,13 @@ public class ReadRequestWorker implements RequestHandler<List<ContractedPdaReque
 
   private void handleScoreRequest(List<ContractedPdaRequestBody> input) {
     PdaRequestUrl url = getPdaRequestUrl(SCORE_ENDPOINT, SCORE_NAMESPACE);
-    File file = createRandomTextFile();
+    File file = createRandomTextFile(SCORE_PREFIX);
     try (BufferedWriter writer = new BufferedWriter(new FileWriter(file))) {
       for (ContractedPdaRequestBody entry : input) {
         ContractedPdaReadRequest request = createScoreRequest(entry, url);
-        PdaResponse<RiskScore> response = getRiskScoreResponse(request);
+        PdaResponse<RiskScore> response = getRiskScore(request);
         if (response.isSuccess()) {
+          // TODO Verify number of scores being sent; always one?
           RiskScore riskScore = response.getData().get().get(0).getPayload().getData();
           writer.write(MAPPER.writeValueAsString(riskScore));
           writer.newLine();
@@ -252,7 +252,7 @@ public class ReadRequestWorker implements RequestHandler<List<ContractedPdaReque
         .build();
   }
 
-  private PdaResponse<RiskScore> getRiskScoreResponse(ContractedPdaReadRequest readRequest) {
+  private PdaResponse<RiskScore> getRiskScore(ContractedPdaReadRequest readRequest) {
     PdaResponse<RiskScore> response = null;
     try {
       response = PDA_CLIENT.read(readRequest);
@@ -269,6 +269,7 @@ public class ReadRequestWorker implements RequestHandler<List<ContractedPdaReque
       value = HandlerUtil.getEnvironmentVariable(key);
     } catch (NullPointerException e) {
       logger.log(CANNOT_FIND_ENV_VAR_MSG + e.getMessage());
+      System.exit(1);
     }
     return value;
   }
