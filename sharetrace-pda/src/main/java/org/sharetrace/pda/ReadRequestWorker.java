@@ -1,5 +1,6 @@
 package org.sharetrace.pda;
 
+import com.amazonaws.AmazonServiceException;
 import com.amazonaws.regions.Regions;
 import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.LambdaLogger;
@@ -20,6 +21,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import org.sharetrace.model.location.LocationHistory;
 import org.sharetrace.model.location.TemporalLocation;
@@ -44,23 +46,23 @@ import org.sharetrace.pda.util.HandlerUtil;
  * <p>
  * This Lambda function is invoked by {@link ReadRequestVentilator}.
  */
-public class ReadRequestWorker implements
-    RequestHandler<List<ContractedPdaRequestBody>, String> {
+public class ReadRequestWorker implements RequestHandler<List<ContractedPdaRequestBody>, String> {
 
   // Logging messages
   private static final String CANNOT_FIND_ENV_VAR_MSG = "Unable to environment variable: \n";
   private static final String CANNOT_DESERIALIZE = "Unable to deserialize: \n";
   private static final String CANNOT_WRITE_TO_S3_MSG = "Unable to write to S3: \n";
   private static final String CANNOT_READ_FROM_PDA_MSG = "Unable to read data from PDA: \n";
+  private static final String HAT_DOES_NOT_EXIST = "Hat does not exist: \n";
 
   // Environment variable keys
+  private static final String IS_SANDBOX = "isSandbox";
   private static final String LOCATIONS_ENDPOINT = "locationsEndpoint";
   private static final String LOCATIONS_NAMESPACE = "locationsNamespace";
-  private static final String IS_SANDBOX = "isSandbox";
-  private static final String HAT_CONTEXT_BUCKET = "sharetrace-hatContext";
-  private static final String LOCATIONS_BUCKET = "sharetrace-locations";
   private static final String SCORE_ENDPOINT = "scoreEndpoint";
   private static final String SCORE_NAMESPACE = "scoreNamespace";
+  private static final String HAT_CONTEXT_BUCKET = "sharetrace-hatContext";
+  private static final String LOCATIONS_BUCKET = "sharetrace-locations";
   private static final String SCORE_BUCKET = "sharetrace-input";
 
   private static final AmazonS3 S3_CLIENT = AmazonS3ClientBuilder.standard()
@@ -69,78 +71,111 @@ public class ReadRequestWorker implements
 
   private static final ObjectMapper MAPPER = ShareTraceUtil.getMapper();
 
+  private static final String FILE_FORMAT = ".txt";
+
   private static final String ORDER_BY = "timestamp";
 
   private LambdaLogger logger;
 
-  // TODO Actually, want write all bodies to the SAME file, not individual files. For risk
-  //  scores, it doesn't matter which partition it's written to. For geohashes, assuming the
-  //  partitions are over written with each write, it doesn't matter. HOWEVER, when merging the
-  //  contact data, we do need a way to at least retrieve which partition a contact belongs to.
-  //  This could be done with a "lookup" file that the ventilator can refer to in order to decide
-  //  the partition assignment
+  /*
+  TODO When merging the contact data, we do need a way to at least retrieve which partition a
+   contact belongs to. This could be done with a "lookup" file that the ventilator can refer to
+   in order to decide the partition assignment
+  */
   @Override
   public String handleRequest(List<ContractedPdaRequestBody> input, Context context) {
     HandlerUtil.logEnvironment(input, context);
     logger = context.getLogger();
-    input.forEach(this::handleRequest);
+    handleRequest(input);
     return HandlerUtil.get200Ok();
   }
 
-  private void handleRequest(ContractedPdaRequestBody input) {
+  private void handleRequest(List<ContractedPdaRequestBody> input) {
     handleLocationsRequest(input);
     handleScoreRequest(input);
   }
 
-  private void handleLocationsRequest(ContractedPdaRequestBody input) {
-    String endpoint = getEnvironmentVariable(LOCATIONS_ENDPOINT);
-    String namespace = getEnvironmentVariable(LOCATIONS_NAMESPACE);
-    PdaRequestUrl url = getPdaRequestUrl(endpoint, namespace);
-    String hatName = input.getHatName();
-    int skipAmount = getSkipAmount(hatName);
+  private void handleLocationsRequest(List<ContractedPdaRequestBody> input) {
+    PdaRequestUrl url = getPdaRequestUrl(LOCATIONS_ENDPOINT, LOCATIONS_NAMESPACE);
+    File file = createRandomTextFile();
+    try (BufferedWriter writer = new BufferedWriter(new FileWriter(file))) {
+      for (ContractedPdaRequestBody entry : input) {
+        String hatName = entry.getHatName();
+        int skipAmount = getSkipAmount(hatName);
+        ContractedPdaReadRequest request = createLocationsRequest(entry, url, skipAmount);
+        PdaResponse<TemporalLocation> response = getLocationResponse(request);
+        int nLocationsWritten = 0;
+        if (response.isSuccess()) {
+          LocationHistory history = transform(response.getData().get(), hatName);
+          writer.write(MAPPER.writeValueAsString(history));
+          writer.newLine();
+          nLocationsWritten = history.getHistory().size();
+        } else {
+          logFailedResponse(response.getError(), response.getCause());
+        }
+        updateHatContext(hatName, nLocationsWritten + skipAmount);
+      }
+    } catch (IOException e) {
+      logger.log(CANNOT_WRITE_TO_S3_MSG + e.getMessage());
+    }
+    S3_CLIENT.putObject(LOCATIONS_BUCKET, file.getName(), file);
+  }
+
+  private File createRandomTextFile() {
+    return new File(formatKey(UUID.randomUUID().toString()));
+  }
+
+  private ContractedPdaReadRequest createLocationsRequest(ContractedPdaRequestBody body,
+      PdaRequestUrl url, int skipAmount) {
     PdaReadRequestParameters parameters = PdaReadRequestParameters.builder()
         .orderBy(ORDER_BY)
         .ordering(Ordering.ASCENDING)
         .skipAmount(skipAmount)
         .build();
-    ContractedPdaReadRequestBody body = ContractedPdaReadRequestBody.builder()
-        .baseRequestBody(input)
+    ContractedPdaReadRequestBody readBody = ContractedPdaReadRequestBody.builder()
+        .baseRequestBody(body)
         .parameters(parameters)
         .build();
-    ContractedPdaReadRequest request = ContractedPdaReadRequest.builder()
+    return ContractedPdaReadRequest.builder()
         .pdaRequestUrl(url)
-        .readRequestBody(body)
+        .readRequestBody(readBody)
         .build();
-    PdaResponse<TemporalLocation> response = getLocationResponse(request);
-    int nLocationsWritten = writeLocationsToS3(response, hatName);
-    HatContext updatedContext = HatContext.builder()
-        .hatName(hatName)
-        .numRecordsRead(nLocationsWritten + skipAmount)
-        .build();
-    updateHatContext(updatedContext);
   }
 
-  private PdaRequestUrl getPdaRequestUrl(String endpoint, String namespace) {
+  private PdaRequestUrl getPdaRequestUrl(String endpointKey, String namespaceKey) {
     return PdaRequestUrl.builder()
         .contracted(true)
         .operation(Operation.READ)
         .sandbox(Boolean.parseBoolean(getEnvironmentVariable(IS_SANDBOX)))
-        .endpoint(endpoint)
-        .namespace(namespace)
+        .endpoint(getEnvironmentVariable(endpointKey))
+        .namespace(getEnvironmentVariable(namespaceKey))
         .build();
   }
 
   private int getSkipAmount(String hatName) {
-    S3Object object = S3_CLIENT.getObject(HAT_CONTEXT_BUCKET, hatName);
-    S3ObjectInputStream input = object.getObjectContent();
     int skipAmount = 0;
+    try {
+      S3Object object = S3_CLIENT.getObject(HAT_CONTEXT_BUCKET, formatKey(hatName));
+      skipAmount = getNumRecordsRead(object.getObjectContent());
+    } catch (AmazonServiceException e) {
+      logger.log(HAT_DOES_NOT_EXIST + e.getMessage());
+    }
+    return skipAmount;
+  }
+
+  private String formatKey(String value) {
+    return value + FILE_FORMAT;
+  }
+
+  private int getNumRecordsRead(S3ObjectInputStream input) {
+    int nRecordsRead = 0;
     try (BufferedReader reader = new BufferedReader(new InputStreamReader(input, Charsets.UTF_8))) {
       HatContext hatContext = MAPPER.readValue(reader.readLine(), HatContext.class);
-      skipAmount = hatContext.getNumRecordsRead();
+      nRecordsRead = hatContext.getNumRecordsRead();
     } catch (IOException e) {
       logger.log(CANNOT_DESERIALIZE + e.getMessage());
     }
-    return skipAmount;
+    return nRecordsRead;
   }
 
   private PdaResponse<TemporalLocation> getLocationResponse(ContractedPdaReadRequest readRequest) {
@@ -152,25 +187,6 @@ public class ReadRequestWorker implements
       System.exit(1);
     }
     return response;
-  }
-
-  private int writeLocationsToS3(PdaResponse<TemporalLocation> response, String hatName) {
-    int nLocationsWritten = 0;
-    File file = new File(hatName);
-    try (BufferedWriter writer = new BufferedWriter(new FileWriter(file))) {
-      Optional<List<Record<TemporalLocation>>> records = response.getData();
-      if (records.isPresent() && !records.get().isEmpty()) {
-        LocationHistory history = transform(records.get(), hatName);
-        writer.write(MAPPER.writeValueAsString(history));
-        S3_CLIENT.putObject(LOCATIONS_BUCKET, hatName, file);
-        nLocationsWritten = history.getHistory().size();
-      } else {
-        logFailedResponse(response.getError(), response.getCause());
-      }
-    } catch (IOException e) {
-      logger.log(CANNOT_WRITE_TO_S3_MSG + e.getMessage());
-    }
-    return nLocationsWritten;
   }
 
   private LocationHistory transform(Collection<Record<TemporalLocation>> records, String hatName) {
@@ -190,42 +206,50 @@ public class ReadRequestWorker implements
     }
   }
 
-  private void updateHatContext(HatContext updatedContext) {
-    String key = updatedContext.getHatName();
-    File updated = new File(key);
-    try (BufferedWriter writer = new BufferedWriter(new FileWriter(updated))) {
-      writer.write(MAPPER.writeValueAsString(updatedContext));
-      S3_CLIENT.putObject(HAT_CONTEXT_BUCKET, key, updated);
+  private void updateHatContext(String hatName, int nRecordsRead) {
+    File file = new File(formatKey(hatName));
+    try (BufferedWriter writer = new BufferedWriter(new FileWriter(file))) {
+      HatContext context = HatContext.builder()
+          .hatName(hatName)
+          .numRecordsRead(nRecordsRead)
+          .build();
+      writer.write(MAPPER.writeValueAsString(context));
+      S3_CLIENT.putObject(HAT_CONTEXT_BUCKET, file.getName(), file);
     } catch (IOException e) {
       logger.log(CANNOT_WRITE_TO_S3_MSG + e.getMessage());
     }
   }
 
-  private void handleScoreRequest(ContractedPdaRequestBody input) {
-    String scoreEndpoint = getEnvironmentVariable(SCORE_ENDPOINT);
-    String scoreNamespace = getEnvironmentVariable(SCORE_NAMESPACE);
-    PdaRequestUrl scoreUrl = getPdaRequestUrl(scoreEndpoint, scoreNamespace);
-    ContractedPdaReadRequest scoreRequest = ContractedPdaReadRequest.builder()
-        .pdaRequestUrl(scoreUrl)
-        .build();
-    PdaResponse<RiskScore> scoreResponse = getRiskScoreResponse(scoreRequest);
-    writeScoreToS3(scoreResponse, input.getHatName());
-  }
-
-  private void writeScoreToS3(PdaResponse<RiskScore> response, String hatName) {
-    File file = new File(hatName);
-    try (BufferedWriter writer = new BufferedWriter(new FileWriter(file));) {
-      Optional<List<Record<RiskScore>>> records = response.getData();
-      if (records.isPresent() && !records.get().isEmpty()) {
-        RiskScore riskScore = records.get().get(0).getPayload().getData();
-        writer.write(MAPPER.writeValueAsString(riskScore));
-        S3_CLIENT.putObject(SCORE_BUCKET, hatName, file);
-      } else {
-        logFailedResponse(response.getError(), response.getCause());
+  private void handleScoreRequest(List<ContractedPdaRequestBody> input) {
+    PdaRequestUrl url = getPdaRequestUrl(SCORE_ENDPOINT, SCORE_NAMESPACE);
+    File file = createRandomTextFile();
+    try (BufferedWriter writer = new BufferedWriter(new FileWriter(file))) {
+      for (ContractedPdaRequestBody entry : input) {
+        ContractedPdaReadRequest request = createScoreRequest(entry, url);
+        PdaResponse<RiskScore> response = getRiskScoreResponse(request);
+        if (response.isSuccess()) {
+          RiskScore riskScore = response.getData().get().get(0).getPayload().getData();
+          writer.write(MAPPER.writeValueAsString(riskScore));
+          writer.newLine();
+        } else {
+          logFailedResponse(response.getError(), response.getCause());
+        }
       }
     } catch (IOException e) {
       logger.log(CANNOT_WRITE_TO_S3_MSG + e.getMessage());
     }
+    S3_CLIENT.putObject(SCORE_BUCKET, file.getName(), file);
+  }
+
+  private ContractedPdaReadRequest createScoreRequest(ContractedPdaRequestBody body,
+      PdaRequestUrl url) {
+    ContractedPdaReadRequestBody readRequestBody = ContractedPdaReadRequestBody.builder()
+        .baseRequestBody(body)
+        .build();
+    return ContractedPdaReadRequest.builder()
+        .readRequestBody(readRequestBody)
+        .pdaRequestUrl(url)
+        .build();
   }
 
   private PdaResponse<RiskScore> getRiskScoreResponse(ContractedPdaReadRequest readRequest) {
