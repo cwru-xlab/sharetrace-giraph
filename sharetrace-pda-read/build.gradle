@@ -1,0 +1,10 @@
+dependencies {
+    // https://mvnrepository.com/artifact/com.amazonaws/aws-java-sdk-s3
+    implementation('com.amazonaws:aws-java-sdk-s3:1.11.842')
+    // https://mvnrepository.com/artifact/com.amazonaws/aws-java-sdk-lambda
+    implementation('com.amazonaws:aws-java-sdk-lambda:1.11.839')
+    // https://mvnrepository.com/artifact/com.amazonaws/aws-lambda-java-events
+    implementation('com.amazonaws:aws-lambda-java-events:3.2.0')
+    // https://mvnrepository.com/artifact/com.amazonaws/aws-lambda-java-core
+    implementation('com.amazonaws:aws-lambda-java-core:1.2.1')
+}
