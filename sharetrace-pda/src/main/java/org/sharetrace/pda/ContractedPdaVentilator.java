@@ -9,28 +9,31 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
-import org.sharetrace.model.pda.request.ContractedPdaRequestBody;
 import org.sharetrace.model.pda.request.ShortLivedTokenRequest;
 import org.sharetrace.model.pda.response.ShortLivedTokenResponse;
 import org.sharetrace.model.util.ShareTraceUtil;
 import org.sharetrace.pda.util.HandlerUtil;
 
-public class VentilatorRequestHandler {
+/**
+ * Provides the common functionality of ventilator function that interacts with contracted PDAs.
+ *
+ * @param <T> Type of the payload processed by a worker function.
+ */
+public abstract class ContractedPdaVentilator<T> implements Ventilator<T> {
 
   // Logging messages
   private static final String MALFORMED_URL_MSG = "Malformed contracts server URL: \n";
-  private static final String INCOMPLETE_REQUEST_MSG =
-      "Failed to complete short-lived token request: \n";
-  private static final String FAILED_TO_SERIALIZE_MSG =
-      "Failed to serialize request body: \n";
-  private static final String NO_WORKERS_MSG = "No worker functions were found. Exiting handler.";
+  private static final String INCOMPLETE_REQUEST_MSG = "Failed to complete short-lived token request: \n";
+  private static final String FAILED_TO_SERIALIZE_MSG = "Failed to serialize request body: \n";
+  private static final String NO_WORKERS_MSG = "No worker functions were found. Exiting handler";
 
-  // TODO Finalize
   // Environment variable keys
   private static final String LONG_LIVED_TOKEN = "longLivedToken";
   private static final String CONTRACTS_SERVER_URL = "contractsServerUrl";
@@ -42,13 +45,13 @@ public class VentilatorRequestHandler {
 
   private final AWSLambdaAsync lambdaClient;
 
-  private final LambdaLogger logger;
-
   private final List<String> lambdaWorkerKeys;
 
   private final int partitionSize;
 
-  public VentilatorRequestHandler(AWSLambdaAsync lambdaClient, LambdaLogger logger,
+  private LambdaLogger logger;
+
+  public ContractedPdaVentilator(AWSLambdaAsync lambdaClient, LambdaLogger logger,
       List<String> lambdaWorkerKeys, int partitionSize) {
     this.logger = logger;
     this.lambdaClient = lambdaClient;
@@ -56,25 +59,26 @@ public class VentilatorRequestHandler {
     this.partitionSize = partitionSize;
   }
 
+  @Override
   public void handleRequest() {
     ShortLivedTokenRequest tokenRequest = ShortLivedTokenRequest.builder()
-        .longLivedToken(HandlerUtil.getEnvironmentVariable(LONG_LIVED_TOKEN, logger))
+        .longLivedToken(HandlerUtil.getEnvironmentVariable(LONG_LIVED_TOKEN))
         .contractsServerUrl(getContractsServerUrl())
         .build();
-    ShortLivedTokenResponse tokenResponse = getShortLivedTokenResponse(tokenRequest);
+    ShortLivedTokenResponse response = getShortLivedTokenResponse(tokenRequest);
 
-    Optional<List<String>> hats = tokenResponse.getData();
-    Optional<String> shortLivedToken = tokenResponse.getShortLivedToken();
-    Optional<String> error = tokenResponse.getError();
-    Optional<String> cause = tokenResponse.getCause();
+    Optional<List<String>> hats = response.getData();
+    Optional<String> shortLivedToken = response.getShortLivedToken();
+    Optional<String> error = response.getError();
+    Optional<String> cause = response.getCause();
 
     if (hats.isPresent() && shortLivedToken.isPresent()) {
       invokeWorkers(hats.get(), shortLivedToken.get());
     } else if (error.isPresent() && cause.isPresent()) {
-      logger.log(error.get() + "\n" + cause.get());
+      log(error.get() + "\n" + cause.get());
       System.exit(1);
     } else {
-      logger.log(tokenResponse.getData().toString());
+      log(response.getData().toString());
       System.exit(1);
     }
   }
@@ -82,9 +86,9 @@ public class VentilatorRequestHandler {
   private URL getContractsServerUrl() {
     URL contractsServerUrl = null;
     try {
-      contractsServerUrl = new URL(System.getenv(CONTRACTS_SERVER_URL));
+      contractsServerUrl = new URL(HandlerUtil.getEnvironmentVariable(CONTRACTS_SERVER_URL));
     } catch (MalformedURLException e) {
-      logger.log(MALFORMED_URL_MSG + e.getMessage());
+      log(MALFORMED_URL_MSG + e.getMessage());
       System.exit(1);
     }
     return contractsServerUrl;
@@ -95,53 +99,71 @@ public class VentilatorRequestHandler {
     try {
       tokenResponse = PDA_CLIENT.getShortLivedToken(request);
     } catch (IOException e) {
-      logger.log(INCOMPLETE_REQUEST_MSG + e.getMessage());
+      log(INCOMPLETE_REQUEST_MSG + e.getMessage());
       System.exit(1);
     }
     return tokenResponse;
   }
 
   private void invokeWorkers(List<String> hats, String shortLivedToken) {
-    double nHats = hats.size();
-    int nPartitions = (int) Math.ceil(nHats / partitionSize);
-    List<String> lambdaFunctionNames = getLambdaFunctionNames(lambdaWorkerKeys);
-    if (lambdaFunctionNames.isEmpty()) {
-      logger.log(NO_WORKERS_MSG);
+    List<String> workers = getWorkers();
+    if (workers.isEmpty()) {
+      log(NO_WORKERS_MSG);
       System.exit(1);
     }
-    int nWorkers = lambdaFunctionNames.size();
-    String contractId = HandlerUtil.getEnvironmentVariable(CONTRACT_ID, logger);
-
+    double nHats = hats.size();
+    int nPartitions = (int) Math.ceil(nHats / partitionSize);
+    int nWorkers = workers.size();
     for (int iPartition = 0; iPartition < nPartitions; iPartition++) {
       int startIndex = iPartition * partitionSize;
       int endIndex = (iPartition + 1) * partitionSize - 1;
-      // TODO Generify the payload type for a worker Lambda function
-      List<ContractedPdaRequestBody> requestBodies = IntStream.range(startIndex, endIndex)
+      Set<T> payload = IntStream.range(startIndex, endIndex)
           .mapToObj(hats::get)
-          .map(hat -> ContractedPdaRequestBody.builder()
-              .contractId(contractId)
-              .hatName(hat)
-              .shortLivedToken(shortLivedToken)
-              .build())
-          .collect(Collectors.toList());
+          .map(hat -> mapToPayload(hat, shortLivedToken))
+          .filter(Objects::nonNull)
+          .collect(Collectors.toSet());
       int iWorker = iPartition % nWorkers;
-
-      try {
-        InvokeRequest invokeRequest = new InvokeRequest()
-            .withFunctionName(lambdaFunctionNames.get(iWorker))
-            .withInvocationType(InvocationType.Event)
-            .withPayload(MAPPER.writeValueAsString(requestBodies));
-        lambdaClient.invokeAsync(invokeRequest);
-      } catch (JsonProcessingException e) {
-        logger.log(FAILED_TO_SERIALIZE_MSG + requestBodies.toString());
-      }
+      invokeWorker(workers.get(iWorker), payload);
     }
   }
 
-  public List<String> getLambdaFunctionNames(List<String> environmentVariableKeys) {
-    return environmentVariableKeys.stream()
-        .map(k -> HandlerUtil.getEnvironmentVariable(k, logger))
-        .filter(Objects::nonNull)
+  @Override
+  public List<String> getWorkers() {
+    return lambdaWorkerKeys.stream()
+        .map(HandlerUtil::getEnvironmentVariable)
         .collect(Collectors.toList());
+  }
+
+  abstract T mapToPayload(String hat, String shortLivedToken);
+
+  @Override
+  public void invokeWorker(String worker, Collection<T> payload) {
+    try {
+      InvokeRequest invokeRequest = new InvokeRequest()
+          .withFunctionName(worker)
+          .withInvocationType(InvocationType.Event)
+          .withPayload(MAPPER.writeValueAsString(payload));
+      lambdaClient.invokeAsync(invokeRequest);
+    } catch (JsonProcessingException e) {
+      log(FAILED_TO_SERIALIZE_MSG + payload.toString());
+    }
+  }
+
+  String getContractId() {
+    return HandlerUtil.getEnvironmentVariable(CONTRACT_ID);
+  }
+
+  private void log(String message) {
+    if (logger != null) {
+      logger.log(message);
+    }
+  }
+
+  LambdaLogger getLogger() {
+    return logger;
+  }
+
+  void setLogger(LambdaLogger logger) {
+    this.logger = logger;
   }
 }
