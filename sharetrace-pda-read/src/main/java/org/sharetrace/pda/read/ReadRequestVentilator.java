@@ -21,7 +21,7 @@ import org.sharetrace.pda.common.ContractedPdaVentilator;
 public class ReadRequestVentilator extends ContractedPdaVentilator<ContractedPdaRequestBody>
     implements RequestHandler<ScheduledEvent, String> {
 
-  private static final AWSLambdaAsync LAMBDA_CLIENT = AWSLambdaAsyncClientBuilder.standard()
+  private static final AWSLambdaAsync LAMBDA = AWSLambdaAsyncClientBuilder.standard()
       .withRegion(Regions.US_EAST_2).build();
 
   // Environment variable keys
@@ -33,7 +33,7 @@ public class ReadRequestVentilator extends ContractedPdaVentilator<ContractedPda
   private static final int PARTITION_SIZE = 50;
 
   public ReadRequestVentilator() {
-    super(LAMBDA_CLIENT, null, WORKER_LAMBDAS, PARTITION_SIZE);
+    super(LAMBDA, null, WORKER_LAMBDAS, PARTITION_SIZE);
   }
 
   @Override

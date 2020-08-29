@@ -20,8 +20,8 @@ public class WriteRequestWorker implements
     RequestHandler<List<ContractedPdaWriteRequestBody<RiskScore>>, String> {
 
   // Logging messages
-  private static final String CANNOT_FIND_ENV_VAR_MSG = "Unable to environment variable: \n";
-  private static final String CANNOT_WRITE_TO_PDA_MSG = "Unable to write data to PDA: \n";
+  private static final String CANNOT_FIND_ENV_VAR_MSG = HandlerUtil.getCannotFindEnvVarMsg();
+  private static final String CANNOT_WRITE_TO_PDA_MSG = HandlerUtil.getCannotWriteToPdaMsg();
 
   // Environment variable keys
   private static final String SCORE_ENDPOINT = "scoreEndpoint";
@@ -49,7 +49,7 @@ public class WriteRequestWorker implements
     try {
       PDA_CLIENT.write(request);
     } catch (IOException e) {
-      logger.log(CANNOT_WRITE_TO_PDA_MSG + e.getMessage());
+      HandlerUtil.logException(logger, e, CANNOT_WRITE_TO_PDA_MSG);
     }
   }
 
@@ -59,12 +59,12 @@ public class WriteRequestWorker implements
       url = PdaRequestUrl.builder()
           .operation(Operation.CREATE)
           .contracted(true)
-          .sandbox(Boolean.parseBoolean(System.getenv(IS_SANDBOX)))
+          .sandbox(Boolean.parseBoolean(HandlerUtil.getEnvironmentVariable(IS_SANDBOX)))
           .namespace(HandlerUtil.getEnvironmentVariable(SCORE_NAMESPACE))
           .endpoint(HandlerUtil.getEnvironmentVariable(SCORE_ENDPOINT))
           .build();
     } catch (NullPointerException e) {
-      logger.log(CANNOT_FIND_ENV_VAR_MSG + e.getMessage());
+      HandlerUtil.logException(logger, e, CANNOT_FIND_ENV_VAR_MSG);
       System.exit(1);
     }
     return url;

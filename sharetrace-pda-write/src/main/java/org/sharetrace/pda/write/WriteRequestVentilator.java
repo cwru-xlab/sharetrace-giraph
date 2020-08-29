@@ -19,7 +19,6 @@ import com.google.common.collect.ImmutableMap;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -47,15 +46,14 @@ public class WriteRequestVentilator
     implements RequestHandler<S3Event, String> {
 
   // Logging messages
-  private static final String CANNOT_DESERIALIZE = "Unable to deserialize: \n";
+  private static final String CANNOT_DESERIALIZE = HandlerUtil.getCannotDeserializeMsg();
 
   // Environment variable keys
-  private static final String FIRST_WORKER_LAMBDA = "lambdaWriter1";
-  private static final String SECOND_WORKER_LAMBDA = "lambdaWriter2";
-  private static final List<String> WORKER_LAMBDAS =
-      ImmutableList.of(FIRST_WORKER_LAMBDA, SECOND_WORKER_LAMBDA);
+  private static final String FIRST_WORKER = "lambdaWriter1";
+  private static final String SECOND_WORKER = "lambdaWriter2";
+  private static final List<String> WORKERS = ImmutableList.of(FIRST_WORKER, SECOND_WORKER);
 
-  private static final AWSLambdaAsync LAMBDA_CLIENT = AWSLambdaAsyncClientBuilder.standard()
+  private static final AWSLambdaAsync LAMBDA = AWSLambdaAsyncClientBuilder.standard()
       .withRegion(Regions.US_EAST_2).build();
   private static final AmazonS3 S3 = AmazonS3ClientBuilder.standard()
       .withRegion(Regions.US_EAST_2).build();
@@ -69,7 +67,7 @@ public class WriteRequestVentilator
   private Map<String, RiskScore> output;
 
   public WriteRequestVentilator() {
-    super(LAMBDA_CLIENT, null, WORKER_LAMBDAS, PARTITION_SIZE);
+    super(LAMBDA, null, WORKERS, PARTITION_SIZE);
   }
 
   @Override
@@ -92,9 +90,10 @@ public class WriteRequestVentilator
           .map(this::mapToRiskScore)
           .filter(Objects::nonNull)
           .collect(Collectors.toMap(RiskScore::getId, Function.identity()));
+      input.close();
     } catch (IOException e) {
-      getLogger().log(e.getMessage());
-      getLogger().log(Arrays.toString(e.getStackTrace()));
+      input.abort();
+      HandlerUtil.logException(getLogger(), e);
     }
     return ImmutableMap.copyOf(mapping);
   }
@@ -104,8 +103,7 @@ public class WriteRequestVentilator
     try {
       mapped = MAPPER.readValue(s, RiskScore.class);
     } catch (JsonProcessingException e) {
-      getLogger().log(CANNOT_DESERIALIZE + e.getMessage());
-      getLogger().log(Arrays.toString(e.getStackTrace()));
+      HandlerUtil.logException(getLogger(), e, CANNOT_DESERIALIZE);
     }
     return mapped;
   }

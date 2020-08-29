@@ -21,7 +21,6 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
-import java.util.UUID;
 import java.util.stream.Collectors;
 import org.sharetrace.lambda.common.util.HandlerUtil;
 import org.sharetrace.model.location.LocationHistory;
@@ -50,11 +49,11 @@ import org.sharetrace.pda.common.ContractedPdaClient;
 public class ReadRequestWorker implements RequestHandler<List<ContractedPdaRequestBody>, String> {
 
   // Logging messages
-  private static final String CANNOT_FIND_ENV_VAR_MSG = "Unable to environment variable: \n";
-  private static final String CANNOT_DESERIALIZE = "Unable to deserialize: \n";
-  private static final String CANNOT_WRITE_TO_S3_MSG = "Unable to write to S3: \n";
-  private static final String CANNOT_READ_FROM_PDA_MSG = "Unable to read data from PDA: \n";
-  private static final String HAT_DOES_NOT_EXIST = "Hat does not exist: \n";
+  private static final String CANNOT_FIND_ENV_VAR_MSG = HandlerUtil.getCannotFindEnvVarMsg();
+  private static final String CANNOT_DESERIALIZE = HandlerUtil.getCannotDeserializeMsg();
+  private static final String CANNOT_WRITE_TO_S3_MSG = HandlerUtil.getCannotWriteToS3Msg();
+  private static final String CANNOT_READ_FROM_PDA_MSG = HandlerUtil.getCannotReadFromPdaMsg();
+  private static final String HAT_DOES_NOT_EXIST = HandlerUtil.getHatDoesNotExistMsg();
 
   // Environment variable keys
   private static final String IS_SANDBOX = "isSandbox";
@@ -114,13 +113,17 @@ public class ReadRequestWorker implements RequestHandler<List<ContractedPdaReque
         updateHatContext(hatName, nLocationsWritten + skipAmount);
       }
     } catch (IOException e) {
-      logger.log(CANNOT_WRITE_TO_S3_MSG + e.getMessage());
+      HandlerUtil.logException(logger, e, CANNOT_WRITE_TO_S3_MSG);
     }
     S3_CLIENT.putObject(LOCATIONS_BUCKET, file.getName(), file);
   }
 
   private File createRandomTextFile(String prefix) {
-    return new File(prefix + formatKey(UUID.randomUUID().toString()));
+    return HandlerUtil.createRandomFile(prefix, FILE_FORMAT);
+  }
+
+  private String formatKey(String value) {
+    return value + FILE_FORMAT;
   }
 
   private ContractedPdaReadRequest createLocationsRequest(ContractedPdaRequestBody body,
@@ -156,13 +159,9 @@ public class ReadRequestWorker implements RequestHandler<List<ContractedPdaReque
       S3Object object = S3_CLIENT.getObject(HAT_CONTEXT_BUCKET, formatKey(hatName));
       skipAmount = getNumRecordsRead(object.getObjectContent());
     } catch (AmazonServiceException e) {
-      logger.log(HAT_DOES_NOT_EXIST + e.getMessage());
+      HandlerUtil.logException(logger, e, HAT_DOES_NOT_EXIST);
     }
     return skipAmount;
-  }
-
-  private String formatKey(String value) {
-    return value + FILE_FORMAT;
   }
 
   private int getNumRecordsRead(S3ObjectInputStream input) {
@@ -170,8 +169,10 @@ public class ReadRequestWorker implements RequestHandler<List<ContractedPdaReque
     try (BufferedReader reader = new BufferedReader(new InputStreamReader(input, Charsets.UTF_8))) {
       HatContext hatContext = MAPPER.readValue(reader.readLine(), HatContext.class);
       nRecordsRead = hatContext.getNumRecordsRead();
+      input.close();
     } catch (IOException e) {
-      logger.log(CANNOT_DESERIALIZE + e.getMessage());
+      input.abort();
+      HandlerUtil.logException(logger, e, CANNOT_DESERIALIZE);
     }
     return nRecordsRead;
   }
@@ -181,7 +182,7 @@ public class ReadRequestWorker implements RequestHandler<List<ContractedPdaReque
     try {
       response = PDA_CLIENT.read(readRequest);
     } catch (IOException e) {
-      logger.log(CANNOT_READ_FROM_PDA_MSG + e.getMessage());
+      HandlerUtil.logException(logger, e, CANNOT_READ_FROM_PDA_MSG);
       System.exit(1);
     }
     return response;
@@ -200,9 +201,10 @@ public class ReadRequestWorker implements RequestHandler<List<ContractedPdaReque
 
   private void logFailedResponse(Optional<String> error, Optional<String> cause) {
     if (error.isPresent() && cause.isPresent()) {
-      logger.log(CANNOT_WRITE_TO_S3_MSG + error.get() + "\n" + cause.get());
+      String msg = CANNOT_WRITE_TO_S3_MSG + "\n" + error.get() + "\n" + cause.get();
+      HandlerUtil.logMessage(logger, msg);
     } else {
-      logger.log(CANNOT_WRITE_TO_S3_MSG);
+      HandlerUtil.logMessage(logger, CANNOT_WRITE_TO_S3_MSG);
     }
   }
 
@@ -216,7 +218,7 @@ public class ReadRequestWorker implements RequestHandler<List<ContractedPdaReque
       writer.write(MAPPER.writeValueAsString(context));
       S3_CLIENT.putObject(HAT_CONTEXT_BUCKET, file.getName(), file);
     } catch (IOException e) {
-      logger.log(CANNOT_WRITE_TO_S3_MSG + e.getMessage());
+      HandlerUtil.logException(logger, e, CANNOT_WRITE_TO_S3_MSG);
     }
   }
 
@@ -237,7 +239,7 @@ public class ReadRequestWorker implements RequestHandler<List<ContractedPdaReque
         }
       }
     } catch (IOException e) {
-      logger.log(CANNOT_WRITE_TO_S3_MSG + e.getMessage());
+      HandlerUtil.logException(logger, e, CANNOT_WRITE_TO_S3_MSG);
     }
     S3_CLIENT.putObject(SCORE_BUCKET, file.getName(), file);
   }
@@ -258,7 +260,7 @@ public class ReadRequestWorker implements RequestHandler<List<ContractedPdaReque
     try {
       response = PDA_CLIENT.read(readRequest);
     } catch (IOException e) {
-      logger.log(CANNOT_READ_FROM_PDA_MSG + e.getMessage());
+      HandlerUtil.logException(logger, e, CANNOT_READ_FROM_PDA_MSG);
       System.exit(1);
     }
     return response;
@@ -269,7 +271,7 @@ public class ReadRequestWorker implements RequestHandler<List<ContractedPdaReque
     try {
       value = HandlerUtil.getEnvironmentVariable(key);
     } catch (NullPointerException e) {
-      logger.log(CANNOT_FIND_ENV_VAR_MSG + e.getMessage());
+      HandlerUtil.logException(logger, e, CANNOT_FIND_ENV_VAR_MSG);
       System.exit(1);
     }
     return value;
