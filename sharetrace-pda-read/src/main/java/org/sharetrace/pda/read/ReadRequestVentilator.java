@@ -25,15 +25,14 @@ public class ReadRequestVentilator extends ContractedPdaVentilator<ContractedPda
       .withRegion(Regions.US_EAST_2).build();
 
   // Environment variable keys
-  private static final String FIRST_WORKER_LAMBDA = "lambdaReader1";
-  private static final String SECOND_WORKER_LAMBDA = "lambdaReader2";
-  private static final List<String> WORKER_LAMBDAS =
-      ImmutableList.of(FIRST_WORKER_LAMBDA, SECOND_WORKER_LAMBDA);
+  private static final String FIRST_WORKER = "lambdaReader1";
+  private static final String SECOND_WORKER = "lambdaReader2";
+  private static final List<String> WORKERS = ImmutableList.of(FIRST_WORKER, SECOND_WORKER);
 
   private static final int PARTITION_SIZE = 50;
 
   public ReadRequestVentilator() {
-    super(LAMBDA, null, WORKER_LAMBDAS, PARTITION_SIZE);
+    super(LAMBDA, null, WORKERS, PARTITION_SIZE);
   }
 
   @Override
