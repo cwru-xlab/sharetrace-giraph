@@ -3,7 +3,6 @@ package org.sharetrace.beliefpropagation.compute;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableSortedSet;
-import java.text.MessageFormat;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
@@ -46,14 +45,7 @@ public final class VariableVertexComputation extends
     BasicComputation<FactorGraphVertexId, FactorGraphWritable, NullWritable, VariableVertexValue> {
 
   // Logging messages
-  private static final String NULL_VERTEX_MSG = "Vertex must not be null";
-  private static final String NULL_MESSAGE_MSG = "Messages must not be null";
   private static final String HALTING_MSG = "Halting computation: vertex is not a variable vertex";
-  private static final String COPYING_MSG = "Copying incoming messages to collection...";
-  private static final String COMBINING_MSG = "Combining local and incoming values...";
-  private static final String UPDATING_MSG = "Updating vertex value...";
-  private static final String AGGREGATING_MSG = "Aggregating based on local vertex value change...";
-  private static final String SENDING_MSG = "Sending message from {0}...";
   private static final Logger LOGGER = LoggerFactory.getLogger(FactorVertexComputation.class);
 
   private static final String AGGREGATOR_NAME = MasterComputer.getVertexDeltaAggregatorName();
@@ -64,8 +56,8 @@ public final class VariableVertexComputation extends
   @Override
   public void compute(Vertex<FactorGraphVertexId, FactorGraphWritable, NullWritable> vertex,
       Iterable<VariableVertexValue> iterable) {
-    Preconditions.checkNotNull(vertex, NULL_VERTEX_MSG);
-    Preconditions.checkNotNull(iterable, NULL_MESSAGE_MSG);
+    Preconditions.checkNotNull(vertex);
+    Preconditions.checkNotNull(iterable);
 
     if (vertex.getValue().getType().equals(VertexType.FACTOR)) {
       LOGGER.debug(HALTING_MSG);
@@ -86,7 +78,6 @@ public final class VariableVertexComputation extends
 
   @VisibleForTesting
   SortedSet<RiskScore> getIncomingValues(Iterable<VariableVertexValue> iterable) {
-    LOGGER.debug(COPYING_MSG);
     Collection<RiskScore> incoming = new TreeSet<>();
     iterable.forEach(msg -> incoming.addAll(msg.getValue().getMessage()));
     return ImmutableSortedSet.copyOf(incoming);
@@ -95,7 +86,6 @@ public final class VariableVertexComputation extends
   @VisibleForTesting
   SortedSet<RiskScore> combineValues(Collection<RiskScore> values,
       Collection<RiskScore> otherValues) {
-    LOGGER.debug(COMBINING_MSG);
     return ImmutableSortedSet.copyOf(Stream.of(values, otherValues)
         .flatMap(Collection::stream)
         .collect(Collectors.toSet()));
@@ -104,7 +94,6 @@ public final class VariableVertexComputation extends
   private void updateVertexValue(
       Vertex<FactorGraphVertexId, FactorGraphWritable, NullWritable> vertex,
       Collection<String> valueId, Collection<RiskScore> newValues) {
-    LOGGER.debug(UPDATING_MSG);
     vertex.setValue(FactorGraphWritable.ofVariableVertex(getUpdatedValue(valueId, newValues)));
   }
 
@@ -117,7 +106,6 @@ public final class VariableVertexComputation extends
   }
 
   private void aggregate(Collection<RiskScore> values, Collection<RiskScore> otherValues) {
-    LOGGER.debug(AGGREGATING_MSG);
     aggregate(AGGREGATOR_NAME, new DoubleWritable(getMaxValueDelta(values, otherValues)));
   }
 
@@ -129,7 +117,6 @@ public final class VariableVertexComputation extends
   }
 
   private void sendMessages(Collection<String> sender, Collection<RiskScore> messages) {
-    LOGGER.debug(MessageFormat.format(SENDING_MSG, sender));
     messages.forEach(msg -> sendMessage(wrapReceiver(msg), wrapMessage(sender, msg, messages)));
   }
 

@@ -58,8 +58,6 @@ public final class FactorVertexComputation extends
 
   private static final double TRANSMISSION_PROBABILITY = BPContext.getTransmissionProbability();
 
-  private static final Instant CUTOFF = BPContext.getOccurrenceLookbackCutoff();
-
   @Override
   public void compute(Vertex<FactorGraphVertexId, FactorGraphWritable, NullWritable> vertex,
       Iterable<VariableVertexValue> iterable) {
@@ -154,11 +152,6 @@ public final class FactorVertexComputation extends
         .addAllSender(sender)
         .addMessage(toSend)
         .build());
-  }
-
-  @VisibleForTesting
-  Instant getCutoff() {
-    return CUTOFF;
   }
 
   @VisibleForTesting

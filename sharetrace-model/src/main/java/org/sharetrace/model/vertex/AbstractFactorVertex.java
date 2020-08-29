@@ -15,8 +15,8 @@ public abstract class AbstractFactorVertex implements FactorGraphVertex<IdGroup,
 
   private static final Logger LOGGER = LoggerFactory.getLogger(AbstractFactorVertex.class);
 
-  @Value.Default
   @Override
+  @Value.Derived
   public VertexType getType(){
     return VertexType.FACTOR;
   }

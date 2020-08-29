@@ -11,7 +11,6 @@ import org.immutables.value.Value.Style.ImplementationVisibility;
 @Retention(RetentionPolicy.CLASS)
 @Value.Style(
     get = {"is*", "get*"},
-    init = "*",
     typeAbstract = "Abstract*",
     typeImmutable = "*",
     deepImmutablesDetection = true,
