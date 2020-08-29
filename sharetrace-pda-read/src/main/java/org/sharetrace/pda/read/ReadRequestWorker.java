@@ -23,6 +23,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.sharetrace.lambda.common.util.HandlerUtil;
+import org.sharetrace.model.identity.IdGroup;
 import org.sharetrace.model.location.LocationHistory;
 import org.sharetrace.model.location.TemporalLocation;
 import org.sharetrace.model.pda.HatContext;
@@ -37,7 +38,9 @@ import org.sharetrace.model.pda.request.PdaRequestUrl;
 import org.sharetrace.model.pda.response.PdaResponse;
 import org.sharetrace.model.pda.response.Record;
 import org.sharetrace.model.score.RiskScore;
+import org.sharetrace.model.score.SendableRiskScores;
 import org.sharetrace.model.util.ShareTraceUtil;
+import org.sharetrace.model.vertex.VariableVertex;
 import org.sharetrace.pda.common.ContractedPdaClient;
 
 /**
@@ -230,9 +233,13 @@ public class ReadRequestWorker implements RequestHandler<List<ContractedPdaReque
         ContractedPdaReadRequest request = createScoreRequest(entry, url);
         PdaResponse<RiskScore> response = getRiskScore(request);
         if (response.isSuccess()) {
-          // TODO Verify number of scores being sent; always one?
-          RiskScore riskScore = response.getData().get().get(0).getPayload().getData();
-          writer.write(MAPPER.writeValueAsString(riskScore));
+          RiskScore message = response.getData().get().get(0).getPayload().getData();
+          String id = message.getId();
+          VariableVertex vertex = VariableVertex.builder()
+              .vertexId(IdGroup.builder().addId(id).build())
+              .vertexValue(SendableRiskScores.builder().addSender(id).addMessage(message).build())
+              .build();
+          writer.write(MAPPER.writeValueAsString(vertex));
           writer.newLine();
         } else {
           logFailedResponse(response.getError(), response.getCause());

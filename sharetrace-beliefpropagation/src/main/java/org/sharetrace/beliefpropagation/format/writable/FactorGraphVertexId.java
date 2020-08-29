@@ -24,6 +24,8 @@ public final class FactorGraphVertexId implements WritableComparable<FactorGraph
 
   private static final Logger LOGGER = LoggerFactory.getLogger(FactorGraphVertexId.class);
 
+  private static final String TO_STRING_PATTERN = "{0}'{'userGroup={1}'}'";
+
   private IdGroup idGroup;
 
   private FactorGraphVertexId() {
@@ -79,7 +81,7 @@ public final class FactorGraphVertexId implements WritableComparable<FactorGraph
 
   @Override
   public String toString() {
-    return MessageFormat.format("{0}'{'userGroup={1}'}'", getClass().getSimpleName(), idGroup);
+    return MessageFormat.format(TO_STRING_PATTERN, getClass().getSimpleName(), idGroup);
   }
 
   public IdGroup getIdGroup() {

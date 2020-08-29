@@ -25,13 +25,15 @@ public final class FactorVertexValue implements Writable {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(FactorVertexValue.class);
 
+  private static final String TO_STRING_PATTERN =  "{0}'{'contact={1}'}'";
+
   private Contact contact;
 
   private FactorVertexValue() {
   }
 
   private FactorVertexValue(Contact contact) {
-    Preconditions.checkNotNull(contact, "Factor vertex value must not be null");
+    Preconditions.checkNotNull(contact);
     this.contact = Contact.copyOf(contact);
   }
 
@@ -47,7 +49,7 @@ public final class FactorVertexValue implements Writable {
 
   @Override
   public void write(DataOutput dataOutput) throws IOException {
-    Preconditions.checkNotNull(dataOutput, "DataOutput must not be null");
+    Preconditions.checkNotNull(dataOutput);
     dataOutput.writeUTF(contact.getFirstUser());
     dataOutput.writeUTF(contact.getSecondUser());
     dataOutput.writeInt(contact.getOccurrences().size());
@@ -59,7 +61,7 @@ public final class FactorVertexValue implements Writable {
 
   @Override
   public void readFields(DataInput dataInput) throws IOException {
-    Preconditions.checkNotNull(dataInput, "DataInput must not be null to read fields");
+    Preconditions.checkNotNull(dataInput);
     String firstUser = dataInput.readUTF();
     String secondUser = dataInput.readUTF();
     int nOccurrences = dataInput.readInt();
@@ -82,6 +84,6 @@ public final class FactorVertexValue implements Writable {
 
   @Override
   public String toString() {
-    return MessageFormat.format("{0}'{'contact={1}'}'", getClass().getSimpleName(), contact);
+    return MessageFormat.format(TO_STRING_PATTERN, getClass().getSimpleName(), contact);
   }
 }

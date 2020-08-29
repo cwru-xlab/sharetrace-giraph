@@ -36,6 +36,12 @@ public class FactorGraphVertexValueCombinerTests {
 
   private static final Instant MAX_INSTANT = BPTestConstants.getMaxInstant();
 
+  private static final Instant ZERO_INSTANT = BPTestConstants.getZeroInstant();
+
+  private static final Occurrence MIN_OCCURRENCE = BPTestConstants.getMinOccurrence();
+
+  private static final Occurrence MAX_OCCURRENCE = BPTestConstants.getMaxOccurrence();
+
   private static final Duration DURATION = BPTestConstants.getZeroDuration();
 
   private static final double MIN_SCORE = BPTestConstants.getMinScore();
@@ -76,7 +82,7 @@ public class FactorGraphVertexValueCombinerTests {
 
   @BeforeEach
   final void setup() {
-    combiner = new FactorGraphVertexValueCombiner();
+    combiner = spy(new FactorGraphVertexValueCombiner());
   }
 
   @Test
@@ -99,13 +105,25 @@ public class FactorGraphVertexValueCombinerTests {
     when(contact.getOccurrences()).thenReturn(ImmutableSortedSet.of(occurrence));
     otherOccurrence = Occurrence.builder().time(MAX_INSTANT).duration(DURATION).build();
     when(otherContact.getOccurrences()).thenReturn(ImmutableSortedSet.of(otherOccurrence));
-    SortedSet<Occurrence> occurrences = ImmutableSortedSet.of(occurrence, otherOccurrence);
+    SortedSet<Occurrence> occurrences = ImmutableSortedSet.of(otherOccurrence);
     writableWithContact = spy(FactorGraphWritable.ofFactorVertex(FactorVertexValue.of(contact)));
     writableWithOtherContact =
         spy(FactorGraphWritable.ofFactorVertex(FactorVertexValue.of(otherContact)));
     combiner.combine(writableWithContact, writableWithOtherContact);
     Contact combined = ((FactorVertexValue) writableWithContact.getWrapped()).getValue();
     assertEquals(occurrences, combined.getOccurrences());
+  }
+
+  @Test
+  final void removedExpiredValues_verifyRemovalOfExpiredValues_returnsValueWithoutExpiredOccurrences() {
+    Contact contact = Contact.builder()
+        .firstUser(ID_1)
+        .secondUser(ID_2)
+        .addOccurrences(MIN_OCCURRENCE, MAX_OCCURRENCE)
+        .build();
+    Contact filteredContact = Contact.copyOf(contact).withOccurrences(MAX_OCCURRENCE);
+    when(combiner.getCutoff()).thenReturn(ZERO_INSTANT);
+    assertEquals(filteredContact, combiner.removedExpiredValues(contact).getValue());
   }
 
   @Test

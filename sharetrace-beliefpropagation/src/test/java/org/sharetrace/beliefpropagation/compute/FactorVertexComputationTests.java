@@ -28,11 +28,7 @@ public class FactorVertexComputationTests {
 
   private static final Instant MAX_INSTANT = BPTestConstants.getMaxInstant();
 
-  private static final Instant ZERO_INSTANT = BPTestConstants.getZeroInstant();
-
   private static final String ID_1 = BPTestConstants.getId1();
-
-  private static final String ID_2 = BPTestConstants.getId2();
 
   private static final double MIN_SCORE = BPTestConstants.getMinScore();
 
@@ -76,19 +72,6 @@ public class FactorVertexComputationTests {
   final void getIncomingValues_verifyEmptyIterable_returnsEmptySet() {
     assertEquals(ImmutableSet.of(), computation.getIncomingValues(ImmutableSet.of()));
   }
-
-  @Test
-  final void removedExpiredValues_verifyRemovalOfExpiredValues_returnsValueWithoutExpiredOccurrences() {
-    Contact contact = Contact.builder()
-        .firstUser(ID_1)
-        .secondUser(ID_2)
-        .addOccurrences(MIN_OCCURRENCE, MAX_OCCURRENCE)
-        .build();
-    Contact filteredContact = Contact.copyOf(contact).withOccurrences(MAX_OCCURRENCE);
-    when(computation.getCutoff()).thenReturn(ZERO_INSTANT);
-    assertEquals(filteredContact, computation.removedExpiredValues(contact).getValue());
-  }
-
 
   @Test
   final void getIncomingValues_verifyNonEmptyIterable_returnsSetContainingAllVertexValueScores() {

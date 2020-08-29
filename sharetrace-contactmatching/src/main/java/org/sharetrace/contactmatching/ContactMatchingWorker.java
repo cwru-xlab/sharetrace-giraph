@@ -14,8 +14,10 @@ import java.io.IOException;
 import java.util.List;
 import org.sharetrace.lambda.common.util.HandlerUtil;
 import org.sharetrace.model.contact.Contact;
+import org.sharetrace.model.identity.IdGroup;
 import org.sharetrace.model.location.LocationHistory;
 import org.sharetrace.model.util.ShareTraceUtil;
+import org.sharetrace.model.vertex.FactorVertex;
 
 /**
  * A Lambda function handler that runs the {@link ContactMatchingComputation} upon an S3 PUT event
@@ -28,7 +30,7 @@ public class ContactMatchingWorker implements RequestHandler<List<LocationHistor
   private static final String FAILED_TO_SERIALIZE_MSG = HandlerUtil.getFailedToSerializeMsg();
 
   private static final String LOCATION_PREFIX = "location-";
-  private static final String FILE_FORMAT = ".txt"; // TODO Confirm this is being used
+  private static final String FILE_FORMAT = ".txt";
   private static final String DESTINATION_BUCKET = "sharetrace-input";
 
   private static final AmazonS3 S3 = AmazonS3ClientBuilder.standard()
@@ -43,10 +45,15 @@ public class ContactMatchingWorker implements RequestHandler<List<LocationHistor
     HandlerUtil.logEnvironment(input, context);
     LambdaLogger logger = context.getLogger();
     File file = createRandomTextFile();
-    // TODO Confirm input format for vertex expects Contact and not FactorVertex
     try (BufferedWriter writer = new BufferedWriter(new FileWriter(file))) {
       for (Contact contact : COMPUTATION.compute(input)) {
-        writer.write(MAPPER.writeValueAsString(contact));
+        FactorVertex vertex = FactorVertex.builder()
+            .vertexId(IdGroup.builder()
+                .addIds(contact.getFirstUser(), contact.getSecondUser())
+                .build())
+            .vertexValue(contact)
+            .build();
+        writer.write(MAPPER.writeValueAsString(vertex));
         writer.newLine();
       }
     } catch (IOException e) {

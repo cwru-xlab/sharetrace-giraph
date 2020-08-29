@@ -20,11 +20,10 @@ import org.slf4j.LoggerFactory;
  * Factor vertex filter that prevents factor vertices from being added to the factor graph if all
  * occurrences of a {@link Contact} occurred prior to a set cutoff.
  */
-public class ExpiredFactorVertexFilter implements VertexInputFilter<FactorGraphVertexId,
-    FactorGraphWritable, NullWritable> {
+public class ExpiredFactorVertexFilter
+    implements VertexInputFilter<FactorGraphVertexId, FactorGraphWritable, NullWritable> {
 
   // Logging messages
-  private static final String NULL_VERTEX_MSG = "Vertex must not be null";
   private static final String VARIABLE_DROP_MSG = "Variable vertex will not be dropped";
   private static final String FACTOR_DROP_MSG = "Factor vertex with no occurrences will be dropped";
   private static final String NO_OCCURRENCES_DROP_MSG =
@@ -39,7 +38,7 @@ public class ExpiredFactorVertexFilter implements VertexInputFilter<FactorGraphV
   @Override
   public boolean dropVertex(
       Vertex<FactorGraphVertexId, FactorGraphWritable, NullWritable> vertex) {
-    Preconditions.checkNotNull(vertex, NULL_VERTEX_MSG);
+    Preconditions.checkNotNull(vertex);
     boolean shouldDrop;
     if (vertex.getValue().getType().equals(VertexType.VARIABLE)) {
       LOGGER.debug(VARIABLE_DROP_MSG);

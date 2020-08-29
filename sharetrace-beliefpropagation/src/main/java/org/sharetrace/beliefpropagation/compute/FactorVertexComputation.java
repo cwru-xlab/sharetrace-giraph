@@ -3,7 +3,6 @@ package org.sharetrace.beliefpropagation.compute;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableSet;
-import java.text.MessageFormat;
 import java.time.Instant;
 import java.util.Collection;
 import java.util.Collections;
@@ -50,16 +49,8 @@ public final class FactorVertexComputation extends
     BasicComputation<FactorGraphVertexId, FactorGraphWritable, NullWritable, VariableVertexValue> {
 
   // Logging messages
-  private static final String NULL_VERTEX_MSG = "Vertex must not be null";
-  private static final String NULL_MESSAGE_MSG = "Messages must not be null";
   private static final String HALT_MSG = "Halting computation: vertex is not a factor vertex";
-  private static final String FILTER_MSG = "Filtering expired vertex values on zeroth superstep";
-  private static final String REMOVE_EXPIRED_MSG = "Removing expired vertex values...";
-  private static final String RETAIN_MSG = "Retaining valid messages...";
-  private static final String NO_OCCURRENCES_MSG =
-      "No messages to retain since the vertex had no occurrences";
-  private static final String SEND_MSG = "Sending messages...";
-  private static final String SEND_PATTERN = "Sending message from {0} to {1}";
+  private static final String NO_OCCURRENCES_MSG = "No messages to retain since the vertex had no occurrences";
 
   private static final Logger LOGGER = LoggerFactory.getLogger(FactorVertexComputation.class);
 
@@ -72,8 +63,8 @@ public final class FactorVertexComputation extends
   @Override
   public void compute(Vertex<FactorGraphVertexId, FactorGraphWritable, NullWritable> vertex,
       Iterable<VariableVertexValue> iterable) {
-    Preconditions.checkNotNull(vertex, NULL_VERTEX_MSG);
-    Preconditions.checkNotNull(iterable, NULL_MESSAGE_MSG);
+    Preconditions.checkNotNull(vertex);
+    Preconditions.checkNotNull(iterable);
 
     if (vertex.getValue().getType().equals(VertexType.VARIABLE)) {
       LOGGER.debug(HALT_MSG);
@@ -81,32 +72,11 @@ public final class FactorVertexComputation extends
       return;
     }
 
-    if (0 == getSuperstep()) {
-      LOGGER.debug(FILTER_MSG);
-      updateVertexValue(vertex);
-    }
-
     Contact vertexValue = ((FactorVertexValue) vertex.getValue().getWrapped()).getValue();
     Collection<SendableRiskScores> incomingValues = getIncomingValues(iterable);
     Collection<SendableRiskScores> validMessages = retainValidMessages(vertexValue, incomingValues);
     sendMessages(validMessages);
     vertex.voteToHalt();
-  }
-
-  // Remove occurrences from the Contact if they occurred before the expiration date.
-  private void updateVertexValue(
-      Vertex<FactorGraphVertexId, FactorGraphWritable, NullWritable> vertex) {
-    LOGGER.debug(REMOVE_EXPIRED_MSG);
-    Contact value = ((FactorVertexValue) vertex.getValue().getWrapped()).getValue();
-    vertex.setValue(FactorGraphWritable.ofFactorVertex(removedExpiredValues(value)));
-  }
-
-  @VisibleForTesting
-  FactorVertexValue removedExpiredValues(Contact value) {
-    Set<Occurrence> withoutExpiredValues = value.getOccurrences().stream()
-        .filter(occurrence -> occurrence.getTime().isAfter(getCutoff()))
-        .collect(Collectors.toSet());
-    return FactorVertexValue.of(Contact.copyOf(value).withOccurrences(withoutExpiredValues));
   }
 
   // Add incoming values into a Collection sub-interface for easier handling
@@ -121,7 +91,6 @@ public final class FactorVertexComputation extends
   @VisibleForTesting
   Set<SendableRiskScores> retainValidMessages(Contact vertexValue,
       Collection<SendableRiskScores> incomingValues) {
-    LOGGER.debug(RETAIN_MSG);
     SortedSet<Occurrence> occurrences = vertexValue.getOccurrences();
     Set<SendableRiskScores> retained = new HashSet<>();
     if (occurrences.isEmpty()) {
@@ -151,12 +120,10 @@ public final class FactorVertexComputation extends
 
   // Relay each variable vertex's message and indicate the message was sent from the factor vertex
   private void sendMessages(Iterable<SendableRiskScores> messages) {
-    LOGGER.debug(SEND_MSG);
     for (SendableRiskScores senderMessage : messages) {
       for (SendableRiskScores receiverMessage : messages) {
         SortedSet<String> sender = senderMessage.getSender();
         if (!sender.equals(receiverMessage.getSender())) {
-          LOGGER.debug(MessageFormat.format(SEND_PATTERN, sender, receiverMessage.getSender()));
           sendMessage(wrapReceiver(receiverMessage), wrapMessage(sender, receiverMessage));
         }
       }

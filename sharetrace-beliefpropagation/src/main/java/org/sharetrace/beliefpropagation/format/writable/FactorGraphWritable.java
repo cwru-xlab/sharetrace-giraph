@@ -14,6 +14,7 @@ public class FactorGraphWritable implements Writable {
   private Writable wrapped;
 
   public static FactorGraphWritable fromDataInput(DataInput in) throws IOException {
+    Preconditions.checkNotNull(in);
     FactorGraphWritable writable = new FactorGraphWritable();
     writable.readFields(in);
     return writable;

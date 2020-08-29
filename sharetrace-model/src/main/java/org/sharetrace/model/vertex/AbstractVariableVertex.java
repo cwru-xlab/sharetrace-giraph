@@ -15,8 +15,8 @@ public abstract class AbstractVariableVertex implements FactorGraphVertex<IdGrou
 
   private static final Logger LOGGER = LoggerFactory.getLogger(AbstractVariableVertex.class);
 
-  @Value.Default
   @Override
+  @Value.Default
   public VertexType getType() {
     return VertexType.VARIABLE;
   }

@@ -20,11 +20,11 @@ import org.slf4j.LoggerFactory;
  * @see Writable
  * @see SendableRiskScores
  */
-// TODO Combine this so that it's just the SendableRiskScores -- max can be gotten by getting the
-//  last element
 public final class VariableVertexValue implements Writable {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(VariableVertexValue.class);
+
+  private static final String TO_STRING_PATTERN = "{0}'{'sendableRiskScores={1}'}'";
 
   private SendableRiskScores sendableRiskScores;
 
@@ -90,6 +90,6 @@ public final class VariableVertexValue implements Writable {
 
   @Override
   public String toString() {
-    return MessageFormat.format("{0}'{'sendableRiskScores={1}'}'", getClass().getSimpleName(), sendableRiskScores);
+    return MessageFormat.format(TO_STRING_PATTERN, getClass().getSimpleName(), sendableRiskScores);
   }
 }
