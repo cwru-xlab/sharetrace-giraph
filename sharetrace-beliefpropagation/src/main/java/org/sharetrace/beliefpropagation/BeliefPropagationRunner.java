@@ -55,6 +55,7 @@ public final class BeliefPropagationRunner {
     config.setVertexValueCombinerClass(VERTEX_VALUE_COMBINER);
     config.setMaxNumberOfSupersteps(MAX_NUM_SUPERSTEPS);
     config.COMPUTATION_CLASS.setMany(config, FACTOR_VERTEX_COMPUTATION, VARIABLE_VERTEX_COMPUTATION);
+    config.STATIC_GRAPH.set(config, true);
     Tool runner = new GiraphRunner();
     runner.setConf(config);
     try {
