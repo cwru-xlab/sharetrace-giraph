@@ -15,6 +15,7 @@ import org.sharetrace.beliefpropagation.compute.MasterComputer;
 import org.sharetrace.beliefpropagation.compute.VariableVertexComputation;
 import org.sharetrace.beliefpropagation.format.input.FactorGraphVertexInputFormat;
 import org.sharetrace.beliefpropagation.format.output.FactorGraphVertexOutputFormat;
+import org.sharetrace.beliefpropagation.param.BPContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -34,7 +35,7 @@ public final class BeliefPropagationRunner {
 
   private static final Class<? extends MasterCompute> MASTER_COMPUTE = MasterComputer.class;
 
-  private static final int MAX_NUM_SUPERSTEPS = 5;
+  private static final int MAX_NUM_SUPERSTEPS = BPContext.getMaxIterations();
 
   private static final Class<? extends AbstractComputation<?, ?, ?, ?, ?>> FACTOR_VERTEX_COMPUTATION = FactorVertexComputation.class;
 

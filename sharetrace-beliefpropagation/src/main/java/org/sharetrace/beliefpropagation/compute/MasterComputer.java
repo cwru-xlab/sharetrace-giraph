@@ -6,6 +6,7 @@ import org.apache.giraph.graph.Computation;
 import org.apache.giraph.master.DefaultMasterCompute;
 import org.apache.hadoop.io.DoubleWritable;
 import org.sharetrace.beliefpropagation.aggregate.DeltaAggregator;
+import org.sharetrace.beliefpropagation.param.BPContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -15,7 +16,6 @@ public final class MasterComputer extends DefaultMasterCompute {
   private static final String VALUE_HALT_MSG = "Halting computation: aggregated value {0} exceeds {1}";
   private static final String SUPERSTEP_HALT_MSG = "Halting computation: superstep {0} exceeds {1}";
   private static final String SETTING_COMPUTE_MSG = "Setting computation to {0}";
-  private static final String INITIALIZING_AGG_MSG = "Initializing VertexValueDeltaAggregator...";
 
   private static final Logger LOGGER = LoggerFactory.getLogger(MasterComputer.class);
 
@@ -23,7 +23,8 @@ public final class MasterComputer extends DefaultMasterCompute {
 
   private static final double HALT_THRESHOLD = 0.00001;
 
-  private static final long MAX_ITERATIONS = 5L;
+  // TODO Consider moving this to input parameter
+  private static final long MAX_ITERATIONS = BPContext.getMaxIterations();
 
   private static final String VERTEX_DELTA_AGGREGATOR = "vertexDeltaAggregator";
 
@@ -57,7 +58,6 @@ public final class MasterComputer extends DefaultMasterCompute {
 
   @Override
   public void initialize() throws InstantiationException, IllegalAccessException {
-    LOGGER.debug(INITIALIZING_AGG_MSG);
     registerPersistentAggregator(VERTEX_DELTA_AGGREGATOR, DeltaAggregator.class);
   }
 

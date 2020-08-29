@@ -10,6 +10,8 @@ public class BPContext {
 
   private static final double TRANSMISSION_PROBABILITY = 0.7;
 
+  private static final int MAX_ITERATIONS = 5;
+
   private static final long CUTOFF_VALUE = 14L;
 
   private static final ChronoUnit CUTOFF_TIME_UNIT = ChronoUnit.DAYS;
@@ -23,6 +25,10 @@ public class BPContext {
 
   public static double getTransmissionProbability() {
     return TRANSMISSION_PROBABILITY;
+  }
+
+  public static int getMaxIterations() {
+    return MAX_ITERATIONS;
   }
 
   public static Instant getOccurrenceLookbackCutoff() {
