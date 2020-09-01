@@ -55,10 +55,10 @@ public abstract class ContractedPdaVentilator<T> implements Ventilator<T> {
   private LambdaLogger logger;
 
   public ContractedPdaVentilator(AWSLambdaAsync lambdaClient, LambdaLogger logger,
-      List<String> lambdaWorkerKeys, int partitionSize) {
+      List<String> workerKeys, int partitionSize) {
     this.logger = logger;
     this.lambdaClient = lambdaClient;
-    this.workerKeys = lambdaWorkerKeys;
+    this.workerKeys = workerKeys;
     this.partitionSize = partitionSize;
   }
 
@@ -108,10 +108,6 @@ public abstract class ContractedPdaVentilator<T> implements Ventilator<T> {
 
   private void invokeWorkers(List<String> hats, String shortLivedToken) {
     List<String> workers = getWorkers();
-    if (workers.isEmpty()) {
-      logMessage(NO_WORKERS_MSG);
-      System.exit(1);
-    }
     double nHats = hats.size();
     int nPartitions = (int) Math.ceil(nHats / partitionSize);
     int nWorkers = workers.size();
@@ -130,9 +126,14 @@ public abstract class ContractedPdaVentilator<T> implements Ventilator<T> {
 
   @Override
   public List<String> getWorkers() {
-    return ImmutableList.copyOf(workerKeys.stream()
+    List<String> workers = workerKeys.stream()
         .map(this::getEnvironmentVariable)
-        .collect(Collectors.toList()));
+        .collect(Collectors.toList());
+    if (workers.isEmpty()) {
+      logMessage(NO_WORKERS_MSG);
+      System.exit(1);
+    }
+    return ImmutableList.copyOf(workers);
   }
 
   protected abstract T mapToPayload(String hat, String shortLivedToken);

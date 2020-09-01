@@ -89,7 +89,8 @@ public class ContactMatchingComputation {
     return Contact.builder()
         .firstUser(history.getId())
         .secondUser(otherHistory.getId())
-        .occurrences(occurrences).build();
+        .occurrences(occurrences)
+        .build();
   }
 
   private Set<Occurrence> findOccurrences(LocationHistory history, LocationHistory otherHistory) {

@@ -11,8 +11,6 @@ import java.util.UUID;
 public final class HandlerUtil {
 
   // Logging messages
-  private static final String INVALID_INPUT_MSG = "Input must not be null";
-  private static final String INVALID_CONTEXT_MSG = "Context must not be null";
   private static final String CANNOT_WRITE_TO_S3_MSG = "Unable to write to S3: \n";
   private static final String CANNOT_FIND_ENV_VAR_MSG = "Unable to environment variable: \n";
   private static final String MALFORMED_URL_MSG = "Malformed contracts server URL: \n";
@@ -23,11 +21,6 @@ public final class HandlerUtil {
   private static final String CANNOT_READ_FROM_PDA_MSG = "Unable to read data from PDA: \n";
   private static final String CANNOT_WRITE_TO_PDA_MSG = "Unable to write data to PDA: \n";
   private static final String HAT_DOES_NOT_EXIST_MSG = "Hat does not exist: \n";
-
-
-  private static final String NULL_LOGGER_MSG = "Logger must not be null to log a message or error";
-  private static final String NULL_EXCEPTION_MSG = "Exception must not be null to log it";
-  private static final String NULL_STRING_MSG = "Logged message must not be null or empty String";
 
   private static final String ENVIRONMENT_VARIABLES = "ENVIRONMENT VARIABLES: ";
 
@@ -46,28 +39,28 @@ public final class HandlerUtil {
   }
 
   public static void logMessage(LambdaLogger logger, String message) {
-    Preconditions.checkNotNull(logger, NULL_LOGGER_MSG);
-    Preconditions.checkArgument(!Strings.isNullOrEmpty(message), NULL_STRING_MSG);
+    Preconditions.checkNotNull(logger);
+    Preconditions.checkArgument(!Strings.isNullOrEmpty(message));
   }
 
   public static void logException(LambdaLogger logger, Exception exception, String prefixedMsg) {
-    Preconditions.checkNotNull(logger, NULL_LOGGER_MSG);
-    Preconditions.checkNotNull(exception, NULL_EXCEPTION_MSG);
-    Preconditions.checkArgument(!Strings.isNullOrEmpty(prefixedMsg), NULL_STRING_MSG);
+    Preconditions.checkNotNull(logger);
+    Preconditions.checkNotNull(exception);
+    Preconditions.checkArgument(!Strings.isNullOrEmpty(prefixedMsg));
     logger.log(prefixedMsg + exception.getMessage());
     logger.log(Arrays.toString(exception.getStackTrace()));
   }
 
   public static void logException(LambdaLogger logger, Exception exception) {
-    Preconditions.checkNotNull(logger, NULL_LOGGER_MSG);
-    Preconditions.checkNotNull(exception, NULL_EXCEPTION_MSG);
+    Preconditions.checkNotNull(logger);
+    Preconditions.checkNotNull(exception);
     logger.log(exception.getMessage());
     logger.log(Arrays.toString(exception.getStackTrace()));
   }
 
   public static void logEnvironment(Object input, Context context) {
-    Preconditions.checkNotNull(input, INVALID_INPUT_MSG);
-    Preconditions.checkNotNull(context, INVALID_CONTEXT_MSG);
+    Preconditions.checkNotNull(input);
+    Preconditions.checkNotNull(context);
     LambdaLogger logger = context.getLogger();
     String environmentVariablesLog = STRING_BUILDER
         .append(ENVIRONMENT_VARIABLES)
