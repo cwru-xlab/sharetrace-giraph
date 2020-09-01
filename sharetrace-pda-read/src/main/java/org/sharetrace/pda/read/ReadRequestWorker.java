@@ -17,7 +17,6 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -72,6 +71,7 @@ public class ReadRequestWorker implements RequestHandler<List<ContractedPdaReque
   private static final String LOCATION_PREFIX = "location-";
   private static final String FILE_FORMAT = ".txt";
 
+  private static final int GEOHASH_OBFUSCATION_INDEX = 3;
   private static final String ORDER_BY = "timestamp";
 
   private static final AmazonS3 S3_CLIENT = AmazonS3ClientBuilder.standard()
@@ -106,7 +106,7 @@ public class ReadRequestWorker implements RequestHandler<List<ContractedPdaReque
         PdaResponse<TemporalLocation> response = getLocation(request);
         int nLocationsWritten = 0;
         if (response.isSuccess()) {
-          LocationHistory history = transform(response.getData().get(), hatName);
+          LocationHistory history = transform(response, hatName);
           writer.write(MAPPER.writeValueAsString(history));
           writer.newLine();
           nLocationsWritten = history.getHistory().size();
@@ -191,15 +191,21 @@ public class ReadRequestWorker implements RequestHandler<List<ContractedPdaReque
     return response;
   }
 
-  private LocationHistory transform(Collection<Record<TemporalLocation>> records, String hatName) {
-    Set<TemporalLocation> locations = records.stream()
+  private LocationHistory transform(PdaResponse<TemporalLocation> response, String hatName) {
+    Set<TemporalLocation> locations = response.getData().get().stream()
         .map(Record::getPayload)
         .map(Payload::getData)
+        .map(this::obfuscate)
         .collect(Collectors.toSet());
     return LocationHistory.builder()
         .id(hatName)
         .addAllHistory(locations)
         .build();
+  }
+
+  private TemporalLocation obfuscate(TemporalLocation location) {
+    int endIndex = location.getLocation().length() - GEOHASH_OBFUSCATION_INDEX;
+    return location.withLocation(location.getLocation().substring(0, endIndex));
   }
 
   private void logFailedResponse(Optional<String> error, Optional<String> cause) {
@@ -233,12 +239,7 @@ public class ReadRequestWorker implements RequestHandler<List<ContractedPdaReque
         ContractedPdaReadRequest request = createScoreRequest(entry, url);
         PdaResponse<RiskScore> response = getRiskScore(request);
         if (response.isSuccess()) {
-          RiskScore message = response.getData().get().get(0).getPayload().getData();
-          String id = message.getId();
-          VariableVertex vertex = VariableVertex.builder()
-              .vertexId(IdGroup.builder().addId(id).build())
-              .vertexValue(SendableRiskScores.builder().addSender(id).addMessage(message).build())
-              .build();
+          VariableVertex vertex = transform(response);
           writer.write(MAPPER.writeValueAsString(vertex));
           writer.newLine();
         } else {
@@ -253,12 +254,18 @@ public class ReadRequestWorker implements RequestHandler<List<ContractedPdaReque
 
   private ContractedPdaReadRequest createScoreRequest(ContractedPdaRequestBody body,
       PdaRequestUrl url) {
-    ContractedPdaReadRequestBody readRequestBody = ContractedPdaReadRequestBody.builder()
+    PdaReadRequestParameters parameters = PdaReadRequestParameters.builder()
+        .orderBy(ORDER_BY)
+        .ordering(Ordering.DESCENDING)
+        .takeAmount(1)
+        .build();
+    ContractedPdaReadRequestBody readBody = ContractedPdaReadRequestBody.builder()
         .baseRequestBody(body)
+        .parameters(parameters)
         .build();
     return ContractedPdaReadRequest.builder()
-        .readRequestBody(readRequestBody)
         .pdaRequestUrl(url)
+        .readRequestBody(readBody)
         .build();
   }
 
@@ -271,6 +278,15 @@ public class ReadRequestWorker implements RequestHandler<List<ContractedPdaReque
       System.exit(1);
     }
     return response;
+  }
+
+  private VariableVertex transform(PdaResponse<RiskScore> response) {
+    RiskScore message = response.getData().get().get(0).getPayload().getData();
+    String id = message.getId();
+    return VariableVertex.builder()
+        .vertexId(IdGroup.builder().addId(id).build())
+        .vertexValue(SendableRiskScores.builder().addSender(id).addMessage(message).build())
+        .build();
   }
 
   private String getEnvironmentVariable(String key) {
