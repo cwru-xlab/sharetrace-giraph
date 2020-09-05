@@ -13,7 +13,6 @@ import java.net.URL;
 import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -69,14 +68,10 @@ public abstract class ContractedPdaVentilator<T> implements Ventilator<T> {
         .contractsServerUrl(getContractsServerUrl())
         .build();
     ShortLivedTokenResponse response = getShortLivedToken(tokenRequest);
-    Optional<List<String>> hats = response.getData();
-    Optional<String> shortLivedToken = response.getShortLivedToken();
-    Optional<String> error = response.getError();
-    Optional<String> cause = response.getCause();
-    if (hats.isPresent() && shortLivedToken.isPresent()) {
-      invokeWorkers(hats.get(), shortLivedToken.get());
-    } else if (error.isPresent() && cause.isPresent()) {
-      logMessage(error.get() + "\n" + cause.get());
+    if (response.isSuccess()) {
+      invokeWorkers(response.getData().get(), response.getShortLivedToken().get());
+    } else if (response.isError()) {
+      logMessage(response.getError().get() + "\n" + response.getCause().get());
       System.exit(1);
     } else {
       logMessage(response.getData().toString());
@@ -108,13 +103,13 @@ public abstract class ContractedPdaVentilator<T> implements Ventilator<T> {
 
   private void invokeWorkers(List<String> hats, String shortLivedToken) {
     List<String> workers = getWorkers();
+    int nWorkers = workers.size();
     double nHats = hats.size();
     int nPartitions = (int) Math.ceil(nHats / partitionSize);
-    int nWorkers = workers.size();
     for (int iPartition = 0; iPartition < nPartitions; iPartition++) {
-      int startIndex = iPartition * partitionSize;
-      int endIndex = (iPartition + 1) * partitionSize - 1;
-      Set<T> payload = IntStream.range(startIndex, endIndex)
+      int iStart = iPartition * partitionSize;
+      int iEnd = (iPartition + 1) * partitionSize - 1;
+      Set<T> payload = IntStream.range(iStart, iEnd)
           .mapToObj(hats::get)
           .map(hat -> mapToPayload(hat, shortLivedToken))
           .filter(Objects::nonNull)

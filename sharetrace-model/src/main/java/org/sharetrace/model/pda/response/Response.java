@@ -24,4 +24,10 @@ public interface Response<T> {
 
   @JsonProperty(value = "cause", access = Access.READ_WRITE)
   Optional<String> getCause();
+
+  boolean isSuccess();
+
+  boolean isError();
+
+  boolean isEmpty();
 }

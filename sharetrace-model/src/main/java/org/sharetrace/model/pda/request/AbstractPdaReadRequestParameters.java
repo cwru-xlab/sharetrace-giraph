@@ -10,7 +10,7 @@ import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import java.util.Optional;
 import java.util.function.Predicate;
 import org.immutables.value.Value;
-import org.sharetrace.model.pda.PdaUtil;
+import org.sharetrace.model.pda.util.PdaUtil;
 
 /**
  * Parameters of a read request to a PDA.

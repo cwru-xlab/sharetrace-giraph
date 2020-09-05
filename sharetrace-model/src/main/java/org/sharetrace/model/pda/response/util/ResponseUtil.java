@@ -1,4 +1,4 @@
-package org.sharetrace.model.pda.response;
+package org.sharetrace.model.pda.response.util;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -9,6 +9,10 @@ import java.io.InputStream;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.sharetrace.model.pda.response.PdaResponse;
+import org.sharetrace.model.pda.response.Record;
+import org.sharetrace.model.pda.response.Response;
+import org.sharetrace.model.pda.response.ShortLivedTokenResponse;
 import org.sharetrace.model.util.ShareTraceUtil;
 
 public final class ResponseUtil {
@@ -29,7 +33,7 @@ public final class ResponseUtil {
 
   private static final ObjectMapper MAPPER = ShareTraceUtil.getMapper();
 
-  static <T> void verifyInputArguments(Response<T> response) {
+  public static <T> void verifyInputArguments(Response<T> response) {
     Optional<List<T>> data = response.getData();
     Optional<String> error = response.getError();
     Optional<String> cause = response.getCause();

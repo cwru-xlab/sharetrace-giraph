@@ -1,4 +1,4 @@
-package org.sharetrace.model.pda;
+package org.sharetrace.model.pda.util;
 
 import com.google.common.base.Preconditions;
 import com.google.common.base.Strings;

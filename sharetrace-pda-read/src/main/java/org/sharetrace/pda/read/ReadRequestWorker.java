@@ -18,7 +18,6 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.sharetrace.lambda.common.util.HandlerUtil;
@@ -36,6 +35,7 @@ import org.sharetrace.model.pda.request.PdaReadRequestParameters;
 import org.sharetrace.model.pda.request.PdaRequestUrl;
 import org.sharetrace.model.pda.response.PdaResponse;
 import org.sharetrace.model.pda.response.Record;
+import org.sharetrace.model.pda.response.Response;
 import org.sharetrace.model.score.RiskScore;
 import org.sharetrace.model.score.SendableRiskScores;
 import org.sharetrace.model.util.ShareTraceUtil;
@@ -95,7 +95,7 @@ public class ReadRequestWorker implements RequestHandler<List<ContractedPdaReque
     handleScoreRequest(input);
   }
 
-  private void handleLocationsRequest(List<ContractedPdaRequestBody> input) {
+  private void handleLocationsRequest(Iterable<ContractedPdaRequestBody> input) {
     PdaRequestUrl url = getPdaRequestUrl(LOCATIONS_ENDPOINT, LOCATIONS_NAMESPACE);
     File file = createRandomTextFile(LOCATION_PREFIX);
     try (BufferedWriter writer = new BufferedWriter(new FileWriter(file))) {
@@ -111,7 +111,7 @@ public class ReadRequestWorker implements RequestHandler<List<ContractedPdaReque
           writer.newLine();
           nLocationsWritten = history.getHistory().size();
         } else {
-          logFailedResponse(response.getError(), response.getCause());
+          logFailedResponse(response);
         }
         updateHatContext(hatName, nLocationsWritten + skipAmount);
       }
@@ -208,9 +208,11 @@ public class ReadRequestWorker implements RequestHandler<List<ContractedPdaReque
     return location.withLocation(location.getLocation().substring(0, endIndex));
   }
 
-  private void logFailedResponse(Optional<String> error, Optional<String> cause) {
-    if (error.isPresent() && cause.isPresent()) {
-      String msg = CANNOT_WRITE_TO_S3_MSG + "\n" + error.get() + "\n" + cause.get();
+  private void logFailedResponse(Response<?> response) {
+    if (response.isError()) {
+      String error = response.getError().get();
+      String cause = response.getCause().get();
+      String msg = CANNOT_WRITE_TO_S3_MSG + "\n" + error + "\n" + cause;
       HandlerUtil.logMessage(logger, msg);
     } else {
       HandlerUtil.logMessage(logger, CANNOT_WRITE_TO_S3_MSG);
@@ -243,7 +245,7 @@ public class ReadRequestWorker implements RequestHandler<List<ContractedPdaReque
           writer.write(MAPPER.writeValueAsString(vertex));
           writer.newLine();
         } else {
-          logFailedResponse(response.getError(), response.getCause());
+          logFailedResponse(response);
         }
       }
     } catch (IOException e) {

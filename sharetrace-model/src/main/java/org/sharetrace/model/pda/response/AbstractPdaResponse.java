@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import java.util.List;
 import java.util.Optional;
 import org.immutables.value.Value;
+import org.sharetrace.model.pda.response.util.ResponseUtil;
 
 /**
  * A general response to a request made to a PDA.
@@ -34,9 +35,31 @@ public abstract class AbstractPdaResponse<T> implements Response<Record<T>> {
     ResponseUtil.verifyInputArguments(this);
   }
 
+  @Override
+  @Value.Derived
   public boolean isSuccess() {
-    boolean dataPresent = getData().isPresent() && !getData().get().isEmpty();
-    boolean errorAbsent = !getError().isPresent() && !getCause().isPresent();
-    return dataPresent && errorAbsent;
+    return isDataPresent() && !isErrorPresent();
   }
+
+  @Override
+  @Value.Derived
+  public boolean isError() {
+    return !isDataPresent() && isErrorPresent();
+  }
+
+  @Override
+  @Value.Derived
+  public boolean isEmpty() {
+    boolean isDataEmpty = getData().isPresent() && getData().get().isEmpty();
+    return isDataEmpty && !isErrorPresent();
+  }
+
+  private boolean isDataPresent() {
+    return getData().isPresent() && !getData().get().isEmpty();
+  }
+
+  private boolean isErrorPresent() {
+    return getError().isPresent() && getCause().isPresent();
+  }
+
 }

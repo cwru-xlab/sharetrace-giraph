@@ -16,8 +16,8 @@ import org.sharetrace.model.pda.request.ContractedPdaWriteRequest;
 import org.sharetrace.model.pda.request.PdaRequestUrl;
 import org.sharetrace.model.pda.request.ShortLivedTokenRequest;
 import org.sharetrace.model.pda.response.PdaResponse;
-import org.sharetrace.model.pda.response.ResponseUtil;
 import org.sharetrace.model.pda.response.ShortLivedTokenResponse;
+import org.sharetrace.model.pda.response.util.ResponseUtil;
 import org.sharetrace.model.util.ShareTraceUtil;
 
 /**
