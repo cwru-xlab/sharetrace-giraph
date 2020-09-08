@@ -62,15 +62,6 @@ class ContactTests {
   }
 
   @Test
-  final void constructor_withNoOccurrences_throwsIllegalStateException() {
-    assertThrows(IllegalStateException.class,
-        () -> Contact.builder()
-            .firstUser(userId1)
-            .secondUser(userId2)
-            .build());
-  }
-
-  @Test
   final void equals_verifyDifferentUserOrderings_firstSecondEqualsSecondFirst() {
     AbstractContact swappedUsers = Contact.builder()
         .firstUser(userId2)

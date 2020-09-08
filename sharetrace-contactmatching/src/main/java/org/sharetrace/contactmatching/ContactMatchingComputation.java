@@ -8,7 +8,6 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
@@ -50,7 +49,7 @@ public class ContactMatchingComputation {
     return getUniqueEntries(histories.size())
         .stream()
         .map(e -> findContact(histories.get(e.getKey()), histories.get(e.getValue())))
-        .filter(Objects::nonNull)
+        .filter(c -> !c.getOccurrences().isEmpty())
         .collect(Collectors.toSet());
   }
 
@@ -82,14 +81,10 @@ public class ContactMatchingComputation {
   }
 
   private Contact findContact(LocationHistory history, LocationHistory otherHistory) {
-    Set<Occurrence> occurrences = findOccurrences(history, otherHistory);
-    if (occurrences.isEmpty()) {
-      return null;
-    }
     return Contact.builder()
         .firstUser(history.getId())
         .secondUser(otherHistory.getId())
-        .occurrences(occurrences)
+        .occurrences(findOccurrences(history, otherHistory))
         .build();
   }
 

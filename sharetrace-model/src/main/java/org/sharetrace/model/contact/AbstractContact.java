@@ -24,8 +24,6 @@ public abstract class AbstractContact {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(AbstractContact.class);
 
-  private static final String NO_OCCURRENCES_MESSAGE = "Must contain at least one occurrence";
-
   private static final String IDENTICAL_USERS_MESSAGE = "Must contain two distinct users";
 
   public abstract String getFirstUser();
@@ -38,7 +36,6 @@ public abstract class AbstractContact {
   @Value.Check
   protected final void verifyInputArguments() {
     Preconditions.checkState(!getFirstUser().equals(getSecondUser()), IDENTICAL_USERS_MESSAGE);
-    Preconditions.checkState(!getOccurrences().isEmpty(), NO_OCCURRENCES_MESSAGE);
   }
 
   @Override

@@ -3,13 +3,13 @@ package org.sharetrace.beliefpropagation.compute;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableSet;
+import java.io.IOException;
 import java.time.Instant;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.SortedSet;
-import java.util.TreeSet;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -23,7 +23,6 @@ import org.sharetrace.beliefpropagation.format.writable.FactorVertexValue;
 import org.sharetrace.beliefpropagation.format.writable.VariableVertexValue;
 import org.sharetrace.beliefpropagation.param.BPContext;
 import org.sharetrace.model.contact.Contact;
-import org.sharetrace.model.contact.Occurrence;
 import org.sharetrace.model.identity.IdGroup;
 import org.sharetrace.model.score.RiskScore;
 import org.sharetrace.model.score.SendableRiskScores;
@@ -50,7 +49,7 @@ public final class FactorVertexComputation extends
 
   // Logging messages
   private static final String HALT_MSG = "Halting computation: vertex is not a factor vertex";
-  private static final String NO_OCCURRENCES_MSG = "No messages to retain since the vertex had no occurrences";
+  private static final String NO_OCCURRENCES_MSG = "Requesting to remove factor vertex since it had no occurrences";
 
   private static final Logger LOGGER = LoggerFactory.getLogger(FactorVertexComputation.class);
 
@@ -60,7 +59,7 @@ public final class FactorVertexComputation extends
 
   @Override
   public void compute(Vertex<FactorGraphVertexId, FactorGraphWritable, NullWritable> vertex,
-      Iterable<VariableVertexValue> iterable) {
+      Iterable<VariableVertexValue> iterable) throws IOException {
     Preconditions.checkNotNull(vertex);
     Preconditions.checkNotNull(iterable);
 
@@ -71,6 +70,16 @@ public final class FactorVertexComputation extends
     }
 
     Contact vertexValue = ((FactorVertexValue) vertex.getValue().getWrapped()).getValue();
+
+    if (getSuperstep() == 0) {
+      if (vertexValue.getOccurrences().isEmpty()) {
+        LOGGER.debug(NO_OCCURRENCES_MSG);
+        removeVertexRequest(vertex.getId());
+        vertex.voteToHalt();
+        return;
+      }
+    }
+
     Collection<SendableRiskScores> incomingValues = getIncomingValues(iterable);
     Collection<SendableRiskScores> validMessages = retainValidMessages(vertexValue, incomingValues);
     sendMessages(validMessages);
@@ -89,20 +98,14 @@ public final class FactorVertexComputation extends
   @VisibleForTesting
   Set<SendableRiskScores> retainValidMessages(Contact vertexValue,
       Collection<SendableRiskScores> incomingValues) {
-    SortedSet<Occurrence> occurrences = vertexValue.getOccurrences();
-    Set<SendableRiskScores> retained = new HashSet<>();
-    if (occurrences.isEmpty()) {
-      LOGGER.debug(NO_OCCURRENCES_MSG);
-    } else {
-      // Get the most recent time that the two users came into contact
-      Instant lastTime = vertexValue.getOccurrences().last().getTime();
-      // Retain only the scores that were updated before this point in time
-      retained = Stream.of(incomingValues)
-          .flatMap(Collection::stream)
-          .map(msg -> retainIfUpdatedBefore(msg, lastTime))
-          .filter(msg -> !msg.getMessage().isEmpty())
-          .collect(Collectors.toSet());
-    }
+    // Get the most recent time that the two users came into contact
+    Instant lastTime = vertexValue.getOccurrences().last().getTime();
+    // Retain only the scores that were updated before this point in time
+    Set<SendableRiskScores> retained = Stream.of(incomingValues)
+        .flatMap(Collection::stream)
+        .map(msg -> retainIfUpdatedBefore(msg, lastTime))
+        .filter(msg -> !msg.getMessage().isEmpty())
+        .collect(Collectors.toSet());
     return ImmutableSet.copyOf(retained);
   }
 
@@ -113,7 +116,7 @@ public final class FactorVertexComputation extends
         .withMessage(messages.getMessage()
             .stream()
             .filter(msg -> msg.getUpdateTime().isBefore(cutoff))
-            .collect(Collectors.toCollection(TreeSet::new)));
+            .collect(Collectors.toSet()));
   }
 
   // Relay each variable vertex's message and indicate the message was sent from the factor vertex
