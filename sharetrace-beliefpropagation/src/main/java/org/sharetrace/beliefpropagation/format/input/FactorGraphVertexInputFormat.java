@@ -2,6 +2,7 @@ package org.sharetrace.beliefpropagation.format.input;
 
 import com.fasterxml.jackson.core.JsonFactory;
 import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Preconditions;
@@ -47,20 +48,13 @@ public class FactorGraphVertexInputFormat extends
     protected FactorGraphVertexId getId(Text line) throws IOException {
       Preconditions.checkNotNull(line);
       String text = line.toString();
-      JsonFactory factory = MAPPER.getFactory();
-      JsonParser parser = factory.createParser(text);
-      JsonNode node = parser.getCodec().readTree(parser);
-      String vertexType = node.get(TYPE).asText();
+      String vertexType = getVertexType(text);
       FactorGraphVertexId vertexId;
       if (vertexType.equalsIgnoreCase(VertexType.FACTOR.toString())) {
-        if (factorVertex == null) {
-          factorVertex = MAPPER.readValue(text, FactorVertex.class);
-        }
+        setFactorVertex(text);
         vertexId = FactorGraphVertexId.of(factorVertex.getVertexId());
       } else {
-        if (variableVertex == null) {
-          variableVertex = MAPPER.readValue(text, VariableVertex.class);
-        }
+        setVariableVertex(text);
         vertexId = FactorGraphVertexId.of(variableVertex.getVertexId());
       }
       return vertexId;
@@ -70,23 +64,16 @@ public class FactorGraphVertexInputFormat extends
     protected FactorGraphWritable getValue(Text line) throws IOException {
       Preconditions.checkNotNull(line);
       String text = line.toString();
-      JsonFactory factory = MAPPER.getFactory();
-      JsonParser parser = factory.createParser(text);
-      JsonNode node = parser.getCodec().readTree(parser);
-      String vertexType = node.get(TYPE).asText();
+      String vertexType = getVertexType(text);
       FactorGraphWritable writable;
       if (vertexType.equalsIgnoreCase(VertexType.FACTOR.toString())) {
-        if (factorVertex == null) {
-          factorVertex = MAPPER.readValue(text, FactorVertex.class);
-        }
-        writable = FactorGraphWritable
-            .ofFactorVertex(FactorVertexValue.of(factorVertex.getVertexValue()));
+        setFactorVertex(text);
+        FactorVertexValue value = FactorVertexValue.of(factorVertex.getVertexValue());
+        writable = FactorGraphWritable.ofFactorVertex(value);
       } else {
-        if (variableVertex == null) {
-          variableVertex = MAPPER.readValue(text, VariableVertex.class);
-        }
-        writable = FactorGraphWritable
-            .ofVariableVertex(VariableVertexValue.of(variableVertex.getVertexValue()));
+        setVariableVertex(text);
+        VariableVertexValue value = VariableVertexValue.of(variableVertex.getVertexValue());
+        writable = FactorGraphWritable.ofVariableVertex(value);
       }
       return writable;
     }
@@ -95,5 +82,26 @@ public class FactorGraphVertexInputFormat extends
     protected Iterable<Edge<FactorGraphVertexId, NullWritable>> getEdges(Text line) {
       return null;
     }
+
+    private String getVertexType(String input) throws IOException {
+      JsonFactory factory = MAPPER.getFactory();
+      JsonParser parser = factory.createParser(input);
+      JsonNode node = parser.getCodec().readTree(parser);
+      return node.get(TYPE).asText();
+    }
+
+    private void setFactorVertex(String vertex) throws JsonProcessingException {
+      if (factorVertex == null) {
+        factorVertex = MAPPER.readValue(vertex, FactorVertex.class);
+      }
+    }
+
+    private void setVariableVertex(String vertex) throws JsonProcessingException {
+      if (variableVertex == null) {
+        variableVertex = MAPPER.readValue(vertex, VariableVertex.class);
+      }
+    }
   }
+
+
 }

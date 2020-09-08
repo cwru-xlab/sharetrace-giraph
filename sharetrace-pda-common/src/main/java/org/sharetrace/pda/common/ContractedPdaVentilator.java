@@ -114,8 +114,8 @@ public abstract class ContractedPdaVentilator<T> implements Ventilator<T> {
           .map(hat -> mapToPayload(hat, shortLivedToken))
           .filter(Objects::nonNull)
           .collect(Collectors.toSet());
-      int iWorker = iPartition % nWorkers;
-      invokeWorker(workers.get(iWorker), payload);
+      String iWorker = workers.get(iPartition % nWorkers);
+      invokeWorker(iWorker, payload);
     }
   }
 

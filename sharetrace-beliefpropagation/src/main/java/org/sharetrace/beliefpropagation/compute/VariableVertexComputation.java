@@ -46,6 +46,7 @@ public final class VariableVertexComputation extends
 
   // Logging messages
   private static final String HALTING_MSG = "Halting computation: vertex is not a variable vertex";
+
   private static final Logger LOGGER = LoggerFactory.getLogger(FactorVertexComputation.class);
 
   private static final String AGGREGATOR_NAME = MasterComputer.getVertexDeltaAggregatorName();

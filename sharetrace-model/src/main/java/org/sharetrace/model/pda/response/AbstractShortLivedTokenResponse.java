@@ -34,19 +34,19 @@ public abstract class AbstractShortLivedTokenResponse implements Response<String
   public abstract Optional<String> getCause();
 
   @Override
-  @Value.Derived
+  @Value.Auxiliary
   public boolean isSuccess() {
     return getShortLivedToken().isPresent() && isDataPresent() && !isErrorPresent();
   }
 
   @Override
-  @Value.Derived
+  @Value.Auxiliary
   public boolean isError() {
     return !getShortLivedToken().isPresent() && !isDataPresent() && isErrorPresent();
   }
 
   @Override
-  @Value.Derived
+  @Value.Auxiliary
   public boolean isEmpty() {
     boolean isDataEmpty = getData().isPresent() && getData().get().isEmpty();
     return isDataEmpty && !getShortLivedToken().isPresent() && !isErrorPresent();

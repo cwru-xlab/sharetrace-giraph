@@ -36,19 +36,19 @@ public abstract class AbstractPdaResponse<T> implements Response<Record<T>> {
   }
 
   @Override
-  @Value.Derived
+  @Value.Auxiliary
   public boolean isSuccess() {
     return isDataPresent() && !isErrorPresent();
   }
 
   @Override
-  @Value.Derived
+  @Value.Auxiliary
   public boolean isError() {
     return !isDataPresent() && isErrorPresent();
   }
 
   @Override
-  @Value.Derived
+  @Value.Auxiliary
   public boolean isEmpty() {
     boolean isDataEmpty = getData().isPresent() && getData().get().isEmpty();
     return isDataEmpty && !isErrorPresent();
