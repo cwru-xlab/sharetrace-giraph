@@ -30,7 +30,6 @@ import java.util.Map.Entry;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 import org.sharetrace.lambda.common.Ventilator;
 import org.sharetrace.lambda.common.util.HandlerUtil;
 import org.sharetrace.model.location.LocationHistory;
@@ -137,9 +136,10 @@ public class ContactMatchingVentilator implements Ventilator<LocationHistory>,
   }
 
   private List<LocationHistory> mapObjects(S3Object o1, S3Object o2) {
-    return ImmutableList.copyOf(Stream.of(loadPartition(o1), loadPartition(o2))
-        .flatMap(Collection::stream)
-        .collect(Collectors.toList()));
+    return ImmutableList.<LocationHistory>builder()
+        .addAll(loadPartition(o1))
+        .addAll(loadPartition(o2))
+        .build();
   }
 
   private Set<LocationHistory> loadPartition(S3Object object) {
