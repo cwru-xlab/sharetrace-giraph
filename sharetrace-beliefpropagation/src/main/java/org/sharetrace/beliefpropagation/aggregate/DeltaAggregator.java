@@ -26,7 +26,7 @@ public final class DeltaAggregator implements Aggregator<DoubleWritable> {
     if (prev.equals(Double.POSITIVE_INFINITY)) {
       newVal = val;
     } else {
-      newVal = prev + a.get();
+      newVal = prev + val;
     }
     setAggregatedValue(new DoubleWritable(newVal));
   }

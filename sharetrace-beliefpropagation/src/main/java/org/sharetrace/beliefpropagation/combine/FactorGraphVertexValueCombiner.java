@@ -48,10 +48,8 @@ public class FactorGraphVertexValueCombiner implements VertexValueCombiner<Facto
         Contact otherValue = ((FactorVertexValue) other.getWrapped()).getValue();
         combined = combine(originalValue, otherValue);
       } else {
-        SendableRiskScores originalValue =
-            ((VariableVertexValue) original.getWrapped()).getValue();
-        SendableRiskScores otherValue =
-            ((VariableVertexValue) other.getWrapped()).getValue();
+        SendableRiskScores originalValue = ((VariableVertexValue) original.getWrapped()).getValue();
+        SendableRiskScores otherValue = ((VariableVertexValue) other.getWrapped()).getValue();
         combined = combine(originalValue, otherValue);
       }
       original.setWrapped(combined);
