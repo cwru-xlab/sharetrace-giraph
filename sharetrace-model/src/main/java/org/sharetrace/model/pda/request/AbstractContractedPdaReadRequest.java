@@ -12,7 +12,7 @@ import org.immutables.value.Value;
 @JsonDeserialize(as = ContractedPdaReadRequest.class)
 public abstract class AbstractContractedPdaReadRequest {
 
-  public abstract PdaRequestUrl getPdaRequestUrl();
+  public abstract PdaRequestUrl getUrl();
 
-  public abstract ContractedPdaReadRequestBody getReadRequestBody();
+  public abstract ContractedPdaReadRequestBody getReadBody();
 }

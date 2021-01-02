@@ -118,7 +118,7 @@ public class WriteRequestVentilator
           .shortLivedToken(shortLivedToken)
           .build();
       requestBody = ContractedPdaWriteRequestBody.<RiskScore>builder()
-          .baseRequestBody(baseRequestBody)
+          .body(baseRequestBody)
           .payload(Payload.<RiskScore>builder().data(output.get(hat)).build())
           .build();
     }

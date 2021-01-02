@@ -12,7 +12,7 @@ public interface Ventilator<T> {
 
   void handleRequest();
 
-  void invokeWorker(String worker, Collection<T> payload);
+  void invokeWorker(String worker, Collection<? extends T> payload);
 
   List<String> getWorkers();
 }

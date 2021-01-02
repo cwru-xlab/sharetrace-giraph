@@ -14,7 +14,7 @@ import org.immutables.value.Value;
 @JsonDeserialize(as = ContractedPdaWriteRequest.class)
 public abstract class AbstractContractedPdaWriteRequest<T> {
 
-  public abstract PdaRequestUrl getPdaRequestUrl();
+  public abstract PdaRequestUrl getUrl();
 
-  public abstract ContractedPdaWriteRequestBody<T> getWriteRequestBody();
+  public abstract ContractedPdaWriteRequestBody<T> getWriteBody();
 }

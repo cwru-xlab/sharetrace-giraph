@@ -86,13 +86,9 @@ public class ReadRequestWorker implements RequestHandler<List<ContractedPdaReque
   public String handleRequest(List<ContractedPdaRequestBody> input, Context context) {
     HandlerUtil.logEnvironment(input, context);
     logger = context.getLogger();
-    handleRequest(input);
-    return HandlerUtil.get200Ok();
-  }
-
-  private void handleRequest(List<ContractedPdaRequestBody> input) {
     handleLocationsRequest(input);
     handleScoreRequest(input);
+    return HandlerUtil.get200Ok();
   }
 
   private void handleLocationsRequest(Iterable<ContractedPdaRequestBody> input) {
@@ -137,13 +133,10 @@ public class ReadRequestWorker implements RequestHandler<List<ContractedPdaReque
         .skipAmount(skipAmount)
         .build();
     ContractedPdaReadRequestBody readBody = ContractedPdaReadRequestBody.builder()
-        .baseRequestBody(body)
+        .body(body)
         .parameters(parameters)
         .build();
-    return ContractedPdaReadRequest.builder()
-        .pdaRequestUrl(url)
-        .readRequestBody(readBody)
-        .build();
+    return ContractedPdaReadRequest.builder().url(url).readBody(readBody).build();
   }
 
   private PdaRequestUrl getPdaRequestUrl(String endpointKey, String namespaceKey) {
@@ -262,13 +255,10 @@ public class ReadRequestWorker implements RequestHandler<List<ContractedPdaReque
         .takeAmount(1)
         .build();
     ContractedPdaReadRequestBody readBody = ContractedPdaReadRequestBody.builder()
-        .baseRequestBody(body)
+        .body(body)
         .parameters(parameters)
         .build();
-    return ContractedPdaReadRequest.builder()
-        .pdaRequestUrl(url)
-        .readRequestBody(readBody)
-        .build();
+    return ContractedPdaReadRequest.builder().url(url).readBody(readBody).build();
   }
 
   private PdaResponse<RiskScore> getRiskScore(ContractedPdaReadRequest readRequest) {

@@ -38,7 +38,8 @@ import org.sharetrace.model.util.ShareTraceUtil;
 /*
 TODO Finalize event type for input
 TODO Add the functionality to take MULTIPLE pairs of unique entries to handle per worker payload.
- This allows the flexibility of "combining" many small files written earlier by the ReadWorker into fewer, larger files.
+ This allows the flexibility of "combining" many small files written earlier by the ReadWorker
+ into fewer, larger files.
  */
 public class ContactMatchingVentilator implements Ventilator<LocationHistory>,
     RequestHandler<ScheduledEvent, String> {
@@ -52,9 +53,8 @@ public class ContactMatchingVentilator implements Ventilator<LocationHistory>,
   private static final String UNABLE_TO_LOAD_PARTITION = "Unable to load partition from S3: \n";
 
   // Environment variable keys
-  private static final String FIRST_WORKER = "matchWorker1";
-  private static final String SECOND_WORKER = "matchWorker2";
-  private static final List<String> WORKER_KEYS = ImmutableList.of(FIRST_WORKER, SECOND_WORKER);
+  private static final List<String> WORKER_KEYS = ImmutableList.of(
+      "matchWorker1", "matchWorker2");
 
   private static final String SOURCE_BUCKET = "sharetrace-locations";
 
@@ -86,10 +86,8 @@ public class ContactMatchingVentilator implements Ventilator<LocationHistory>,
     int nEntries = entries.size();
     for (int iPartition = 0; iPartition < nEntries; iPartition++) {
       Map.Entry<Integer, Integer> pair = entries.get(iPartition);
-      int iObject = pair.getKey();
-      int jObject = pair.getValue();
-      S3Object object = S3.getObject(SOURCE_BUCKET, objects.get(iObject).getKey());
-      S3Object otherObject = S3.getObject(SOURCE_BUCKET, objects.get(jObject).getKey());
+      S3Object object = S3.getObject(SOURCE_BUCKET, objects.get(pair.getKey()).getKey());
+      S3Object otherObject = S3.getObject(SOURCE_BUCKET, objects.get(pair.getValue()).getKey());
       String worker = workers.get(iPartition % nWorkers);
       List<LocationHistory> payload = mapObjects(object, otherObject);
       invokeWorker(worker, payload);
@@ -169,7 +167,7 @@ public class ContactMatchingVentilator implements Ventilator<LocationHistory>,
   }
 
   @Override
-  public void invokeWorker(String worker, Collection<LocationHistory> payload) {
+  public void invokeWorker(String worker, Collection<? extends LocationHistory> payload) {
     try {
       InvokeRequest invokeRequest = new InvokeRequest()
           .withFunctionName(worker)

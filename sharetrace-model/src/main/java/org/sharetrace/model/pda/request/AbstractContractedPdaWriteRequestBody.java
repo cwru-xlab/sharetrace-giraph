@@ -17,7 +17,7 @@ import org.sharetrace.model.pda.Payload;
 public abstract class AbstractContractedPdaWriteRequestBody<T> {
 
   @JsonUnwrapped
-  public abstract ContractedPdaRequestBody getBaseRequestBody();
+  public abstract ContractedPdaRequestBody getBody();
 
   @JsonProperty(value = "data", access = Access.READ_WRITE)
   public abstract Payload<T> getPayload();

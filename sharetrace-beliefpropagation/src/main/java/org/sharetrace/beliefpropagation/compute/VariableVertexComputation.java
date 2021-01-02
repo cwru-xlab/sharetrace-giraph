@@ -6,6 +6,7 @@ import com.google.common.collect.ImmutableSortedSet;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeSet;
 import java.util.stream.Collectors;
@@ -26,7 +27,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Computation performed at every factor {@link Vertex} of the factor graph. The following are the
+ * Computation performed at every variable {@link Vertex} of the factor graph. The following are the
  * elements that comprise the computation:
  * <ul>
  *     <li>{@link Vertex} ID: {@link IdGroup}</li>
@@ -35,11 +36,9 @@ import org.slf4j.LoggerFactory;
  *     <li>Input message: {@link SendableRiskScores}</li>
  *     <li>Output message: {@link SendableRiskScores}</li>
  * </ul>
- * Each variable {@link Vertex} receives a single {@link RiskScore} from each of its factor vertices.
- * After
- * computation, the variable {@link Vertex} sends a collection of {@link RiskScore}s to each of its
- * variable
- * vertices.
+ * Each variable {@link Vertex} receives a single {@link RiskScore} from each of its factor
+ * vertices. After computation, the variable {@link Vertex} sends a collection of
+ * {@link RiskScore}s to each of its variable vertices.
  */
 public final class VariableVertexComputation extends
     BasicComputation<FactorGraphVertexId, FactorGraphWritable, NullWritable, VariableVertexValue> {
@@ -129,11 +128,12 @@ public final class VariableVertexComputation extends
   @VisibleForTesting
   VariableVertexValue wrapMessage(Collection<String> sender, RiskScore fromReceiver,
       Collection<RiskScore> messages) {
+    Set<RiskScore> toSend = messages.stream()
+        .filter(msg -> !msg.getId().equals(fromReceiver.getId()))
+        .collect(Collectors.toSet());
     return VariableVertexValue.of(SendableRiskScores.builder()
         .sender(sender)
-        .message(messages.stream()
-            .filter(msg -> !msg.getId().equals(fromReceiver.getId()))
-            .collect(Collectors.toSet()))
+        .message(toSend)
         .build());
   }
 }

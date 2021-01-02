@@ -43,8 +43,8 @@ public class WriteRequestWorker implements
 
   private void handleRequest(ContractedPdaWriteRequestBody<RiskScore> input) {
     ContractedPdaWriteRequest<RiskScore> request = ContractedPdaWriteRequest.<RiskScore>builder()
-        .pdaRequestUrl(getPdaRequestUrl())
-        .writeRequestBody(input)
+        .url(getPdaRequestUrl())
+        .writeBody(input)
         .build();
     try {
       PDA_CLIENT.write(request);

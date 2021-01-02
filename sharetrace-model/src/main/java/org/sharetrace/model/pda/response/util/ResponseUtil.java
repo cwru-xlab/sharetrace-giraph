@@ -4,11 +4,16 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import org.sharetrace.model.pda.response.PdaResponse;
 import org.sharetrace.model.pda.response.Record;
 import org.sharetrace.model.pda.response.Response;
@@ -56,12 +61,37 @@ public final class ResponseUtil {
 
   public static ShortLivedTokenResponse mapToShortLivedTokenResponse(InputStream response) {
     ShortLivedTokenResponse tokenResponse;
+    List<InputStream> responses = copyInputStream(response, 2);
     try {
-      tokenResponse = getSuccessfulTokenResponse(response);
+      tokenResponse = getSuccessfulTokenResponse(responses.get(0));
     } catch (IOException | NullPointerException e) {
-      tokenResponse = getFailedTokenResponse(response);
+      tokenResponse = getFailedTokenResponse(responses.get(1));
     }
     return tokenResponse;
+  }
+
+  private static List<InputStream> copyInputStream(InputStream inputStream, int nCopies) {
+    Preconditions.checkNotNull(inputStream);
+    Preconditions.checkArgument(nCopies > 0);
+    int readSize;
+    byte[] buffer = new byte[1024];
+    ImmutableList<InputStream> copies;
+    try {
+      ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+      while ((readSize = inputStream.read(buffer)) != -1) {
+        outputStream.write(buffer, 0, readSize);
+      }
+      outputStream.flush();
+      copies = ImmutableList.copyOf(
+          IntStream.range(0, nCopies)
+              .mapToObj(o -> new ByteArrayInputStream(outputStream.toByteArray()))
+              .collect(Collectors.toList()));
+      outputStream.close();
+    } catch (IOException e) {
+      copies = ImmutableList.copyOf(
+          Collections.nCopies(nCopies, new ByteArrayInputStream(new byte[0])));
+    }
+    return copies;
   }
 
   private static ShortLivedTokenResponse getSuccessfulTokenResponse(InputStream response)
@@ -90,13 +120,15 @@ public final class ResponseUtil {
 
   public static <T> PdaResponse<T> mapToPdaResponse(InputStream response) {
     PdaResponse<T> pdaResponse;
+    List<InputStream> responses = copyInputStream(response, 2);
     try {
-      pdaResponse = getSuccessfulPdaResponse(response);
+      pdaResponse = getSuccessfulPdaResponse(responses.get(0));
     } catch (IOException e) {
-      pdaResponse = getFailedPdaResponse(response);
+      pdaResponse = getFailedPdaResponse(responses.get(1));
     }
     return pdaResponse;
   }
+
 
   private static <T> PdaResponse<T> getSuccessfulPdaResponse(InputStream response)
       throws IOException {

@@ -55,15 +55,15 @@ public class ContractedPdaClient {
   }
 
   public <T> PdaResponse<T> read(ContractedPdaReadRequest request) throws IOException {
-    PdaRequestUrl url = request.getPdaRequestUrl();
-    ContractedPdaRequestBody body = request.getReadRequestBody().getBaseRequestBody();
+    PdaRequestUrl url = request.getUrl();
+    ContractedPdaRequestBody body = request.getReadBody().getBody();
     InputStream response = request(url, body);
     return ResponseUtil.mapToPdaResponse(response);
   }
 
   public <T> PdaResponse<T> write(ContractedPdaWriteRequest<T> request) throws IOException {
-    PdaRequestUrl url = request.getPdaRequestUrl();
-    ContractedPdaRequestBody body = request.getWriteRequestBody().getBaseRequestBody();
+    PdaRequestUrl url = request.getUrl();
+    ContractedPdaRequestBody body = request.getWriteBody().getBody();
     InputStream response = request(url, body);
     return ResponseUtil.mapToPdaResponse(response);
   }

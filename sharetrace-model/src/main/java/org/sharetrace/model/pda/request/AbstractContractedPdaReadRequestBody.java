@@ -18,7 +18,7 @@ import org.immutables.value.Value;
 public abstract class AbstractContractedPdaReadRequestBody {
 
   @JsonUnwrapped
-  public abstract ContractedPdaRequestBody getBaseRequestBody();
+  public abstract ContractedPdaRequestBody getBody();
 
   @JsonUnwrapped
   public abstract Optional<PdaReadRequestParameters> getParameters();
