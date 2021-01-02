@@ -126,7 +126,7 @@ public class ContactMatchingVentilator implements Ventilator<LocationHistory>,
   private String getEnvironmentVariable(String key) {
     String value = null;
     try {
-      value = HandlerUtil.getEnvironmentVariable(key);
+      value = System.getenv(key);
     } catch (NullPointerException e) {
       logger.log(CANNOT_FIND_ENV_VAR_MSG + e.getMessage());
     }

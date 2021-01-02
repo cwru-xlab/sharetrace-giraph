@@ -59,9 +59,9 @@ public class WriteRequestWorker implements
       url = PdaRequestUrl.builder()
           .operation(Operation.CREATE)
           .contracted(true)
-          .sandbox(Boolean.parseBoolean(HandlerUtil.getEnvironmentVariable(IS_SANDBOX)))
-          .namespace(HandlerUtil.getEnvironmentVariable(SCORE_NAMESPACE))
-          .endpoint(HandlerUtil.getEnvironmentVariable(SCORE_ENDPOINT))
+          .sandbox(Boolean.parseBoolean(System.getenv(IS_SANDBOX)))
+          .namespace(System.getenv(SCORE_NAMESPACE))
+          .endpoint(System.getenv(SCORE_ENDPOINT))
           .build();
     } catch (NullPointerException e) {
       HandlerUtil.logException(logger, e, CANNOT_FIND_ENV_VAR_MSG);

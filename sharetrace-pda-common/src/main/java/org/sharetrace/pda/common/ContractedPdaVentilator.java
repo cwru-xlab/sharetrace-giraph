@@ -134,7 +134,7 @@ public abstract class ContractedPdaVentilator<T> implements Ventilator<T> {
   protected abstract T mapToPayload(String hat, String shortLivedToken);
 
   @Override
-  public void invokeWorker(String worker, Collection<T> payload) {
+  public void invokeWorker(String worker, Collection<? extends T> payload) {
     try {
       InvokeRequest invokeRequest = new InvokeRequest()
           .withFunctionName(worker)
@@ -153,7 +153,7 @@ public abstract class ContractedPdaVentilator<T> implements Ventilator<T> {
   String getEnvironmentVariable(String key) {
     String value = null;
     try {
-      value = HandlerUtil.getEnvironmentVariable(key);
+      value = System.getenv(key);
     } catch (NullPointerException e) {
       logException(e, CANNOT_FIND_ENV_VAR_MSG);
     }

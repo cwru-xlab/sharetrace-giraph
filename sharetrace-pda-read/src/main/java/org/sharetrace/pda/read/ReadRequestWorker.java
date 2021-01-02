@@ -284,7 +284,7 @@ public class ReadRequestWorker implements RequestHandler<List<ContractedPdaReque
   private String getEnvironmentVariable(String key) {
     String value = null;
     try {
-      value = HandlerUtil.getEnvironmentVariable(key);
+      value = System.getenv(key);
     } catch (NullPointerException e) {
       HandlerUtil.logException(logger, e, CANNOT_FIND_ENV_VAR_MSG);
       System.exit(1);

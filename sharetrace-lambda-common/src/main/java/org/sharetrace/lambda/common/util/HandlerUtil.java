@@ -95,10 +95,6 @@ public final class HandlerUtil {
     STRING_BUILDER.delete(0, STRING_BUILDER.length());
   }
 
-  public static String getEnvironmentVariable(String envVarKey) {
-    return System.getenv(envVarKey);
-  }
-
   public static String getCannotWriteToS3Msg() {
     return CANNOT_WRITE_TO_S3_MSG;
   }
