@@ -25,9 +25,21 @@ public interface Response<T> {
   @JsonProperty(value = "cause", access = Access.READ_WRITE)
   Optional<String> getCause();
 
-  boolean isSuccess();
+  default boolean isSuccess() {
+    boolean isDataPresent = getData().isPresent() && !getData().get().isEmpty();
+    boolean isErrorAbsent = !(getError().isPresent() || getCause().isPresent());
+    return isDataPresent && isErrorAbsent;
+  }
 
-  boolean isError();
+  default boolean isError() {
+    boolean isDataPresent = getData().isPresent() && !getData().get().isEmpty();
+    boolean isErrorPresent = getError().isPresent() && getCause().isPresent();
+    return !isDataPresent && isErrorPresent;
+  }
 
-  boolean isEmpty();
+  default boolean isEmpty() {
+    boolean isDataEmpty = getData().isPresent() && getData().get().isEmpty();
+    boolean isErrorPresent = getError().isPresent() && getCause().isPresent();
+    return isDataEmpty && !isErrorPresent;
+  }
 }

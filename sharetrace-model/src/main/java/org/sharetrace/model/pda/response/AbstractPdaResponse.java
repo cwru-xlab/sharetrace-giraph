@@ -34,32 +34,4 @@ public abstract class AbstractPdaResponse<T> implements Response<Record<T>> {
   protected final void verifyInputArguments() {
     ResponseUtil.verifyInputArguments(this);
   }
-
-  @Override
-  @Value.Auxiliary
-  public boolean isSuccess() {
-    return isDataPresent() && !isErrorPresent();
-  }
-
-  @Override
-  @Value.Auxiliary
-  public boolean isError() {
-    return !isDataPresent() && isErrorPresent();
-  }
-
-  @Override
-  @Value.Auxiliary
-  public boolean isEmpty() {
-    boolean isDataEmpty = getData().isPresent() && getData().get().isEmpty();
-    return isDataEmpty && !isErrorPresent();
-  }
-
-  private boolean isDataPresent() {
-    return getData().isPresent() && !getData().get().isEmpty();
-  }
-
-  private boolean isErrorPresent() {
-    return getError().isPresent() && getCause().isPresent();
-  }
-
 }
