@@ -73,7 +73,7 @@ public class ContactMatchingComputation {
     // upperIndex = 3
     int upperIndex = matrixSize - 1;
     // nIndicesInRow = 4 - 0 - 1 = 3
-    int nIndicesInRow = matrixSize - rowIndex - 1;
+    int nIndicesInRow = upperIndex - rowIndex;
     // rowEntries = {(0, 3), (0, 2), (0, 1)}
     return IntStream.range(0, nIndicesInRow)
         .mapToObj(iIndex -> new AbstractMap.SimpleImmutableEntry<>(rowIndex, upperIndex - iIndex))

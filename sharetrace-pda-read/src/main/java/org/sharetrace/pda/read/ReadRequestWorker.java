@@ -100,16 +100,15 @@ public class ReadRequestWorker implements RequestHandler<List<ContractedPdaReque
         int skipAmount = getSkipAmount(hatName);
         ContractedPdaReadRequest request = createLocationsRequest(entry, url, skipAmount);
         PdaResponse<TemporalLocation> response = getLocation(request);
-        int nLocationsWritten = 0;
         if (response.isSuccess()) {
           LocationHistory history = transform(response, hatName);
           writer.write(MAPPER.writeValueAsString(history));
           writer.newLine();
-          nLocationsWritten = history.getHistory().size();
+          int nLocationsWritten = history.getHistory().size();
+          updateHatContext(hatName, nLocationsWritten + skipAmount);
         } else {
           logFailedResponse(response);
         }
-        updateHatContext(hatName, nLocationsWritten + skipAmount);
       }
     } catch (IOException e) {
       HandlerUtil.logException(logger, e, CANNOT_WRITE_TO_S3_MSG);
@@ -121,8 +120,8 @@ public class ReadRequestWorker implements RequestHandler<List<ContractedPdaReque
     return HandlerUtil.createRandomFile(prefix, FILE_FORMAT);
   }
 
-  private String formatKey(String value) {
-    return value + FILE_FORMAT;
+  private String formatKey(String key) {
+    return key + FILE_FORMAT;
   }
 
   private ContractedPdaReadRequest createLocationsRequest(ContractedPdaRequestBody body,
@@ -185,7 +184,8 @@ public class ReadRequestWorker implements RequestHandler<List<ContractedPdaReque
   }
 
   private LocationHistory transform(PdaResponse<TemporalLocation> response, String hatName) {
-    Set<TemporalLocation> locations = response.getData().get().stream()
+    Set<TemporalLocation> locations = response.getData().get()
+        .stream()
         .map(Record::getPayload)
         .map(Payload::getData)
         .map(this::obfuscate)

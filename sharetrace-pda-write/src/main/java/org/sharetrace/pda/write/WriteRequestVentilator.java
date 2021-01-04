@@ -49,9 +49,7 @@ public class WriteRequestVentilator
   private static final String CANNOT_DESERIALIZE = HandlerUtil.getCannotDeserializeMsg();
 
   // Environment variable keys
-  private static final String FIRST_WORKER = "lambdaWriter1";
-  private static final String SECOND_WORKER = "lambdaWriter2";
-  private static final List<String> WORKERS = ImmutableList.of(FIRST_WORKER, SECOND_WORKER);
+  private static final List<String> WORKERS = ImmutableList.of("lambdaWriter1", "lambdaWriter2");
 
   private static final AWSLambdaAsync LAMBDA = AWSLambdaAsyncClientBuilder.standard()
       .withRegion(Regions.US_EAST_2).build();
