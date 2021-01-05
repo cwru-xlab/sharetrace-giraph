@@ -6,7 +6,10 @@ import com.google.common.base.Preconditions;
 import com.google.common.base.Strings;
 import java.io.File;
 import java.util.Arrays;
+import java.util.Collection;
+import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 public final class HandlerUtil {
 
@@ -89,6 +92,34 @@ public final class HandlerUtil {
         .toString();
     logger.log(eventTypeLog);
     resetStringBuilder();
+  }
+
+  public static String getEnvVar(String key, LambdaLogger logger) {
+    Preconditions.checkArgument(!Strings.isNullOrEmpty(key));
+    Preconditions.checkNotNull(logger);
+    String value = null;
+    try {
+      value = System.getenv(key);
+    } catch (NullPointerException e) {
+      logException(logger, e, CANNOT_FIND_ENV_VAR_MSG);
+      System.exit(1);
+    }
+    return value;
+  }
+
+  public static List<String> getWorkers(Collection<String> workerKeys, LambdaLogger logger) {
+    Preconditions.checkNotNull(workerKeys);
+    Preconditions.checkArgument(!workerKeys.isEmpty());
+    Preconditions.checkNotNull(logger);
+    List<String> workers = workerKeys
+        .stream()
+        .map(k -> getEnvVar(k, logger))
+        .collect(Collectors.toList());
+    if (workers.isEmpty()) {
+      logger.log(NO_WORKERS_MSG);
+      System.exit(1);
+    }
+    return workers;
   }
 
   private static void resetStringBuilder() {

@@ -113,24 +113,7 @@ public class ContactMatchingVentilator implements Ventilator<LocationHistory>,
 
   @Override
   public List<String> getWorkers() {
-    List<String> workers = WORKER_KEYS.stream()
-        .map(this::getEnvironmentVariable)
-        .collect(Collectors.toList());
-    if (workers.isEmpty()) {
-      logger.log(NO_WORKERS_MSG);
-      System.exit(1);
-    }
-    return workers;
-  }
-
-  private String getEnvironmentVariable(String key) {
-    String value = null;
-    try {
-      value = System.getenv(key);
-    } catch (NullPointerException e) {
-      logger.log(CANNOT_FIND_ENV_VAR_MSG + e.getMessage());
-    }
-    return value;
+    return HandlerUtil.getWorkers(WORKER_KEYS, logger);
   }
 
   private List<LocationHistory> mapObjects(S3Object o1, S3Object o2) {

@@ -142,9 +142,9 @@ public class ReadRequestWorker implements RequestHandler<List<ContractedPdaReque
     return PdaRequestUrl.builder()
         .contracted(true)
         .operation(Operation.READ)
-        .sandbox(Boolean.parseBoolean(getEnvironmentVariable(IS_SANDBOX)))
-        .endpoint(getEnvironmentVariable(endpointKey))
-        .namespace(getEnvironmentVariable(namespaceKey))
+        .sandbox(Boolean.parseBoolean(HandlerUtil.getEnvVar(IS_SANDBOX, logger)))
+        .endpoint(HandlerUtil.getEnvVar(endpointKey, logger))
+        .namespace(HandlerUtil.getEnvVar(namespaceKey, logger))
         .build();
   }
 
@@ -279,16 +279,5 @@ public class ReadRequestWorker implements RequestHandler<List<ContractedPdaReque
         .vertexId(IdGroup.builder().addId(id).build())
         .vertexValue(SendableRiskScores.builder().addSender(id).addMessage(message).build())
         .build();
-  }
-
-  private String getEnvironmentVariable(String key) {
-    String value = null;
-    try {
-      value = System.getenv(key);
-    } catch (NullPointerException e) {
-      HandlerUtil.logException(logger, e, CANNOT_FIND_ENV_VAR_MSG);
-      System.exit(1);
-    }
-    return value;
   }
 }
