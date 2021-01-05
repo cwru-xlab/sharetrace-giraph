@@ -51,7 +51,6 @@ import org.sharetrace.pda.common.ContractedPdaClient;
 public class ReadRequestWorker implements RequestHandler<List<ContractedPdaRequestBody>, String> {
 
   // Logging messages
-  private static final String CANNOT_FIND_ENV_VAR_MSG = HandlerUtil.getCannotFindEnvVarMsg();
   private static final String CANNOT_DESERIALIZE = HandlerUtil.getCannotDeserializeMsg();
   private static final String CANNOT_WRITE_TO_S3_MSG = HandlerUtil.getCannotWriteToS3Msg();
   private static final String CANNOT_READ_FROM_PDA_MSG = HandlerUtil.getCannotReadFromPdaMsg();

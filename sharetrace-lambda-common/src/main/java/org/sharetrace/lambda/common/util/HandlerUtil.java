@@ -24,6 +24,8 @@ public final class HandlerUtil {
   private static final String CANNOT_READ_FROM_PDA_MSG = "Unable to read data from PDA: \n";
   private static final String CANNOT_WRITE_TO_PDA_MSG = "Unable to write data to PDA: \n";
   private static final String HAT_DOES_NOT_EXIST_MSG = "Hat does not exist: \n";
+  private static final String NO_PARTITIONS_MSG = "No partitions to process. Exiting";
+  private static final String UNABLE_TO_LOAD_PARTITION = "Unable to load partition from S3: \n";
 
   private static final String ENVIRONMENT_VARIABLES = "ENVIRONMENT VARIABLES: ";
 
@@ -164,6 +166,14 @@ public final class HandlerUtil {
 
   public static String getHatDoesNotExistMsg() {
     return HAT_DOES_NOT_EXIST_MSG;
+  }
+
+  public static String getNoPartitionsMsg() {
+    return NO_PARTITIONS_MSG;
+  }
+
+  public static String getUnableToLoadPartitionMsg() {
+    return UNABLE_TO_LOAD_PARTITION;
   }
 
   public static String get200Ok() {

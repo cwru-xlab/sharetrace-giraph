@@ -45,16 +45,13 @@ public class ContactMatchingVentilator implements Ventilator<LocationHistory>,
     RequestHandler<ScheduledEvent, String> {
 
   // Logging messages
-  private static final String FAILED_TO_SERIALIZE_MSG = "Failed to serialize request body: \n";
-  private static final String CANNOT_FIND_ENV_VAR_MSG = "Unable to environment variable: \n";
-  private static final String NO_WORKERS_MSG = "No worker functions were found. Exiting handler";
-  private static final String CANNOT_DESERIALIZE = "Unable to deserialize: \n";
-  private static final String NO_PARTITIONS_MSG = "No partitions to process. Exiting";
-  private static final String UNABLE_TO_LOAD_PARTITION = "Unable to load partition from S3: \n";
+  private static final String FAILED_TO_SERIALIZE_MSG = HandlerUtil.getFailedToSerializeMsg();
+  private static final String CANNOT_DESERIALIZE = HandlerUtil.getCannotDeserializeMsg();
+  private static final String NO_PARTITIONS_MSG = HandlerUtil.getNoPartitionsMsg();
+  private static final String UNABLE_TO_LOAD_PARTITION = HandlerUtil.getUnableToLoadPartitionMsg();
 
   // Environment variable keys
-  private static final List<String> WORKER_KEYS = ImmutableList.of(
-      "matchWorker1", "matchWorker2");
+  private static final List<String> WORKER_KEYS = ImmutableList.of("matchWorker1", "matchWorker2");
 
   private static final String SOURCE_BUCKET = "sharetrace-locations";
 
