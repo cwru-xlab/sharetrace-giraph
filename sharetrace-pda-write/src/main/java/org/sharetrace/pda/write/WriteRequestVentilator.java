@@ -110,13 +110,13 @@ public class WriteRequestVentilator
   public ContractedPdaWriteRequestBody<RiskScore> mapToPayload(String hat, String shortLivedToken) {
     ContractedPdaWriteRequestBody<RiskScore> requestBody = null;
     if (output.containsKey(hat)) {
-      ContractedPdaRequestBody baseRequestBody = ContractedPdaRequestBody.builder()
+      ContractedPdaRequestBody body = ContractedPdaRequestBody.builder()
           .hatName(hat)
           .contractId(getContractId())
           .shortLivedToken(shortLivedToken)
           .build();
       requestBody = ContractedPdaWriteRequestBody.<RiskScore>builder()
-          .body(baseRequestBody)
+          .body(body)
           .payload(Payload.<RiskScore>builder().data(output.get(hat)).build())
           .build();
     }
