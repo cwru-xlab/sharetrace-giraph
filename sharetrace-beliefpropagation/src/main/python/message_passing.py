@@ -1,126 +1,190 @@
-import numpy as np
-import math
-import networkx as nx
-from networkx.algorithms import bipartite
 import datetime
+import itertools
 import random
-#seed for random numbers
-random.seed( 20 )
+from typing import Dict, Generator, Iterable, NoReturn, Optional, Sequence, \
+	Tuple
 
-#parameters
-d_p = 15 * 60
-trans_rate = 0.8 
-max_num_itr = 4
-tol_val = 0.00001
+import attr
+import networkx as nx
+import numpy as np
 
+random.seed(20)
 
-def merge_dicts(dict1, dict2):
-    for key in dict1:
-        if key not in dict2 or dict1[key] > dict2[key]:
-            dict2[key] = dict1[key]
-    return {**dict1, **dict2}
-    
-#compute the message with respect to each contact between the two users and pick the maximum value
-def compute_msg(G, variable_node, factor_node, date, risk, stm):
-    max_msg = 0
-    curr_time = date
-    #sort contacts based on time and then dur
-    for i in range(len(G.nodes[factor_node]['cont_inf'])):
-        text = G.nodes[factor_node]['cont_inf'][i]
-        val = text.split(';')
-        t = val[0]
-        d = int(val[1])
-        if datetime.datetime.strptime(date,'%d/%m/%Y').date() <= datetime.datetime.strptime(t, '%d/%m/%Y').date() + datetime.timedelta(2):
-            stm = True
-            msg = risk * trans_rate
-            if msg > max_msg:
-                max_msg = msg
-                curr_time = t
-            if msg == max_msg and datetime.datetime.strptime(t,'%d/%m/%Y').date() > datetime.datetime.strptime(curr_time, '%d/%m/%Y').date():
-                max_msg = msg
-                curr_time = t
-    G.add_edges_from([(variable_node, factor_node, {'m_fv' : {curr_time: max_msg}})])
-    return stm
-
-def compute_message_factor_to_variable(G, factor_node, variable_node, neigh, curr_date):
-    for i in range(len(neigh)):
-        if neigh[i] != variable_node:
-            #local risk scores of the variable node
-            loc_risks = G.nodes[neigh[i]]['local_risks']
-            #messages the variable node revieved from the other factor nodes (each message contains a time and a risk score)
-            mvf = G[factor_node][neigh[i]]['m_vf']
-            comb_dict = merge_dicts(loc_risks, mvf)
-            #sort the risk scores according to value and then time
-            sorted_risk = {k: v for k, v in sorted(comb_dict.items(), key=lambda x: (x[1], datetime.datetime.strptime(x[0],'%d/%m/%Y')), reverse=True)}
-            sorted_risks = list(sorted_risk.items())
-            ind = 0
-            stm = False
-            while stm == False and ind < len(sorted_risks):
-                val = sorted_risks[ind]
-                stm = compute_msg(G, variable_node, factor_node, val[0], val[1], stm)
-                ind = ind + 1
-            if stm == False:
-                #if there is no local risk computed before the time users had a contact, then send a risk score of 0 for the current date
-                G.add_edges_from([(variable_node, factor_node, {'m_fv' : {curr_date: 0}})]) 
-    
-
-def compute_max_local_risk(G, bottom_nodes):
-    old_risk = []
-    for node in bottom_nodes:
-        #compute max inital local risk (time: local_risk) - it can be updated in each iteration
-        #sort by risk and then by time
-        sorted_risk = {k: v for k, v in sorted(G.nodes[node]['local_risks'].items(), key=lambda x: (x[1], datetime.datetime.strptime(x[0],'%d/%m/%Y')), reverse=True)}
-        max_risk = next(iter(sorted_risk.items()))
-        G.nodes[node]['max_risk'] = {max_risk[0] : max_risk[1]}
-        #stored the inital risk (not sure if you need it)
-        G.nodes[node]['init_risk'] = {max_risk[0] : max_risk[1]}
-        old_risk.append(max_risk[1])
-        #initialize m_vf (messages from variable nodes to factor nodes)
-        neigh = list(G.neighbors(node))
-        for factor_node in neigh:
-            G.add_edges_from([(node, factor_node, {'m_vf' : {}})])
-    return old_risk
+TWO_DAYS = datetime.timedelta(days=2)
+DATE_FORMAT = '%d/%m/%Y'
+RiskScore = Tuple[float, datetime.date]
 
 
-def run_bp(G, top_nodes, bottom_nodes, curr_date):
-    old_risk = compute_max_local_risk(G, bottom_nodes)
+@attr.s(slots=True, frozen=True)
+class BeliefPropagation:
+	graph = attr.ib(type=nx.Graph)
+	factors = attr.ib(type=Sequence)
+	variables = attr.ib(type=Sequence)
+	transmission_rate = attr.ib(type=float, default=0.8)
+	tolerance = attr.ib(type=float, default=1e-5)
+	iterations = attr.ib(type=int, default=4)
 
-    for itr in range(max_num_itr):
-        #print ('itr', itr)
-        curr_risk = [] 
-        #message from factor nodes to variable nodes
-        for factor_node in top_nodes:
-            neigh = list(G.neighbors(factor_node))
-            for variable_node in neigh:
-                compute_message_factor_to_variable(G, factor_node, variable_node, neigh, curr_date)
-                                        
-        #message from variable nodes to factor nodes
-        for variable_node in bottom_nodes:
-            neigh = list(G.neighbors(variable_node))
-            for factor_node in neigh:
-                #initialize m_vf (messages from variable nodes to factor nodes)
-                G.add_edges_from([(variable_node, factor_node, {'m_vf' : {}})])
-                #store in m_vf all the incoming message to variable node v except for the one it recieved from factor node f to avoid self-bias
-                for i in range(len(neigh)):
-                    if neigh[i] != factor_node:
-                        G[variable_node][factor_node]['m_vf'].update(G[variable_node][neigh[i]]['m_fv'])
-        
-        #compute final risk by getting the maximum value of the local risks and received messages in each variable node
-        for variable_node in bottom_nodes:
-            neigh = list(G.neighbors(variable_node))
-            for factor_node in neigh:
-                val = next(iter(G[variable_node][factor_node]['m_fv'].items()))
-                if val[1] > next(iter(G.nodes[variable_node]['max_risk'].items()))[1]:
-                    G.nodes[variable_node]['max_risk'] = G[variable_node][factor_node]['m_fv']        
-            risk = [v for k,v in G.nodes[variable_node]['max_risk'].items()]
-            curr_risk.append(risk[0])
-            
-        #check if the risk scores have converged (we might change the tolerance value)
-        if sum(np.array(curr_risk) - np.array(old_risk)) < tol_val:
-            break
-        old_risk = curr_risk[:]
-        
-    #final risks
-    for variable_node in bottom_nodes:
-        final_risk = next(iter(G.nodes[variable_node]['max_risk'].items()))[1]
+	@transmission_rate.validator
+	def check_transmission_rate(self, attribute, value):
+		if value < 0 or value > 1:
+			raise ValueError('Transmission rate must be between 0 and 1')
 
+	@tolerance.validator
+	def check_tolerance(self, attribute, value):
+		if value <= 0:
+			raise ValueError('Tolerance must be greater than 0')
+
+	@iterations.validator
+	def check_iterations(self, attribute, value):
+		if value < 1:
+			raise ValueError('Iterations must be at least 1')
+
+	def compute_message(self, factor, variable, risk_score: RiskScore) -> bool:
+		"""Compute the message with respect to each contact between the two
+		users and pick the maximum value"""
+		risk, date = risk_score
+		values = self.get_factor_values(factor)
+		recent = ((t, d) for (t, d) in values if date <= t + TWO_DAYS)
+		# TODO Need to also account for duration
+		default = (date, 0)
+		most_recent, _ = max(recent, key=lambda t, d: -t, default=default)
+		updated = most_recent != default
+		msg = {
+			most_recent: risk * self.transmission_rate if updated else 0}
+		self.graph.add_edges_from([(variable, factor, {'m_fv': msg})])
+		return updated
+
+	def send_to_variables(self):
+		for factor, variable, neighbor in self.factor_graph_iter(self.factors):
+			local_risks = self.get_local_risks(neighbor)
+			from_others = self.get_from_other_factors(factor, variable)
+			risk_scores = self.merge_dicts(local_risks, from_others).items()
+			risk_scores = sorted(risk_scores, key=self.sort_by_risk_then_time)
+			risk_scores = self.generate_risk_scores(risk_scores)
+			risk_score = next(risk_scores)
+			updated = False
+			while not updated and risk_score is not None:
+				updated = self.compute_message(factor, variable, risk_score)
+				risk_score = next(risk_scores, None)
+
+	def factor_graph_iter(
+			self, outer: Iterable, filter_neighbors: bool = True) -> Tuple:
+		inner = (self.graph.neighbors(o) for o in outer)
+		for o, i in itertools.product(outer, inner):
+			if filter_neighbors:
+				for n in (n for n in self.graph.neighbors(o) if n != i):
+					yield o, i, n
+			else:
+				yield o, i
+
+	def max_local_risk(self) -> np.ndarray:
+		old_risks = []
+		for variable in self.variables:
+			local_risks = self.get_local_risks(variable).items()
+			max_date, max_risk = max(
+				local_risks, key=self.sort_by_risk_then_time)
+			self.update_max_risk(variable, {max_date: max_risk})
+			old_risks.append(max_risk)
+			for factor in self.graph.neighbors(variable):
+				self.graph.add_edges_from([(variable, factor, {'m_vf': {}})])
+		return np.array(old_risks)
+
+	def send_to_factors(self):
+		vfn = self.factor_graph_iter(self.variables)
+		for variable, factor, neighbor in vfn:
+			# store in m_vf all the incoming message to variable node v except
+			# for the one it received from factor node f to avoid self-bias
+			message = self.get_message(neighbor, variable, to_variable=True)
+			self.send_message(factor, variable, message)
+
+	def run(self):
+		old_risks = self.max_local_risk()
+		i = 0
+		t = np.inf
+		while i < self.iterations and t > self.tolerance:
+			curr_risk = np.array([])
+			self.send_to_variables()
+			self.send_to_factors()
+			vf = self.factor_graph_iter(self.variables, filter_neighbors=False)
+			for variable, factor in vf:
+				msg = self.get_message(factor, variable, to_variable=True)
+				_, msg_date = self.get_first(msg)
+				_, var_date = self.get_first(self.get_max_risk(variable))
+				if msg_date > var_date:
+					new_val = self.get_message(factor, variable)
+					self.update_max_risk(variable, new_val)
+				risk, _ = self.get_first(self.get_max_risk(variable))
+				curr_risk = np.append(curr_risk, risk)
+			i += 1
+			t = sum(curr_risk - old_risks)
+			old_risks = curr_risk
+		# final risks
+		for variable in self.variables:
+			_, final_risk = self.get_first(self.get_max_risk(variable))
+
+	def get_factor_values(self, factor) -> Iterable[Tuple]:
+		vals = (v.split(';') for v in self.graph.nodes[factor]['cont_inf'])
+		return (
+			(self.to_date(t), datetime.timedelta(seconds=int(d)))
+			for t, d in vals)
+
+	def get_max_risk(self, variable):
+		return self.graph.nodes[variable]['max_risk']
+
+	def get_message(self, factor, variable, to_variable: bool = False) -> Dict:
+		if to_variable:
+			message = self.graph[variable][factor]['m_fv']
+		else:
+			message = self.graph[variable][factor]['m_vf']
+		return message
+
+	def send_message(
+			self,
+			factor,
+			variable,
+			message: Dict,
+			to_variable: bool = False) -> NoReturn:
+		if to_variable:
+			self.graph[variable][factor]['m_fv'].update(message)
+		else:
+			self.graph[variable][factor]['m_vf'].update(message)
+
+	def update_max_risk(self, variable, new_max: Dict) -> NoReturn:
+		self.graph.nodes[variable]['max_risk'] = new_max
+
+	def get_local_risks(self, variable) -> Dict:
+		return self.graph.nodes[variable]['local_risks']
+
+	def get_from_other_factors(self, factor, variable):
+		return self.graph[factor][variable]['m_vf']
+
+	@staticmethod
+	def sort_by_risk_then_time(risk_score: RiskScore) -> Tuple:
+		risk, time = risk_score
+		return -risk, time
+
+	@staticmethod
+	def generate_risk_scores(
+			risk_scores: Iterable[Tuple[float, str]]) -> Generator:
+		score_iter = iter(risk_scores)
+		risk_score = next(score_iter, None)
+		while risk_score is not None:
+			risk, time = risk_score
+			yield float(risk), BeliefPropagation.to_date(time)
+			risk_score = next(score_iter, None)
+
+	@staticmethod
+	def get_first(d: Dict) -> Optional[Tuple]:
+		k = next(d, None)
+		return (k, d[k]) if k is not None else None
+
+	@staticmethod
+	def merge_dicts(d1: Dict, d2: Dict):
+		d1_join = {
+			k: d1[k] if k not in d2 else max(d1[k], d2[k]) for k, v in d1}
+		d2_diff = {k: d2[k] for k in d2 if k not in d1_join}
+		return {**d1_join, **d2_diff}
+
+	@staticmethod
+	def to_date(s: str) -> datetime.date:
+		return datetime.datetime.strptime(s, DATE_FORMAT).date()

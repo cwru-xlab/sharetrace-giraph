@@ -1,3 +1,5 @@
+sourceSets.main.java.srcDirs += 'src/main/python'
+
 dependencies {
     // https://mvnrepository.com/artifact/org.apache.hadoop/hadoop-common
     implementation('org.apache.hadoop:hadoop-common:2.7.1')
