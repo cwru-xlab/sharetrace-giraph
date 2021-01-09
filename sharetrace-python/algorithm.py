@@ -1,16 +1,29 @@
 import datetime
 import itertools
 import random
-from typing import Dict, Generator, Iterable, NoReturn, Sequence, Tuple
+from typing import Dict, Generator, Iterable, NoReturn, Sequence, \
+	Tuple
 
 import attr
 import networkx as nx
 import numpy as np
 
-_TWO_DAYS = datetime.timedelta(days=2)
-_DATE_FORMAT = '%d/%m/%Y'
-_RiskScore = Tuple[datetime.date, float]
+import model
 
+_TWO_DAYS = datetime.timedelta(days=2)
+
+"""
+Variable node id: HAT name
+Variable node value: set of local risk scores and max risk score
+
+Factor node id: Concatenation of HAT names
+Factor node value: Occurrences
+
+Edge data: Messages between factor and variable_id nodes
+"""
+
+
+# TODO Need to include current time
 
 @attr.s(slots=True)
 class BeliefPropagation(nx.Graph):
@@ -24,24 +37,45 @@ class BeliefPropagation(nx.Graph):
 
 	Following the core message-passing principle of belief propagation,
 	the algorithm performs iterative computation between the factor and
-	variable node sets. The algorithm begins with all variable nodes
+	variable_id node sets. The algorithm begins with all variable_id nodes
 	selecting their maximum local score and sending it to all of their
 	neighboring factor nodes. Once this is done, all factor nodes filter the
 	risk scores, based on when the individuals came into contact, and relays
 	all risk scores sent from one individual to the other individual
 	involved in the contact. This completes one iteration of the algorithm
 	and is repeated until either a certain number of iterations has passed or
-	the summed difference in variable risk scores from the previous iteration
+	the summed difference in variable_id risk scores from the previous iteration
 	drops below a set tolerance, whichever condition is satisfied first.
 	"""
-	factors = attr.ib(type=Sequence)
-	variables = attr.ib(type=Sequence)
+	factors = attr.ib(type=Sequence[model.Contact])
+	variables = attr.ib(type=Sequence[model.RiskScore])
 	transmission_rate = attr.ib(type=float, default=0.8)
 	tolerance = attr.ib(type=float, default=1e-5)
 	iterations = attr.ib(type=int, default=4)
 	_seed = attr.ib(default=None)
 
 	def __attrs_post_init__(self):
+		# Factor nodes
+		users = [sorted(f.users) for f in self.factors]
+		keys = tuple(f'{u1}_{u2}' for u1, u2 in users)
+		self._factor_ids = keys
+		self.add_nodes_from(keys, bipartite=1)
+		attrs = {
+			k: {'occurrences': f.occurrences}
+			for f, k in zip(self.factors, keys)}
+		nx.set_node_attributes(self, attrs)
+		edge_data = {'to_variable': set(), 'to_factor': set()}
+		edges = ((u, k) for (u, _), k in zip(users, keys))
+		self.add_edges_from(edges, **edge_data)
+		edges = ((u, k) for (_, u), k in zip(users, keys))
+		self.add_edges_from(edges, **edge_data)
+		# Variable nodes
+		keys = tuple(v.id for v in self.variables)
+		self._variable_ids = keys
+		self.add_nodes_from(keys, bipartite=0)
+		attrs = {v.id: {'local_risks': {v}} for v in self.variables}
+		nx.set_node_attributes(self, attrs)
+		# Seed
 		if self._seed is not None:
 			random.seed(self._seed)
 			np.random.seed(self._seed)
@@ -61,13 +95,13 @@ class BeliefPropagation(nx.Graph):
 		if value < 1:
 			raise ValueError('Iterations must be at least 1')
 
-	def run(self) -> Sequence[_RiskScore]:
+	def run(self) -> Sequence[model.RiskScore]:
 		max_risks = self._get_and_set_max_local_risks()
 		i, t = 0, np.inf
 		while i < self.iterations and t > self.tolerance:
-			current_risks = np.empty((0,))
-			self._send_to_variables()
+			current_risks = []
 			self._send_to_factors()
+			self._send_to_variables()
 			vf = self._graph_iter(self.variables, filter_neighbors=False)
 			for variable, factor in vf:
 				message = self._get_message_to_variable(factor, variable)
@@ -83,39 +117,37 @@ class BeliefPropagation(nx.Graph):
 			max_risks = current_risks
 		return tuple(_get_first(self._get_max_risk(v)) for v in self.variables)
 
-	def _get_and_set_max_local_risks(self) -> np.ndarray:
-		"""Sets the max risk for each variable node, based on local scores.
+	def _get_and_set_max_local_risks(self) -> Sequence[model.RiskScore]:
+		"""Sets the max risk for each variable_id node, based on local scores.
 
 		Risk scores are sorted first by magnitude and then by time in
-		descending order. An edge between each variable node and all of its
+		descending order. An edge between each variable_id node and all of its
 		neighboring factor nodes is added, which serves to store messages
 		between each pair of nodes.
 
 		Returns:
-			Numpy array of local variable node max risk scores.
+			Sequence of local variable_id node max risk scores.
 		"""
 		max_risks = []
-		for variable in self.variables:
-			local_risks = self._get_local_risks(variable).items()
-			max_date, max_risk = max(local_risks, key=_sort_by_risk_then_time)
-			self._set_max_risk(variable, {max_date: max_risk})
-			max_risks.append(max_risk)
-			for factor in self.graph.neighbors(variable):
-				self.add_edges_from([(variable, factor, {'m_vf': {}})])
-		return np.array(max_risks)
+		for variable in self._variable_ids:
+			local_risks = self._get_local_risks(variable)
+			max_risk_score = max(local_risks)
+			self._set_max_risk(variable, max_risk_score)
+			max_risks.append(max_risk_score)
+		return max_risks
 
-	def _get_local_risks(self, variable) -> Dict:
-		return self.nodes[variable]['local_risks']
+	def _get_local_risks(self, variable_id) -> Sequence:
+		return self.nodes[variable_id]['local_risks']
 
-	def _set_max_risk(self, variable, new_max: Dict) -> NoReturn:
-		self.nodes[variable]['max_risk'] = new_max
+	def _set_max_risk(self, variable_id, new_max) -> NoReturn:
+		self.nodes[variable_id]['max_risk'] = new_max
 
 	def _send_to_variables(self):
 		for factor, variable, neighbor in self._graph_iter(self.factors):
 			local_risks = self._get_local_risks(neighbor)
 			from_others = self._get_from_other_factors(factor, variable)
 			risk_scores = _merge_dicts(local_risks, from_others).items()
-			risk_scores = sorted(risk_scores, key=_sort_by_risk_then_time)
+			risk_scores = sorted(risk_scores)
 			risk_scores = _generate_risk_scores(risk_scores)
 			risk_score = next(risk_scores)
 			updated = False
@@ -125,7 +157,7 @@ class BeliefPropagation(nx.Graph):
 
 	def _graph_iter(
 			self, outer: Iterable, filter_neighbors: bool = True) -> Generator:
-		"""Generates factor, variable, and (optionally) neighbor tuples.
+		"""Generates factor, variable_id, and (optionally) neighbor tuples.
 
 		A cartesian product is iterated over the outer iterable and the inner
 		iterable that is created from the neighbors of each of the elements of
@@ -156,17 +188,18 @@ class BeliefPropagation(nx.Graph):
 			else:
 				yield o, i
 
-	def _get_from_other_factors(self, factor, variable):
-		"""Get all messages received by a variable node from all other of its
+	def _get_from_other_factors(self, factor: str, variable: str):
+		"""Get all messages received by a variable_id node from all other of its
 		neighboring factor nodes."""
 		return self[factor][variable]['m_vf']
 
-	def _compute_message(self, factor, variable, value: _RiskScore) -> bool:
-		"""Computes the message to send from a factor node to a variable node.
+	def _compute_message(
+			self, factor: str, variable: str, value: model.RiskScore) -> bool:
+		"""Computes the message to send from a factor node to a variable_id node.
 
 		Sufficiently recent factor node values are filtered and the timestamp
 		of the most recent of those values becomes the timestamp for the
-		message to send to the variable node. The value to send is adjusted
+		message to send to the variable_id node. The value to send is adjusted
 		by the set transmission rate of the model. If no such factor value is
 		available, a default value is sent in the message.
 
@@ -190,7 +223,7 @@ class BeliefPropagation(nx.Graph):
 		return updated
 
 	def _send_to_factors(self):
-		for variable, factor, neighbor in self._graph_iter(self.variables):
+		for variable, factor, neighbor in self._graph_iter(self._variable_ids):
 			message = self._get_message_to_variable(neighbor, variable)
 			self._send_to_factor(factor, variable, message)
 
@@ -202,22 +235,18 @@ class BeliefPropagation(nx.Graph):
 	def _get_max_risk(self, variable):
 		return self.nodes[variable]['max_risk']
 
-	def _get_message_to_variable(self, factor, variable) -> Dict:
-		return self[variable][factor]['m_fv']
+	def _get_message_to_variable(self, factor, variable) -> model.RiskScore:
+		return self[variable][factor]['to_variable']
 
-	def _get_message_to_factor(self, factor, variable) -> Dict:
-		return self[variable][factor]['m_vf']
+	def _get_message_to_factor(self, factor, variable) -> model.RiskScore:
+		return self[variable][factor]['to_factor']
 
-	def _send_to_variable(self, factor, variable, message: Dict) -> NoReturn:
-		self[variable][factor]['m_fv'].update(message)
+	def _send_to_variable(self, factor, variable, message) -> NoReturn:
+		self[variable][factor]['to_variable'].add(message)
 
-	def _send_to_factor(self, factor, variable, message: Dict) -> NoReturn:
-		self[variable][factor]['m_vf'].update(message)
-
-
-def _sort_by_risk_then_time(risk_score: _RiskScore) -> Tuple:
-	time, risk = risk_score
-	return -risk, time
+	def _send_to_factor(self, factor, variable, message) -> NoReturn:
+		self[variable][factor]['to_factor'].clear()
+		self[variable][factor]['to_factor'].update(message)
 
 
 def _generate_risk_scores(
