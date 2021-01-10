@@ -1,13 +1,17 @@
 import datetime
-from typing import Hashable, Set
+from typing import Collection, Hashable, Set
 
 import attr
+
+"""IMPORTANT: Order of attributes affects attr order attribute"""
 
 
 @attr.s(slots=True, frozen=True, order=True)
 class RiskScore:
-	value = attr.ib(type=float)
-	timestamp = attr.ib(type=datetime.time)
+	value = attr.ib(type=float, converter=float)
+	timestamp = attr.ib(
+		type=datetime.datetime,
+		validator=attr.validators.instance_of(datetime.datetime))
 	id = attr.ib(type=Hashable)
 
 	@value.validator
@@ -18,7 +22,9 @@ class RiskScore:
 
 @attr.s(slots=True, frozen=True, order=True)
 class TemporalLocation:
-	timestamp = attr.ib(type=datetime.datetime)
+	timestamp = attr.ib(
+		type=datetime.datetime,
+		validator=attr.validators.instance_of(datetime.datetime))
 	location = attr.ib(type=Hashable)
 
 
@@ -30,14 +36,18 @@ class LocationHistory:
 
 @attr.s(slots=True, frozen=True, order=True)
 class Occurrence:
-	timestamp = attr.ib(type=datetime.datetime)
-	duration = attr.ib(type=datetime.timedelta)
+	timestamp = attr.ib(
+		type=datetime.datetime,
+		validator=attr.validators.instance_of(datetime.datetime))
+	duration = attr.ib(
+		type=datetime.timedelta,
+		validator=attr.validators.instance_of(datetime.timedelta))
 
 
 @attr.s(slots=True, frozen=True)
 class Contact:
-	users = attr.ib(type=Set[Hashable])
-	occurrences = attr.ib(type=Set[Occurrence])
+	users = attr.ib(type=Collection[Hashable], converter=frozenset)
+	occurrences = attr.ib(type=Collection[Occurrence], converter=frozenset)
 
 	def __attrs_post_init__(self):
 		if len(self.users) != 2:
