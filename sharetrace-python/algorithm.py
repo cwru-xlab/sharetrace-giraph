@@ -1,7 +1,9 @@
+import collections
 import datetime
 import itertools
 import random
-from typing import Collection, Generator, Hashable, Iterable, NoReturn
+from typing import (
+	Collection, DefaultDict, Hashable, Iterable, Mapping, NoReturn, Set, Tuple)
 
 import attr
 import networkx as nx
@@ -10,18 +12,27 @@ import numpy as np
 import model
 
 _TWO_DAYS = datetime.timedelta(days=2)
-_DEFAULT_ID = 'DEFAULT_ID'
-_DEFAULT_RISK = 0
-_DEFAULT_DURATION = 0
+_DEFAULT_MESSAGE = model.RiskScore(
+	id='DEFAULT_ID', timestamp=datetime.datetime.today(), value=0)
+_RiskScores = Iterable[model.RiskScore]
+_GroupedRiskScores = Iterable[Tuple[str, _RiskScores]]
+_Contacts = Iterable[model.Contact]
 
 """
-Variable node id: HAT name
-Variable node messages: set of local risk scores and max risk score
+Variable node id: 
+	- HAT name
+Variable node messages: 
+	- local risk scores
+	- risk score sent by all neighboring factor nodes
+	- max risk score
 
-Factor node id: Concatenation of HAT names
-Factor node messages: Occurrences
+Factor node id: 
+	- concatenation of HAT names
+Factor node messages:
+	- occurrences (time-duration pairs) 
 
-Edge data: Messages between factor and variable nodes
+Edge data: 
+	- messages between factor and variable nodes
 """
 
 
@@ -75,9 +86,8 @@ class BeliefPropagation(nx.Graph):
 
 	def run(
 			self,
-			factors: Collection[model.Contact],
-			variables: Collection[model.RiskScore]
-	) -> Collection[model.RiskScore]:
+			factors: _Contacts,
+			variables: _GroupedRiskScores) -> _RiskScores:
 		self._create_graph(factors, variables)
 		max_risks = np.array([
 			self._get_max_risk(v).value for v in self._variables])
@@ -86,66 +96,68 @@ class BeliefPropagation(nx.Graph):
 			iter_risks = []
 			self._send_to_factors()
 			self._send_to_variables()
-			fv = self._graph_iter(self._factors, filter_neighbors=False)
-			for factor, variable in fv:
-				message = self._get_message_to_variable(factor, variable)
+			for variable, factor in self._graph_iter(self._variables):
+				messages = self._get_messages_to_variable(variable, factor)
 				max_risk = self._get_max_risk(variable)
-				self._set_max_risk(variable, max(message, max_risk))
+				max_risk = _chain_max(messages, [max_risk])
+				self._set_max_risk(variable, max_risk)
 				iter_risks.append(max_risk.value)
 			iteration += 1
 			tolerance = sum(np.array(iter_risks) - max_risks)
 			max_risks = iter_risks
 			if iteration < self.iterations:
+				self._copy_to_previous()
 				self._clear_messages()
-		return tuple(self._get_max_risk(v) for v in self._variables)
+		return frozenset(self._get_max_risk(v) for v in self._variables)
 
 	def _create_graph(
 			self,
-			factors: Collection[model.Contact],
-			variables: Collection[model.RiskScore]) -> NoReturn:
+			factors: _Contacts,
+			variables: _GroupedRiskScores) -> NoReturn:
 		self._add_factors(factors)
 		self._add_variables(variables)
 
-	def _add_factors(
-			self, factors: Collection[model.Contact]) -> NoReturn:
-		users = [sorted(f.users) for f in factors]
-		keys = tuple(f'{u1}_{u2}' for u1, u2 in users)
+	def _add_factors(self, factors: _Contacts) -> NoReturn:
+		factors1, factors2 = itertools.tee(factors, 2)
+		users = (sorted(f.users) for f in factors1)
+		users1, users2 = itertools.tee(users, 2)
+		keys = frozenset(f'{u1}_{u2}' for u1, u2 in users1)
 		self._factors = keys
 		self.add_nodes_from(keys, bipartite=1)
 		attrs = {
-			k: {'occurrences': f.occurrences} for f, k in zip(factors, keys)}
+			k: {'occurrences': f.occurrences} for f, k in zip(factors2, keys)}
 		nx.set_node_attributes(self, attrs)
-		edge_data = {'to_variable': set(), 'to_factor': set()}
-		edges = ((u, k) for (u, _), k in zip(users, keys))
-		self.add_edges_from(edges, **edge_data)
-		edges = ((u, k) for (_, u), k in zip(users, keys))
+		edge_data = {
+			'to_variable': _to_variable_factory(),  # to: {<from>: <message>}
+			'to_factor': _to_factor_factory()}  # to: {<from>: <messages>}
+		edges = ((u, k) for (u, _), k in zip(users2, keys))
 		self.add_edges_from(edges, **edge_data)
 
-	def _add_variables(
-			self, variables: Collection[model.RiskScore]) -> NoReturn:
-		keys = tuple(v.id for v in variables)
+	def _add_variables(self, variables: _GroupedRiskScores) -> NoReturn:
+		variables1, variables2, variables3 = itertools.tee(variables, 3)
+		keys = frozenset(k for k, _ in variables1)
 		self._variables = keys
 		self.add_nodes_from(keys, bipartite=0)
-		attrs = {v.id: {'local_risks': {v}, 'max_risk': v} for v in variables}
-		nx.set_node_attributes(self, attrs)
-
-	def _get_local_values(
-			self, variable: Hashable) -> Collection[model.RiskScore]:
-		return self.nodes[variable]['local_risks']
-
-	def _set_max_risk(self, variable_id, new_max) -> NoReturn:
-		self.nodes[variable_id]['max_risk'] = new_max
+		attrs = {
+			k2: {
+				'local_risks': _local_factory(v2),
+				'max_risk': max(v3),
+				'previous': _to_variable_factory()}
+			for (k2, v2), (_, v3) in zip(variables2, variables3)}
+		nx.set_node_attributes(self, **attrs)
 
 	def _send_to_variables(self) -> NoReturn:
-		for factor, variable, neighbor in self._graph_iter(self._factors):
-			from_neighbor = self._get_local_values(neighbor)
-			from_others = self._get_from_other_factors(factor, variable)
-			messages = itertools.chain(from_neighbor, from_others)
-			self._compute_message(factor, variable, messages)
+		for factor, variable in self._graph_iter(self._factors):
+			neighbor = self._get_neighbor(factor, variable)
+			local = self._get_local_values(neighbor)
+			previous = self._get_previous(neighbor).values()
+			messages = itertools.chain(local, previous)
+			message = self._compute_message(factor, messages)
+			self._send_to_variable(factor, variable, message)
 
 	def _graph_iter(
-			self, outer: Iterable, filter_neighbors: bool = True) -> Generator:
-		"""Generates factor, variable, and (optionally) neighbor tuples.
+			self, outer: Iterable[Hashable]) -> Tuple[Hashable, Hashable]:
+		"""Generates factor, variable tuples.
 
 		A cartesian product is iterated over the outer iterable and the inner
 		iterable that is created from the neighbors of each of the elements of
@@ -157,57 +169,32 @@ class BeliefPropagation(nx.Graph):
 				inner for loop. For example, if an iterable of factor nodes,
 				the inner iterable is an iterable such that each element in
 				the iterable is the neighbors of a factor node.
-			filter_neighbors: If True, a third level of iteration is defined
-				in which the neighbors of the current outer element are
-				iterated over, except for the current inner element. If
-				False, this level of iteration is ignored, and only the
-				outer-inner iteration is performed.
 
 		Returns:
-			A tuple of either the form (outer element, inner element) or
-			(outer element, inner element, outer neighbor), depending on the
-			messages of filter_neighbors.
+			A tuple of either the form (outer element, inner element),
+			where inner element is a neighbor of the outer element.
 		"""
 		inner = (self.neighbors(o) for o in outer)
 		for o, i in itertools.product(outer, inner):
-			if filter_neighbors:
-				for n in (n for n in self.neighbors(o) if n != i):
-					yield o, i, n
-			else:
-				yield o, i
-
-	def _get_from_other_factors(
-			self,
-			factor: Hashable,
-			variable: Hashable) -> Collection[model.RiskScore]:
-		"""Get all messages received by a variable node from all other of
-		its neighboring factor nodes."""
-		return frozenset(
-			self[variable][f]['to_variable']
-			for f in self._factors if f != factor)
+			yield o, i
 
 	def _compute_message(
-			self,
-			factor: Hashable,
-			variable: Hashable,
-			messages: Iterable[model.RiskScore]) -> NoReturn:
-		"""Computes the messages to send from a factor node to a variable
-		node.
+			self, factor: Hashable, messages: _RiskScores) -> NoReturn:
+		"""Computes messages to send from a factor node to a variable node.
 
-		Sufficiently recent factor node values are filtered and the
-		timestamp
-		of the most recent of those values becomes the timestamp for the
-		messages to send to the variable node. The value to send is adjusted
-		by the set transmission rate of the model. If no such factor
-		value is available, a default value is sent in the messages.
+		Only messages that occurred sufficiently before at least one factor
+		value are considered. Messages undergo a weighted transformation,
+		based on the number of days between the message's timestamp and the
+		most recent message's timestamp and transmission rate. If no
+		messages satisfy the initial condition, a default message is sent.
+		Otherwise, the maximum weighted message is sent.
 
 		Args:
 			factor: Factor node sending the messages.
-			variable: Variable node receiving the messages.
-			messages: Contains the value of the messages.
+			messages: Messages in consideration.
 
 		Returns:
-			True if the non-default messages is sent, and False otherwise.
+			Message to send.
 		"""
 		# Numpy array for efficiency
 		messages = np.array(
@@ -217,11 +204,9 @@ class BeliefPropagation(nx.Graph):
 			(i, m) for i, m in enumerate(messages)
 			if any(m.timestamp <= v.timestamp + _TWO_DAYS for v in value)])
 		if len(recent) == 0:
-			message = model.RiskScore(
-				id=_DEFAULT_ID,
-				timestamp=datetime.datetime.today(),
-				value=_DEFAULT_RISK)
+			message = _DEFAULT_MESSAGE
 		else:
+			# TODO Assumes each risk score is on a different day
 			norms = (sum(np.exp(-d) for d in range(i)) for i, _ in recent)
 			weighted = (
 				(i, sum(m.value * np.exp(-d) for d in range(i)))
@@ -231,48 +216,117 @@ class BeliefPropagation(nx.Graph):
 				for (i, w), norm in zip(weighted, norms))
 			i, _ = max(weighted, key=lambda i, w: w)
 			message = messages[i]
-		self._send_to_variable(factor, variable, message)
+		return message
 
 	def _send_to_factors(self) -> NoReturn:
-		for variable, factor, neighbor in self._graph_iter(self._variables):
+		for variable, factor in self._graph_iter(self._variables):
 			local = self._get_local_values(variable)
-			# TODO Need to know which message NOT to send to avoid self-bias
-			# TODO When to update local values and clear all messages?
-			messages = []
+			from_others = self._get_from_other_factors(factor, variable)
+			messages = itertools.chain(local, from_others.values())
 			self._send_to_factor(factor, variable, messages)
 
-	def _get_factor_value(
-			self, factor: Hashable) -> Collection[model.Occurrence]:
-		return frozenset(self.nodes[factor]['occurrences'])
+	# Edge getters / setters
+	def _get_messages_to_variable(
+			self,
+			variable: Hashable,
+			factor: Hashable = None) -> Mapping[Hashable, model.RiskScore]:
+		to_variable = _to_variable_factory()
+		if factor is None:
+			to_variable.update(
+				self[variable][f]['to_variable']
+				for f in self.neighbors(variable))
+		else:
+			to_variable.update(self[variable][factor]['to_variable'])
+		return to_variable
 
-	def _get_max_risk(self, variable: Hashable) -> model.RiskScore:
-		return self.nodes[variable]['max_risk']
-
-	def _get_message_to_variable(
-			self, factor: Hashable, variable: Hashable) -> model.RiskScore:
-		return self[variable][factor]['to_variable']
-
-	def _get_message_to_factor(
+	def _get_from_other_factors(
 			self,
 			factor: Hashable,
-			variable: Hashable) -> Collection[model.RiskScore]:
-		return self[variable][factor]['to_factor']
+			variable: Hashable,
+			previous: bool = True) -> Mapping[Hashable, model.RiskScore]:
+		"""Get all messages received by a variable node from all other of
+		its neighboring factor nodes."""
+		to_variable = _to_variable_factory()
+		if previous:
+			to_variable.update({
+				f: msg for f, msg in self._get_previous(variable).items()
+				if f != factor})
+		else:
+			to_variable.update({
+				f: self[variable][f]['to_variable']
+				for f in self.neighbors(variable) if f != factor})
+		return to_variable
+
+	def _send_to_factor(
+			self,
+			factor: Hashable,
+			variable: Hashable,
+			messages: Iterable[model.RiskScore]) -> NoReturn:
+		self[variable][factor]['to_factor'].update(messages)
 
 	def _send_to_variable(
 			self,
 			factor: Hashable,
 			variable: Hashable,
 			message: model.RiskScore) -> NoReturn:
-		self[variable][factor]['to_variable'].add(message)
+		self[variable][factor]['to_variable'][factor] = message
 
-	def _send_to_factor(
-			self,
-			factor: Hashable,
-			variable: Hashable,
-			messages: Collection[model.RiskScore]) -> NoReturn:
-		self[variable][factor]['to_factor'].update(messages)
+	def _copy_to_previous(self) -> NoReturn:
+		for v, f in self._graph_iter(self._variables):
+			messages = self._get_messages_to_variable(v)
+			self._set_previous(v, messages)
 
 	def _clear_messages(self):
-		for f, v in self._graph_iter(self._factors, filter_neighbors=False):
+		for v, f in self._graph_iter(self._variables):
 			self[v][f]['to_variable'].clear()
 			self[v][f]['to_factor'].clear()
+
+	# Factor node getters / setters
+	def _get_factor_value(
+			self, factor: Hashable) -> Collection[model.Occurrence]:
+		return frozenset(self.nodes[factor]['occurrences'])
+
+	# Variable node getters / setters
+	def _get_neighbor(self, factor: Hashable, variable: Hashable) -> Hashable:
+		neighbors = self.neighbors(factor)
+		neighbor = next(neighbors)
+		return neighbor if neighbor != variable else next(neighbors)
+
+	def _get_local_values(
+			self, variable: Hashable) -> Collection[model.RiskScore]:
+		return frozenset(self.nodes[variable]['local_risks'])
+
+	def _get_previous(
+			self, variable: Hashable) -> Mapping[Hashable, model.RiskScore]:
+		return _to_variable_factory(**self.nodes[variable]['previous'])
+
+	def _set_previous(
+			self,
+			variable: Hashable,
+			value: Mapping[Hashable, model.RiskScore]) -> NoReturn:
+		self.nodes[variable]['previous'] = value
+
+	def _get_max_risk(self, variable: Hashable) -> model.RiskScore:
+		return self.nodes[variable]['max_risk']
+
+	def _set_max_risk(
+			self, variable: Hashable, value: model.RiskScore) -> NoReturn:
+		self.nodes[variable]['max_risk'] = value
+
+
+def _to_variable_factory(**values) -> DefaultDict[Hashable, model.RiskScore]:
+	factory = collections.defaultdict(None)
+	factory.update(values)
+	return factory
+
+
+def _to_factor_factory(*values) -> Set[model.RiskScore]:
+	return set(values)
+
+
+def _local_factory(*values) -> Set[model.RiskScore]:
+	return set(values)
+
+
+def _chain_max(*iterables, key=None, default=None):
+	return max(itertools.chain(*iterables), key=key, default=default)
