@@ -9,6 +9,6 @@ if __name__ == '__main__':
 	factors = contactmatching.compute(locations)
 	scores = pda.get_scores(hats=hats, token=token)
 	variables = pda.map_to_scores(scores)
-	bp = algorithm.BeliefPropagation(factors=factors, variables=variables)
-	updated_scores = bp.run()
+	bp = algorithm.BeliefPropagation()
+	updated_scores = bp.run(factors=factors, variables=variables)
 	pda.post_scores(scores=updated_scores, token=token)
