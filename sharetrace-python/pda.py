@@ -89,9 +89,7 @@ def get_token_and_hats() -> Tuple[str, Sequence[str]]:
 	status_code = response.status_code
 	text = response.text
 	if status_code != SUCCESS_CODE:
-		raise IOError(
-			(f'Unable to authorize keyring (status code: {status_code})\
-			n{text}'))
+		raise IOError(f'{status_code}: Unable to authorize keyring )\n{text}')
 	response = json.loads(response.text)
 	return response['token'], response['associatedHats']
 
