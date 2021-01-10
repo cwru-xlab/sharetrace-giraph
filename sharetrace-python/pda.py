@@ -1,7 +1,7 @@
 import datetime
 import json
 import time
-from typing import Any, Dict, Iterable, Sequence, Tuple
+from typing import Any, Collection, Iterable, Mapping, Tuple
 
 import requests
 
@@ -53,38 +53,52 @@ BASE_READ_BODY = {
 TWO_WEEKS_AGO = datetime.datetime.today() - datetime.timedelta(days=14)
 
 
-def map_to_scores(response: Dict) -> Sequence[model.RiskScore]:
-	# TODO Are multiple risk scores per hat returned?
-	def to_score(hat: str):
-		data = response[hat]['scores']['data']
-		score = data['score'] / 100
-		timestamp = datetime.datetime.utcfromtimestamp(
-			data['timestamp'] / 1000)
-		return model.RiskScore(id=hat, timestamp=timestamp, value=score)
+def map_to_scores(
+		response: Iterable[Tuple[str, Mapping[str, Any]]],
+		as_generator: bool = True) -> Iterable:
+	def to_scores(hat: str, entry: Mapping[str, Any]):
+		risk_scores = (r['data'] for r in entry['scores'])
+		risk_scores = ((
+			r['score'] / 100, _to_timestamp(r['timestamp'])
+			for r in risk_scores))
+		risk_scores = (
+			model.RiskScore(id=hat, timestamp=t, value=v)
+			for v, t in risk_scores)
+		if not as_generator:
+			return frozenset(risk_scores)
 
-	return tuple(to_score(h) for h in response)
+	scores = ((h, to_scores(h, data)) for h, data in response)
+	if not as_generator:
+		scores = {h: h_scores for h, h_scores in scores}
+	return scores
+
+
+def _to_timestamp(ms_timestamp: float) -> datetime.datetime:
+	return datetime.datetime.utcfromtimestamp(ms_timestamp / 1000)
 
 
 def map_to_locations(
-		response: Dict,
+		response: Iterable[Tuple[str, Any]],
 		since: datetime.datetime = TWO_WEEKS_AGO,
 		hash_obfuscation: int = 3,
-) -> Sequence[model.LocationHistory]:
-	def to_history(hat: str):
-		data = response[hat]['locations']['data']
-		locations = (
-			datetime.datetime.utcfromtimestamp(loc['timestamp'] / 1000),
-			loc['hash'][:-hash_obfuscation]
-			for loc in data)
+		as_generator: bool = True) -> Iterable:
+	def to_history(hat: str, entry: Mapping[str, Any]):
+		locations = (loc['data'] for loc in entry['locations'])
+		locations = ((
+			_to_timestamp(loc['timestamp']), loc['hash'][:-hash_obfuscation])
+			for loc in locations)
 		locations = (
 			model.TemporalLocation(timestamp=t, location=h)
 			for t, h in locations if t >= since)
-		return model.LocationHistory(id=hat, history=tuple(locations))
+		return model.LocationHistory(id=hat, history=locations)
 
-	return tuple(to_history(h) for h in response)
+	histories = (h, to_history(h, data) for h, data in response)
+	if not as_generator:
+		histories = {h: history for h, history in histories}
+	return histories
 
 
-def get_token_and_hats() -> Tuple[str, Sequence[str]]:
+def get_token_and_hats() -> Tuple[str, Collection[str]]:
 	response = requests.get(KEYRING_URL, headers=AUTH_HEADER)
 	status_code = response.status_code
 	text = response.text
@@ -94,26 +108,42 @@ def get_token_and_hats() -> Tuple[str, Sequence[str]]:
 	return response['token'], response['associatedHats']
 
 
-def get_scores(hats: Iterable[str], token: str) -> Dict[str, Any]:
+def get_scores(
+		hats: Iterable[str],
+		token: str,
+		as_generator: bool = True) -> Iterable:
 	namespace = ''.join((CLIENT_NAMESPACE, READ_SCORE_NAMESPACE))
-	return {h: json.loads(_get_data(h, token, namespace).text) for h in hats}
+	scores = (h, json.loads(_get_data(h, token, namespace).text) for h in hats)
+	if not as_generator:
+		scores = {h: h_scores for h, h_scores in scores}
+	return scores
 
 
-def get_locations(hats: Iterable[str], token: str) -> Dict[str, Any]:
+def get_locations(
+		hats: Iterable[str],
+		token: str,
+		as_generator: bool = True) -> Iterable:
 	namespace = ''.join((CLIENT_NAMESPACE, LOCATION_NAMESPACE))
-	return {h: json.loads(_get_data(h, token, namespace).text) for h in hats}
+	responses = (h, _get_data(h, token, namespace).text for h in hats)
+	locations = (h, json.loads(response) for h, response in responses)
+	if not as_generator:
+		locations = {h: h_locations for h, h_locations in locations}
+	return locations
 
 
-def _get_data(hat: str, token: str, namespace: str):
+def _get_data(hat: str, token: str, namespace: str) -> requests.Response:
 	body = BASE_READ_BODY.copy()
 	body.update({'token': token, 'hatName': hat, 'skip': 0})
 	url = ''.join((READ_URL.format(hat), namespace))
 	return requests.post(url, json=body, headers=CONTENT_TYPE_HEADER)
 
 
-def post_scores(scores: Iterable[model.RiskScore], token: str):
+def post_scores(
+		scores: Iterable[model.RiskScore],
+		token: str) -> Iterable[requests.Response]:
 	timestamp = time.time() * 1000
 	namespace = ''.join((CLIENT_NAMESPACE, CREATE_SCORE_NAMESPACE))
+	responses = []
 	for score in scores:
 		hat = score.id
 		value = round(score.value * 100, 2)
@@ -123,4 +153,6 @@ def post_scores(scores: Iterable[model.RiskScore], token: str):
 			'hatName': hat,
 			'body': {'score': value, 'timestamp': timestamp}}
 		url = ''.join((CREATE_URL.format(hat), namespace))
-		requests.post(url, json=body, headers=CONTENT_TYPE_HEADER)
+		response = requests.post(url, json=body, headers=CONTENT_TYPE_HEADER)
+		responses.append(response)
+	return responses

@@ -1,17 +1,22 @@
 import datetime
 import itertools
 import random
-from typing import Sequence, Set
+from typing import Iterable, Set
 
 import model
 
 MIN_DURATION = datetime.timedelta(minutes=15)
 
 
-def compute(locations: Sequence[model.LocationHistory]):
+def compute(
+		locations: Iterable[model.LocationHistory],
+		as_generator: bool = True) -> Iterable[model.Contact]:
 	pairs = itertools.combinations(locations, 2)
 	contacts = (_find_contact(*pair) for pair in pairs)
-	return set(c for c in contacts if len(c.occurrences) > 0)
+	contacts = (c for c in contacts if len(c.occurrences) > 0)
+	if not as_generator:
+		contacts = frozenset(contacts)
+	return contacts
 
 
 def _find_contact(
