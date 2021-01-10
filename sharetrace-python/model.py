@@ -1,5 +1,5 @@
 import datetime
-from typing import Collection, Hashable, Set
+from typing import Hashable, Iterable
 
 import attr
 
@@ -31,7 +31,7 @@ class TemporalLocation:
 @attr.s(slots=True, frozen=True)
 class LocationHistory:
 	id = attr.ib(type=Hashable)
-	history = attr.ib(type=Set[TemporalLocation])
+	history = attr.ib(type=Iterable[TemporalLocation], converter=frozenset)
 
 
 @attr.s(slots=True, frozen=True, order=True)
@@ -46,8 +46,8 @@ class Occurrence:
 
 @attr.s(slots=True, frozen=True)
 class Contact:
-	users = attr.ib(type=Collection[Hashable], converter=frozenset)
-	occurrences = attr.ib(type=Collection[Occurrence], converter=frozenset)
+	users = attr.ib(type=Iterable[Hashable], converter=frozenset)
+	occurrences = attr.ib(type=Iterable[Occurrence], converter=frozenset)
 
 	def __attrs_post_init__(self):
 		if len(self.users) != 2:
