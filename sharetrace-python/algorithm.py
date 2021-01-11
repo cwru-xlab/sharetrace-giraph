@@ -3,7 +3,8 @@ import datetime
 import itertools
 import random
 from typing import (
-	Collection, DefaultDict, Hashable, Iterable, Mapping, NoReturn, Set, Tuple)
+	Collection, DefaultDict, Generator, Hashable, Iterable, Mapping, NoReturn,
+	Set, Tuple)
 
 import attr
 import networkx as nx
@@ -17,23 +18,6 @@ _DEFAULT_MESSAGE = model.RiskScore(
 _RiskScores = Iterable[model.RiskScore]
 _GroupedRiskScores = Iterable[Tuple[str, _RiskScores]]
 _Contacts = Iterable[model.Contact]
-
-"""
-Variable node id: 
-	- HAT name
-Variable node messages: 
-	- local risk scores
-	- risk score sent by all neighboring factor nodes
-	- max risk score
-
-Factor node id: 
-	- concatenation of HAT names
-Factor node messages:
-	- occurrences (time-duration pairs) 
-
-Edge data: 
-	- messages between factor and variable nodes
-"""
 
 
 @attr.s(slots=True)
@@ -58,6 +42,23 @@ class BeliefPropagation(nx.Graph):
 	and is repeated until either a certain number of iterations has passed or
 	the summed difference in variable risk scores from the previous iteration
 	drops below a set tolerance, whichever condition is satisfied first.
+
+	Variable node id:
+		- HAT name
+
+	Variable node messages:
+		- local risk scores
+		- risk score sent by all neighboring factor nodes
+		- max risk score
+
+	Factor node id:
+		- concatenation of HAT names
+
+	Factor node messages:
+		- occurrences (time-duration pairs)
+
+	Edge data:
+		- messages between factor and variable nodes
 	"""
 	transmission_rate = attr.ib(type=float, default=0.8, converter=float)
 	tolerance = attr.ib(type=float, default=1e-5, converter=float)
@@ -72,7 +73,8 @@ class BeliefPropagation(nx.Graph):
 	@transmission_rate.validator
 	def _check_transmission_rate(self, attribute, value):
 		if value < 0 or value > 1:
-			raise ValueError('Transmission rate must be between 0 and 1')
+			raise ValueError(
+				'Transmission rate must be between 0 and 1, inclusive')
 
 	@tolerance.validator
 	def _check_tolerance(self, attribute, value):
@@ -118,19 +120,21 @@ class BeliefPropagation(nx.Graph):
 		self._add_variables(variables)
 
 	def _add_factors(self, factors: _Contacts) -> NoReturn:
-		factors1, factors2 = itertools.tee(factors, 2)
+		factors1, factors2 = itertools.tee(factors)
 		users = (sorted(f.users) for f in factors1)
-		users1, users2 = itertools.tee(users, 2)
+		users1, users2, users3 = itertools.tee(users, 3)
 		keys = frozenset(f'{u1}_{u2}' for u1, u2 in users1)
 		self._factors = keys
 		self.add_nodes_from(keys, bipartite=1)
 		attrs = {
 			k: {'occurrences': f.occurrences} for f, k in zip(factors2, keys)}
 		nx.set_node_attributes(self, attrs)
-		edge_data = {
-			'to_variable': _to_variable_factory(),  # to: {<from>: <message>}
-			'to_factor': _to_factor_factory()}  # to: {<from>: <messages>}
+		edge_data = {  # to: {from: message(s)}
+			'to_variable': _to_variable_factory(),
+			'to_factor': _to_factor_factory()}
 		edges = ((u, k) for (u, _), k in zip(users2, keys))
+		self.add_edges_from(edges, **edge_data)
+		edges = ((u, k) for (_, u), k in zip(users3, keys))
 		self.add_edges_from(edges, **edge_data)
 
 	def _add_variables(self, variables: _GroupedRiskScores) -> NoReturn:
@@ -144,7 +148,7 @@ class BeliefPropagation(nx.Graph):
 				'max_risk': max(v3),
 				'previous': _to_variable_factory()}
 			for (k2, v2), (_, v3) in zip(variables2, variables3)}
-		nx.set_node_attributes(self, **attrs)
+		nx.set_node_attributes(self, attrs)
 
 	def _send_to_variables(self) -> NoReturn:
 		for factor, variable in self._graph_iter(self._factors):
@@ -156,27 +160,26 @@ class BeliefPropagation(nx.Graph):
 			self._send_to_variable(factor, variable, message)
 
 	def _graph_iter(
-			self, outer: Iterable[Hashable]) -> Tuple[Hashable, Hashable]:
-		"""Generates factor, variable tuples.
+			self,
+			outer: Iterable[Hashable]
+	) -> Generator[Tuple[Hashable, Hashable], None, None]:
+		"""Generates factor-variable tuples.
 
-		A cartesian product is iterated over the outer iterable and the inner
-		iterable that is created from the neighbors of each of the elements of
-		the outer iterable.
+		A cartesian product of the outer iterable with neighbors of each of
+		the outer iterable elements is iterated over.
 
 		Args:
-			outer: Defines the outer for loop over which the neighbors of
-				each element of the outer iterable are iterated over in the
-				inner for loop. For example, if an iterable of factor nodes,
-				the inner iterable is an iterable such that each element in
-				the iterable is the neighbors of a factor node.
+			outer: Defines the outer loop over which the neighbors of each
+				element of the outer iterable are iterated over in the inner
+				loop.
 
 		Returns:
-			A tuple of either the form (outer element, inner element),
-			where inner element is a neighbor of the outer element.
+			A generator with each element being a tuple of the form (outer
+			element, inner element), where inner element is a neighbor of the
+			outer element.
 		"""
 		inner = (self.neighbors(o) for o in outer)
-		for o, i in itertools.product(outer, inner):
-			yield o, i
+		return ((o, i) for o, i in itertools.product(outer, inner))
 
 	def _compute_message(
 			self, factor: Hashable, messages: _RiskScores) -> NoReturn:
@@ -206,7 +209,6 @@ class BeliefPropagation(nx.Graph):
 		if len(recent) == 0:
 			message = _DEFAULT_MESSAGE
 		else:
-			# TODO Assumes each risk score is on a different day
 			norms = (sum(np.exp(-d) for d in range(i)) for i, _ in recent)
 			weighted = (
 				(i, sum(m.value * np.exp(-d) for d in range(i)))
