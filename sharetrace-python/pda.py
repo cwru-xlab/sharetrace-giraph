@@ -53,58 +53,13 @@ BASE_READ_BODY = {
 TWO_WEEKS_AGO = datetime.datetime.today() - datetime.timedelta(days=14)
 
 
-def map_to_scores(
-		response: Iterable[Tuple[str, Mapping[str, Any]]],
-		as_generator: bool = True) -> Iterable:
-	def to_scores(hat: str, entry: Mapping[str, Any]):
-		risk_scores = (r['data'] for r in entry['scores'])
-		risk_scores = ((
-			r['score'] / 100, _to_timestamp(r['timestamp'])
-			for r in risk_scores))
-		risk_scores = (
-			model.RiskScore(id=hat, timestamp=t, value=v)
-			for v, t in risk_scores)
-		if not as_generator:
-			return frozenset(risk_scores)
-
-	scores = ((h, to_scores(h, data)) for h, data in response)
-	if not as_generator:
-		scores = {h: h_scores for h, h_scores in scores}
-	return scores
-
-
-def _to_timestamp(ms_timestamp: float) -> datetime.datetime:
-	return datetime.datetime.utcfromtimestamp(ms_timestamp / 1000)
-
-
-def map_to_locations(
-		response: Iterable[Tuple[str, Any]],
-		since: datetime.datetime = TWO_WEEKS_AGO,
-		hash_obfuscation: int = 3,
-		as_generator: bool = True) -> Iterable:
-	def to_history(hat: str, entry: Mapping[str, Any]):
-		locations = (loc['data'] for loc in entry['locations'])
-		locations = ((
-			_to_timestamp(loc['timestamp']), loc['hash'][:-hash_obfuscation])
-			for loc in locations)
-		locations = (
-			model.TemporalLocation(timestamp=t, location=h)
-			for t, h in locations if t >= since)
-		return model.LocationHistory(id=hat, history=locations)
-
-	histories = (h, to_history(h, data) for h, data in response)
-	if not as_generator:
-		histories = {h: history for h, history in histories}
-	return histories
-
-
 def get_token_and_hats() -> Tuple[str, Collection[str]]:
 	response = requests.get(KEYRING_URL, headers=AUTH_HEADER)
 	status_code = response.status_code
 	text = response.text
 	if status_code != SUCCESS_CODE:
 		raise IOError(f'{status_code}: Unable to authorize keyring )\n{text}')
-	response = json.loads(response.text)
+	response = json.loads(text)
 	return response['token'], response['associatedHats']
 
 
@@ -138,6 +93,47 @@ def _get_data(hat: str, token: str, namespace: str) -> requests.Response:
 	return requests.post(url, json=body, headers=CONTENT_TYPE_HEADER)
 
 
+def map_to_scores(
+		response: Iterable[Tuple[str, Mapping[str, Any]]],
+		as_generator: bool = True) -> Iterable:
+	def to_scores(hat: str, entry: Mapping[str, Any]):
+		risk_scores = (r['data'] for r in entry['scores'])
+		risk_scores = ((
+			r['score'] / 100, _to_timestamp(r['timestamp'])
+			for r in risk_scores))
+		risk_scores = (
+			model.RiskScore(id=hat, timestamp=t, value=v)
+			for v, t in risk_scores)
+		if not as_generator:
+			return frozenset(risk_scores)
+
+	scores = ((h, to_scores(h, data)) for h, data in response)
+	if not as_generator:
+		scores = {h: h_scores for h, h_scores in scores}
+	return scores
+
+
+def map_to_locations(
+		response: Iterable[Tuple[str, Any]],
+		since: datetime.datetime = TWO_WEEKS_AGO,
+		hash_obfuscation: int = 3,
+		as_generator: bool = True) -> Iterable:
+	def to_history(hat: str, entry: Mapping[str, Any]):
+		locations = (loc['data'] for loc in entry['locations'])
+		locations = ((
+			_to_timestamp(loc['timestamp']), loc['hash'][:-hash_obfuscation])
+			for loc in locations)
+		locations = (
+			model.TemporalLocation(timestamp=t, location=h)
+			for t, h in locations if t >= since)
+		return model.LocationHistory(id=hat, history=locations)
+
+	histories = (h, to_history(h, data) for h, data in response)
+	if not as_generator:
+		histories = {h: history for h, history in histories}
+	return histories
+
+
 def post_scores(
 		scores: Iterable[model.RiskScore],
 		token: str) -> Iterable[requests.Response]:
@@ -156,3 +152,7 @@ def post_scores(
 		response = requests.post(url, json=body, headers=CONTENT_TYPE_HEADER)
 		responses.append(response)
 	return responses
+
+
+def _to_timestamp(ms_timestamp: float) -> datetime.datetime:
+	return datetime.datetime.utcfromtimestamp(ms_timestamp / 1000)
