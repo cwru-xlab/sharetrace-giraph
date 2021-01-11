@@ -15,7 +15,7 @@ class RiskScore:
 	id = attr.ib(type=Hashable)
 
 	@value.validator
-	def check_value(self, attribute, value):
+	def _check_value(self, attribute, value):
 		if value < 0 or value > 1:
 			raise ValueError('Value must be between 0 and 1, inclusive')
 
