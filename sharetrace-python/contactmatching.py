@@ -1,11 +1,11 @@
 import datetime
 import itertools
 import random
-from typing import Iterable, Set
+from typing import Iterable, Optional
 
 import model
 
-MIN_DURATION = datetime.timedelta(minutes=15)
+_MIN_DURATION = datetime.timedelta(minutes=15)
 
 
 def compute(
@@ -28,7 +28,7 @@ def _find_contact(
 
 def _find_occurrences(
 		h1: model.LocationHistory,
-		h2: model.LocationHistory) -> Set[model.Occurrence]:
+		h2: model.LocationHistory) -> Iterable[model.Occurrence]:
 	occurrences = set()
 	if len(h1.history) == 0 and len(h2.history) == 0 or h1.id == h2.id:
 		return occurrences
@@ -58,7 +58,7 @@ def _find_occurrences(
 				elif loc2.timestamp < loc2.timestamp:
 					loc2 = next(iter2, None)
 				else:
-					if random.randint(0, 1) == 0:
+					if random.randint(1, 2) == 1:
 						loc1 = next(iter1, None)
 					else:
 						loc2 = next(iter2, None)
@@ -72,10 +72,10 @@ def _find_occurrences(
 def _create_occurrence(
 		start: model.TemporalLocation,
 		loc1: model.TemporalLocation,
-		loc2: model.TemporalLocation):
+		loc2: model.TemporalLocation) -> Optional[model.Occurrence]:
 	end = _get_earlier(loc1, loc2)
 	duration = end.timestamp - start.timestamp
-	if duration >= MIN_DURATION:
+	if duration >= _MIN_DURATION:
 		occurrence = model.Occurrence(
 			timestamp=start.timestamp, duration=duration)
 	else:
