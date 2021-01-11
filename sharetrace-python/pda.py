@@ -68,7 +68,8 @@ def get_scores(
 		token: str,
 		as_generator: bool = True) -> Iterable:
 	namespace = ''.join((CLIENT_NAMESPACE, READ_SCORE_NAMESPACE))
-	scores = (h, json.loads(_get_data(h, token, namespace).text) for h in hats)
+	scores = (
+		(h, json.loads(_get_data(h, token, namespace).text)) for h in hats)
 	if not as_generator:
 		scores = {h: h_scores for h, h_scores in scores}
 	return scores
@@ -79,8 +80,8 @@ def get_locations(
 		token: str,
 		as_generator: bool = True) -> Iterable:
 	namespace = ''.join((CLIENT_NAMESPACE, LOCATION_NAMESPACE))
-	responses = (h, _get_data(h, token, namespace).text for h in hats)
-	locations = (h, json.loads(response) for h, response in responses)
+	responses = ((h, _get_data(h, token, namespace).text) for h in hats)
+	locations = ((h, json.loads(response)) for h, response in responses)
 	if not as_generator:
 		locations = {h: h_locations for h, h_locations in locations}
 	return locations
@@ -95,15 +96,16 @@ def _get_data(hat: str, token: str, namespace: str) -> requests.Response:
 
 def map_to_scores(
 		response: Iterable[Tuple[str, Mapping[str, Any]]],
+		since: datetime.datetime = TWO_WEEKS_AGO,
 		as_generator: bool = True) -> Iterable:
 	def to_scores(hat: str, entry: Mapping[str, Any]):
 		risk_scores = (r['data'] for r in entry['scores'])
 		risk_scores = ((
-			r['score'] / 100, _to_timestamp(r['timestamp'])
-			for r in risk_scores))
+			r['score'] / 100, _to_timestamp(r['timestamp']))
+			for r in risk_scores)
 		risk_scores = (
 			model.RiskScore(id=hat, timestamp=t, value=v)
-			for v, t in risk_scores)
+			for v, t in risk_scores if t >= since)
 		if not as_generator:
 			return frozenset(risk_scores)
 
@@ -128,7 +130,7 @@ def map_to_locations(
 			for t, h in locations if t >= since)
 		return model.LocationHistory(id=hat, history=locations)
 
-	histories = (h, to_history(h, data) for h, data in response)
+	histories = ((h, to_history(h, data)) for h, data in response)
 	if not as_generator:
 		histories = {h: history for h, history in histories}
 	return histories
