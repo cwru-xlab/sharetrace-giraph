@@ -137,13 +137,12 @@ def map_to_locations(
 
 
 def post_scores(
-		scores: Iterable[model.RiskScore],
+		scores: Iterable[Tuple[str, model.RiskScore]],
 		token: str) -> Iterable[requests.Response]:
 	timestamp = time.time() * 1000
 	namespace = ''.join((CLIENT_NAMESPACE, CREATE_SCORE_NAMESPACE))
 	responses = []
-	for score in scores:
-		hat = score.id
+	for (hat, score) in scores:
 		value = round(score.value * 100, 2)
 		body = {
 			'token': token,

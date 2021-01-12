@@ -2,7 +2,8 @@ import algorithm
 import contactmatching
 import pda
 
-if __name__ == '__main__':
+
+def main():
 	token, hats = pda.get_token_and_hats()
 	locations = pda.get_locations(hats=hats, token=token)
 	locations = pda.map_to_locations(locations)
@@ -13,3 +14,7 @@ if __name__ == '__main__':
 	bp = algorithm.BeliefPropagation()
 	updated_scores = bp.run(factors=factors, variables=variables)
 	pda.post_scores(scores=updated_scores, token=token)
+
+
+if __name__ == '__main__':
+	main()
