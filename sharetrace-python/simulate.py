@@ -4,6 +4,7 @@ import random
 import codetiming as codetiming
 
 import algorithm
+import backend
 import contactmatching
 import model
 
@@ -45,22 +46,26 @@ def simulate(
 		variables,
 		transmission_rate: float = 0.8,
 		iterations: int = 4,
-		tolerance: float = 1e-5):
+		tolerance: float = 1e-5,
+		impl=backend.IGRAPH):
 	transmission_rate = max((min((1, transmission_rate)), 0))
 	iterations = max((1, iterations))
 	tolerance = max(1e-16, tolerance)
 	bp = algorithm.BeliefPropagation(
 		iterations=iterations,
 		transmission_rate=transmission_rate,
-		tolerance=tolerance)
+		tolerance=tolerance,
+		backend=impl)
 	return bp.run(factors=factors, variables=variables)
 
 
 if __name__ == '__main__':
 	with codetiming.Timer(text='Setup: {:0.4f} seconds'):
-		factors, variables = setup(users=1000)
+		factors, variables = setup(users=200)
 	with codetiming.Timer(text='Contact matching: {:0.4f} seconds'):
 		factors = list(contactmatching.compute(factors))
 	print(f'Number of contacts: {len(factors)}')
-	with codetiming.Timer(text='Belief propagation: {:0.4f} seconds'):
-		risks = simulate(factors, variables)
+	for impl in backend.OPTIONS:
+		print(impl)
+		with codetiming.Timer(text='Belief propagation: {:0.4f} seconds'):
+			risks = simulate(factors, variables, impl=impl)
