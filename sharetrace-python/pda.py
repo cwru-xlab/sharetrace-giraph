@@ -1,7 +1,7 @@
 import datetime
 import json
 import time
-from typing import Any, Collection, Iterable, Mapping, Tuple
+from typing import Any, Collection, Hashable, Iterable, Mapping, Tuple
 
 import requests
 
@@ -137,7 +137,7 @@ def map_to_locations(
 
 
 def post_scores(
-		scores: Iterable[Tuple[str, model.RiskScore]],
+		scores: Iterable[Tuple[Hashable, model.RiskScore]],
 		token: str) -> Iterable[requests.Response]:
 	timestamp = time.time() * 1000
 	namespace = ''.join((CLIENT_NAMESPACE, CREATE_SCORE_NAMESPACE))

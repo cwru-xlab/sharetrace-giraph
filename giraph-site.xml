@@ -26,7 +26,7 @@
     <name>giraph.isStaticGraph</name>
     <value>false</value>
   </property>
-  <!--Use message size encoding (typically better for complex objects, not meant for primitive
+  <!--Use messages size encoding (typically better for complex objects, not meant for primitive
   wrapped messages).-->
   <!--(default: true)-->
   <property>
