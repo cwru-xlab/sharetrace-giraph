@@ -1,19 +1,23 @@
+import asyncio
+
 import algorithm
+import backend
 import contactmatching
 import pda
 
 
 def main():
-	token, hats = pda.get_token_and_hats()
-	locations = pda.get_locations(hats=hats, token=token)
-	locations = pda.map_to_locations(locations)
-	locations = (history for _, history in locations)
-	factors = contactmatching.compute(locations)
-	scores = pda.get_scores(hats=hats, token=token)
-	variables = pda.map_to_scores(scores)
-	bp = algorithm.BeliefPropagation()
-	updated_scores = bp.run(factors=factors, variables=variables)
-	pda.post_scores(scores=updated_scores, token=token)
+	with pda.PdaContext() as p:
+		token, hats = await p.get_token_and_hats()
+		variables, locations = await asyncio.gather(
+			p.get_scores(hats=hats, token=token),
+			p.get_locations(hats=hats, token=token))
+	with backend.ray_context():
+		factors = contactmatching.compute(locations)
+		bp = algorithm.BeliefPropagation()
+		updated_scores = bp(factors=factors, variables=variables)
+	with pda.PdaContext() as p:
+		responses = await p.post_scores(scores=updated_scores, token=token)
 
 
 if __name__ == '__main__':
