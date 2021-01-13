@@ -3,7 +3,7 @@ import datetime
 import functools
 import json
 import time
-from typing import Any, Iterable, Mapping, Tuple
+from typing import Any, Iterable, Mapping, NoReturn, Tuple
 
 import aiohttp
 import attr
@@ -74,93 +74,92 @@ class PdaContext:
 			text = await r.text()
 			text = json.loads(text)
 			if status != SUCCESS_CODE:
-				msg = f'{status}: Unable to authorize keyring )\n{text}'
+				msg = f'{status}: unable to authorize keyring\n{text}'
 				raise IOError(msg)
 		return text['token'], np.array(text['associatedHats'])
 
 	async def get_scores(
 			self,
+			token: str,
 			hats: Iterable[str],
 			since: datetime.datetime = TWO_WEEKS_AGO
 	) -> Iterable[model.RiskScore]:
 		namespace = ''.join((CLIENT_NAMESPACE, READ_SCORE_NAMESPACE))
-		get_data = functools.partial(self._get_data, namespace=namespace)
-		# TODO Return exceptions?
-		# TODO Handle failed requests
-		data = await asyncio.gather((h, get_data(h)) for h in hats)
-		return await PdaContext._map_to_scores(data=data, since=since)
+		get_data = functools.partial(
+			self._get_data, token=token, namespace=namespace)
+		return await asyncio.gather(
+			(h, self._to_scores(hat=h, data=await get_data(h), since=since))
+			for h in hats)
 
-	@staticmethod
-	async def _map_to_scores(
-			data: Iterable[Tuple[str, Mapping[str, Any]]],
+	def _to_scores(
+			self,
+			hat: str,
+			data: Mapping[str, Any],
 			since: datetime.datetime = TWO_WEEKS_AGO
-	) -> Iterable[model.RiskScore]:
-		# Code to modify if underlying data structure changes
-		def to_scores(hat: str, entry: Mapping[str, Any]):
-			values = (s['data'] for s in entry['scores'])
-			values = ((s['score'] / 1e2, s['timestamp'] / 1e3) for s in values)
-			values = (
-				model.RiskScore(id=hat, timestamp=t, value=v)
-				for t, v in values if t >= since)
-			return values
-
-		scores = await asyncio.gather(to_scores(h, e) for h, e in data)
-		return np.array(scores)
+	) -> Tuple[str, Iterable[model.RiskScore]]:
+		values = (s['data'] for s in data['scores'])
+		values = ((s['score'] / 1e2, s['timestamp'] / 1e3) for s in values)
+		scores = (
+			model.RiskScore(id=hat, timestamp=t, value=v)
+			for t, v in values if t >= since)
+		return hat, scores
 
 	async def get_locations(
 			self,
+			token: str,
 			hats: Iterable[str],
 			since: datetime.datetime = TWO_WEEKS_AGO,
 			hash_obfuscation: int = 3) -> Iterable[model.LocationHistory]:
 		namespace = ''.join((CLIENT_NAMESPACE, LOCATION_NAMESPACE))
-		get_data = functools.partial(self._get_data, namespace=namespace)
-		# TODO Handle failed requests
-		data = await asyncio.gather((h, get_data(h)) for h in hats)
-		data = ((h, data) for h, (status, data) in data)
-		return await PdaContext._map_to_locations(
-			data=data, since=since, hash_obfuscation=hash_obfuscation)
+		get_data = functools.partial(
+			self._get_data, namespace=namespace, token=token)
+		return await asyncio.gather(
+			self._to_locations(
+				hat=h,
+				data=await get_data(hat=h),
+				since=since,
+				hash_obfuscation=hash_obfuscation)
+			for h in hats)
 
-	@staticmethod
-	async def _map_to_locations(
-			data: Iterable[Tuple[str, Mapping[str, Any]]],
+	async def _to_locations(
+			self,
+			hat: str,
+			data: Mapping[str, Any],
 			since: datetime.datetime = TWO_WEEKS_AGO,
-			hash_obfuscation: int = 3) -> Iterable[model.LocationHistory]:
-		# Code to modify if underlying data structure changes
-		def to_history(hat: str, entry: Mapping[str, Any]):
-			locs = (loc['data'] for loc in entry['locations'])
-			locs = (
-				(loc['timestamp'] / 1000, loc['hash'][:-hash_obfuscation])
-				for loc in locs)
-			locs = (
-				model.TemporalLocation(timestamp=t, location=h)
-				for t, h in locs if t >= since)
-			return model.LocationHistory(id=hat, history=locs)
-
-		histories = await asyncio.gather(to_history(h, e) for h, e in data)
-		return np.array(histories)
+			hash_obfuscation: int = 3) -> model.LocationHistory:
+		locs = (loc['data'] for loc in data['locations'])
+		locs = (
+			(loc['timestamp'] / 1e3, loc['hash'][:-hash_obfuscation])
+			for loc in locs)
+		locs = (
+			model.TemporalLocation(timestamp=t, location=h)
+			for t, h in locs if t >= since)
+		return model.LocationHistory(id=hat, history=locs)
 
 	async def _get_data(
-			self,
-			token: str,
-			hat: str,
-			namespace: str) -> Tuple[int, Mapping[str, Any]]:
+			self, token: str, hat: str, namespace: str) -> Mapping[str, Any]:
 		body = BASE_READ_BODY.copy()
 		body.update({'token': token, 'hatName': hat, 'skip': 0})
 		url = ''.join((READ_URL.format(hat), namespace))
 		async with self._session.post(
 				url, json=body, headers=CONTENT_TYPE_HEADER) as r:
 			text = await r.text()
-			return r.status, json.loads(text)
+			text = json.loads(text)
+			status = r.status
+			if status != SUCCESS_CODE:
+				msg = f'{status}: failed to get data from {hat}\n{text}'
+				raise IOError(msg)
+			return text
 
 	async def post_scores(
 			self,
 			token: str,
-			scores: Iterable[Tuple[str, model.RiskScore]]
-	) -> Iterable[Tuple[str, Tuple[int, str]]]:
-		# Code to modify if post structure changes
+			scores: Iterable[Tuple[str, model.RiskScore]]) -> NoReturn:
+		namespace = ''.join((CLIENT_NAMESPACE, CREATE_SCORE_NAMESPACE))
+		timestamp = time.time() * 1e3
+
 		async def post(hat: str, score: model.RiskScore):
-			value = round(score.value * 100, 2)
-			timestamp = time.time() * 1000
+			value = round(score.value * 1e2, 2)
 			body = {
 				'token': token,
 				'contractId': CONTRACT_ID,
@@ -170,8 +169,10 @@ class PdaContext:
 			async with self._session.post(
 					url, json=body, headers=CONTENT_TYPE_HEADER) as r:
 				text = await r.text()
-				return r.status, json.loads(text)
+				text = json.loads(text)
+				status = r.status
+				if status != SUCCESS_CODE:
+					msg = f'{status}: failed to send data to {hat}\n{text}'
+					raise IOError(msg)
 
-		namespace = ''.join((CLIENT_NAMESPACE, CREATE_SCORE_NAMESPACE))
-		responses = await asyncio.gather((h, post(h, s)) for h, s in scores)
-		return np.array(responses)
+		await asyncio.gather((h, post(h, s)) for h, s in scores)

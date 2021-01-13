@@ -17,7 +17,7 @@ def main():
 		bp = algorithm.BeliefPropagation()
 		updated_scores = bp(factors=factors, variables=variables)
 	with pda.PdaContext() as p:
-		responses = await p.post_scores(scores=updated_scores, token=token)
+		p.post_scores(scores=updated_scores, token=token)
 
 
 if __name__ == '__main__':
