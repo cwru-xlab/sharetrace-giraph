@@ -55,7 +55,7 @@ def simulate(
 
 if __name__ == '__main__':
 	with backend.ray_context(num_cpus=backend.NUM_CPUS):
-		factors, variables = setup(users=100)
+		factors, variables = setup(users=1000)
 		factors = contactmatching.compute(factors, as_iterator=False)
 		for impl in backend.OPTIONS:
 			print(impl)

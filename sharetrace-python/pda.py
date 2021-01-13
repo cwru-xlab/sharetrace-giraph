@@ -69,14 +69,15 @@ class PdaContext:
 		await self._session.close()
 
 	async def get_token_and_hats(self) -> Tuple[str, Iterable[str]]:
-		async with self._session.get(KEYRING_URL, headers=AUTH_HEADER) as r:
+		async with self._session.get(
+				KEYRING_URL, headers=AUTH_HEADER) as r:
 			status = r.status
 			text = await r.text()
 			text = json.loads(text)
 			if status != SUCCESS_CODE:
 				msg = f'{status}: unable to authorize keyring\n{text}'
 				raise IOError(msg)
-		return text['token'], np.array(text['associatedHats'])
+			return text['token'], np.array(text['associatedHats'])
 
 	async def get_scores(
 			self,
@@ -85,22 +86,24 @@ class PdaContext:
 			since: datetime.datetime = TWO_WEEKS_AGO
 	) -> Iterable[model.RiskScore]:
 		namespace = ''.join((CLIENT_NAMESPACE, READ_SCORE_NAMESPACE))
-		get_data = functools.partial(
-			self._get_data, token=token, namespace=namespace)
-		return await asyncio.gather(
-			(h, self._to_scores(hat=h, data=await get_data(h), since=since))
-			for h in hats)
+		data = await asyncio.gather(*[
+			self._get_data(token=token, namespace=namespace, hat=h)
+			for h in hats])
+		return await asyncio.gather(*[
+			self._to_scores(hat=h, data=d, since=since)
+			for h, d in zip(hats, data)])
 
-	def _to_scores(
-			self,
+	@staticmethod
+	async def _to_scores(
 			hat: str,
-			data: Mapping[str, Any],
+			data: Iterable[Mapping[str, Any]],
 			since: datetime.datetime = TWO_WEEKS_AGO
 	) -> Tuple[str, Iterable[model.RiskScore]]:
-		values = (s['data'] for s in data['scores'])
-		values = ((s['score'] / 1e2, s['timestamp'] / 1e3) for s in values)
+		values = (s['data'] for s in data)
+		values = (
+			(s['score'] / 1e2, _to_timestamp(s['timestamp'])) for s in values)
 		scores = (
-			model.RiskScore(id=hat, timestamp=t, value=v)
+			model.RiskScore(id=hat, value=v, timestamp=t,)
 			for t, v in values if t >= since)
 		return hat, scores
 
@@ -113,23 +116,24 @@ class PdaContext:
 		namespace = ''.join((CLIENT_NAMESPACE, LOCATION_NAMESPACE))
 		get_data = functools.partial(
 			self._get_data, namespace=namespace, token=token)
-		return await asyncio.gather(
+		to_gather = [
 			self._to_locations(
 				hat=h,
 				data=await get_data(hat=h),
 				since=since,
 				hash_obfuscation=hash_obfuscation)
-			for h in hats)
+			for h in hats]
+		return await asyncio.gather(*to_gather)
 
+	@staticmethod
 	async def _to_locations(
-			self,
 			hat: str,
-			data: Mapping[str, Any],
+			data: Iterable[Mapping[str, Any]],
 			since: datetime.datetime = TWO_WEEKS_AGO,
 			hash_obfuscation: int = 3) -> model.LocationHistory:
-		locs = (loc['data'] for loc in data['locations'])
+		locs = (loc['data'] for loc in data)
 		locs = (
-			(loc['timestamp'] / 1e3, loc['hash'][:-hash_obfuscation])
+			(_to_timestamp(loc['timestamp']), loc['hash'][:-hash_obfuscation])
 			for loc in locs)
 		locs = (
 			model.TemporalLocation(timestamp=t, location=h)
@@ -175,4 +179,8 @@ class PdaContext:
 					msg = f'{status}: failed to send data to {hat}\n{text}'
 					raise IOError(msg)
 
-		await asyncio.gather((h, post(h, s)) for h, s in scores)
+		await asyncio.gather(post(h, s) for h, s in scores)
+
+
+def _to_timestamp(ms_timestamp: float):
+	return datetime.datetime.utcfromtimestamp(ms_timestamp / 1e3)
