@@ -3,11 +3,11 @@ import datetime
 import itertools
 import random
 from typing import (
-	Any, DefaultDict, Generator, Hashable, Iterable, Mapping,
-	NoReturn,
-	Set, Tuple)
+	Any, DefaultDict, Generator, Hashable, Iterable, Mapping, NoReturn, Set,
+	Tuple)
 
 import attr
+import codetiming
 import numpy as np
 
 import backend
@@ -15,11 +15,11 @@ import model
 
 _TWO_DAYS = datetime.timedelta(days=2)
 _DEFAULT_MESSAGE = model.RiskScore(
-	id='DEFAULT_ID', timestamp=datetime.datetime.today(), value=0)
+	id='DEFAULT_ID', timestamp=datetime.datetime.utcnow(), value=0)
 _RiskScores = Iterable[model.RiskScore]
 _GroupedRiskScores = Iterable[Tuple[str, Iterable[model.RiskScore]]]
 _Contacts = Iterable[model.Contact]
-
+log = backend.LOGGER
 """
 Optimization best practices:
 	- Use itertools over custom implementations
@@ -72,7 +72,7 @@ class BeliefPropagation:
 	tolerance = attr.ib(type=float, default=1e-5, converter=float)
 	iterations = attr.ib(type=int, default=4, converter=int)
 	_backend = attr.ib(type=str, default=backend.IGRAPH)
-	_graph = attr.ib(type=backend.FactorGraph, default=None)
+	_graph = attr.ib(type=backend.FactorGraph, init=False)
 	_seed = attr.ib(default=None)
 
 	def __attrs_post_init__(self):
@@ -103,27 +103,42 @@ class BeliefPropagation:
 		if value < 1:
 			raise ValueError('Iterations must be at least 1')
 
-	def run(
+	def __call__(
 			self,
 			factors: _Contacts,
-			variables: _GroupedRiskScores,
-			as_generator: bool = True
+			variables: _GroupedRiskScores
 	) -> Iterable[Tuple[Hashable, model.RiskScore]]:
-		self._create_graph(factors, variables)
+		txt = 'BELIEF PROPAGATION: {:0.6f} s'
+		with codetiming.Timer(text=txt, logger=log):
+			return self.call(factors=factors, variables=variables)
+
+	def call(
+			self,
+			factors: _Contacts,
+			variables: _GroupedRiskScores
+	) -> Iterable[Tuple[Hashable, model.RiskScore]]:
+		with codetiming.Timer(text='Creating the graph: {:0.6f} s'):
+			self._create_graph(factors, variables)
 		max_risks = np.array(self._get_max_risks())
 		iteration, tolerance = 0, np.inf
+		log('-----------Start of algorithm-----------')
 		while iteration < self.iterations and tolerance > self.tolerance:
-			self._send_to_factors()
-			self._send_to_variables()
+			log(f'-----------Iteration {iteration + 1}-----------')
+			with codetiming.Timer(text='To factors: {:0.6f} s', logger=log):
+				self._send_to_factors()
+			with codetiming.Timer(text='To variables: {:0.6f} s', logger=log):
+				self._send_to_variables()
 			iteration += 1
-			iter_risks = self._update_max_risks()
-			tolerance = sum(iter_risks - max_risks)
-			max_risks = iter_risks
-			if iteration < self.iterations:
-				self._copy_to_previous()
-				self._clear_messages()
-		risks = ((v, self._get_max_risk(v)) for v in self._graph.variables)
-		return risks if as_generator else tuple((k, risk) for k, risk in risks)
+			with codetiming.Timer(text='Updating: {:0.6f} s', logger=log):
+				iter_risks = self._update_max_risks()
+				tolerance = sum(iter_risks - max_risks)
+				max_risks = iter_risks
+				if iteration < self.iterations:
+					self._copy_to_previous()
+					self._clear_messages()
+			log(f'Tolerance: {round(tolerance, 6)}')
+		log('-----------End of algorithm-----------')
+		return ((v, self._get_max_risk(v)) for v in self._graph.variables)
 
 	def _update_max_risks(self) -> np.ndarray:
 		updated = []
@@ -149,7 +164,7 @@ class BeliefPropagation:
 			key = '_'.join(parts)
 			return key, parts
 
-		factors = np.array([(make_key(f), f) for f in factors])
+		factors = np.array([(make_key(f), f) for f in factors], dtype=object)
 		keys = frozenset(k for ((k, _), _) in factors)
 		self._graph.factors = keys
 		attrs = {k: {'occurrences': f.occurrences} for ((k, _), f) in factors}
@@ -163,7 +178,7 @@ class BeliefPropagation:
 
 	def _add_variables(self, variables: _GroupedRiskScores) -> NoReturn:
 		variables = np.array(
-			[(str(k), np.array(list(v))) for k, v in variables])
+			[(str(k), np.array(list(v))) for k, v in variables], dtype=object)
 		keys = frozenset(k for k, _ in variables)
 		self._graph.variables = keys
 		attrs = {
