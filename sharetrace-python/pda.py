@@ -1,15 +1,19 @@
+import asyncio
 import datetime
+import functools
 import json
 import time
-from typing import Any, Collection, Hashable, Iterable, Mapping, Tuple
+from typing import Any, Iterable, Mapping, Tuple
 
-import requests
+import aiohttp
+import attr
+import numpy as np
 
 import model
 
 """
-	Assumed HAT API response schema:
-	response = {
+	Assumed HAT API data schema:
+	data = {
 		hat: {
 			scores: {
 				data: {
@@ -50,110 +54,124 @@ BASE_READ_BODY = {
 	'orderBy': ORDER_BY,
 	'ordering': ORDERING,
 	'skip': 0}
-TWO_WEEKS_AGO = datetime.datetime.today() - datetime.timedelta(days=14)
+TWO_WEEKS_AGO = datetime.datetime.utcnow() - datetime.timedelta(days=14)
 
 
-def get_token_and_hats() -> Tuple[str, Collection[str]]:
-	response = requests.get(KEYRING_URL, headers=AUTH_HEADER)
-	status_code = response.status_code
-	text = response.text
-	if status_code != SUCCESS_CODE:
-		raise IOError(f'{status_code}: Unable to authorize keyring )\n{text}')
-	response = json.loads(text)
-	return response['token'], response['associatedHats']
+@attr.s(slots=True)
+class PdaContext:
+	_session = attr.ib(type=aiohttp.ClientSession, init=False)
 
+	async def __aenter__(self):
+		self._session = aiohttp.ClientSession()
+		return self
 
-def get_scores(
-		hats: Iterable[str],
-		token: str,
-		as_generator: bool = True) -> Iterable:
-	namespace = ''.join((CLIENT_NAMESPACE, READ_SCORE_NAMESPACE))
-	scores = (
-		(h, json.loads(_get_data(h, token, namespace).text)) for h in hats)
-	if not as_generator:
-		scores = {h: h_scores for h, h_scores in scores}
-	return scores
+	async def __aexit__(self, exc_type, exc_val, exc_tb):
+		await self._session.close()
 
+	async def get_token_and_hats(self) -> Tuple[str, Iterable[str]]:
+		async with self._session.get(KEYRING_URL, headers=AUTH_HEADER) as r:
+			status = r.status
+			text = await r.text()
+			text = json.loads(text)
+			if status != SUCCESS_CODE:
+				msg = f'{status}: Unable to authorize keyring )\n{text}'
+				raise IOError(msg)
+		return text['token'], np.array(text['associatedHats'])
 
-def get_locations(
-		hats: Iterable[str],
-		token: str,
-		as_generator: bool = True) -> Iterable:
-	namespace = ''.join((CLIENT_NAMESPACE, LOCATION_NAMESPACE))
-	responses = ((h, _get_data(h, token, namespace).text) for h in hats)
-	locations = ((h, json.loads(response)) for h, response in responses)
-	if not as_generator:
-		locations = {h: h_locations for h, h_locations in locations}
-	return locations
+	async def get_scores(
+			self,
+			hats: Iterable[str],
+			since: datetime.datetime = TWO_WEEKS_AGO
+	) -> Iterable[model.RiskScore]:
+		namespace = ''.join((CLIENT_NAMESPACE, READ_SCORE_NAMESPACE))
+		get_data = functools.partial(self._get_data, namespace=namespace)
+		# TODO Return exceptions?
+		# TODO Handle failed requests
+		data = await asyncio.gather((h, get_data(h)) for h in hats)
+		return await PdaContext._map_to_scores(data=data, since=since)
 
+	@staticmethod
+	async def _map_to_scores(
+			data: Iterable[Tuple[str, Mapping[str, Any]]],
+			since: datetime.datetime = TWO_WEEKS_AGO
+	) -> Iterable[model.RiskScore]:
+		# Code to modify if underlying data structure changes
+		def to_scores(hat: str, entry: Mapping[str, Any]):
+			values = (s['data'] for s in entry['scores'])
+			values = ((s['score'] / 1e2, s['timestamp'] / 1e3) for s in values)
+			values = (
+				model.RiskScore(id=hat, timestamp=t, value=v)
+				for t, v in values if t >= since)
+			return values
 
-def _get_data(hat: str, token: str, namespace: str) -> requests.Response:
-	body = BASE_READ_BODY.copy()
-	body.update({'token': token, 'hatName': hat, 'skip': 0})
-	url = ''.join((READ_URL.format(hat), namespace))
-	return requests.post(url, json=body, headers=CONTENT_TYPE_HEADER)
+		scores = await asyncio.gather(to_scores(h, e) for h, e in data)
+		return np.array(scores)
 
+	async def get_locations(
+			self,
+			hats: Iterable[str],
+			since: datetime.datetime = TWO_WEEKS_AGO,
+			hash_obfuscation: int = 3) -> Iterable[model.LocationHistory]:
+		namespace = ''.join((CLIENT_NAMESPACE, LOCATION_NAMESPACE))
+		get_data = functools.partial(self._get_data, namespace=namespace)
+		# TODO Handle failed requests
+		data = await asyncio.gather((h, get_data(h)) for h in hats)
+		data = ((h, data) for h, (status, data) in data)
+		return await PdaContext._map_to_locations(
+			data=data, since=since, hash_obfuscation=hash_obfuscation)
 
-def map_to_scores(
-		response: Iterable[Tuple[str, Mapping[str, Any]]],
-		since: datetime.datetime = TWO_WEEKS_AGO,
-		as_generator: bool = True) -> Iterable:
-	def to_scores(hat: str, entry: Mapping[str, Any]):
-		risk_scores = (r['data'] for r in entry['scores'])
-		risk_scores = ((
-			r['score'] / 100, _to_timestamp(r['timestamp']))
-			for r in risk_scores)
-		risk_scores = (
-			model.RiskScore(id=hat, timestamp=t, value=v)
-			for v, t in risk_scores if t >= since)
-		if not as_generator:
-			return frozenset(risk_scores)
+	@staticmethod
+	async def _map_to_locations(
+			data: Iterable[Tuple[str, Mapping[str, Any]]],
+			since: datetime.datetime = TWO_WEEKS_AGO,
+			hash_obfuscation: int = 3) -> Iterable[model.LocationHistory]:
+		# Code to modify if underlying data structure changes
+		def to_history(hat: str, entry: Mapping[str, Any]):
+			locs = (loc['data'] for loc in entry['locations'])
+			locs = (
+				(loc['timestamp'] / 1000, loc['hash'][:-hash_obfuscation])
+				for loc in locs)
+			locs = (
+				model.TemporalLocation(timestamp=t, location=h)
+				for t, h in locs if t >= since)
+			return model.LocationHistory(id=hat, history=locs)
 
-	scores = ((h, to_scores(h, data)) for h, data in response)
-	if not as_generator:
-		scores = {h: h_scores for h, h_scores in scores}
-	return scores
+		histories = await asyncio.gather(to_history(h, e) for h, e in data)
+		return np.array(histories)
 
+	async def _get_data(
+			self,
+			token: str,
+			hat: str,
+			namespace: str) -> Tuple[int, Mapping[str, Any]]:
+		body = BASE_READ_BODY.copy()
+		body.update({'token': token, 'hatName': hat, 'skip': 0})
+		url = ''.join((READ_URL.format(hat), namespace))
+		async with self._session.post(
+				url, json=body, headers=CONTENT_TYPE_HEADER) as r:
+			text = await r.text()
+			return r.status, json.loads(text)
 
-def map_to_locations(
-		response: Iterable[Tuple[str, Any]],
-		since: datetime.datetime = TWO_WEEKS_AGO,
-		hash_obfuscation: int = 3,
-		as_generator: bool = True) -> Iterable:
-	def to_history(hat: str, entry: Mapping[str, Any]):
-		locations = (loc['data'] for loc in entry['locations'])
-		locations = ((
-			_to_timestamp(loc['timestamp']), loc['hash'][:-hash_obfuscation])
-			for loc in locations)
-		locations = (
-			model.TemporalLocation(timestamp=t, location=h)
-			for t, h in locations if t >= since)
-		return model.LocationHistory(id=hat, history=locations)
+	async def post_scores(
+			self,
+			token: str,
+			scores: Iterable[Tuple[str, model.RiskScore]]
+	) -> Iterable[Tuple[str, Tuple[int, str]]]:
+		# Code to modify if post structure changes
+		async def post(hat: str, score: model.RiskScore):
+			value = round(score.value * 100, 2)
+			timestamp = time.time() * 1000
+			body = {
+				'token': token,
+				'contractId': CONTRACT_ID,
+				'hatName': hat,
+				'body': {'score': value, 'timestamp': timestamp}}
+			url = ''.join((CREATE_URL.format(hat), namespace))
+			async with self._session.post(
+					url, json=body, headers=CONTENT_TYPE_HEADER) as r:
+				text = await r.text()
+				return r.status, json.loads(text)
 
-	histories = ((h, to_history(h, data)) for h, data in response)
-	if not as_generator:
-		histories = {h: history for h, history in histories}
-	return histories
-
-
-def post_scores(
-		scores: Iterable[Tuple[Hashable, model.RiskScore]],
-		token: str) -> Iterable[requests.Response]:
-	timestamp = time.time() * 1000
-	namespace = ''.join((CLIENT_NAMESPACE, CREATE_SCORE_NAMESPACE))
-	responses = []
-	for (hat, score) in scores:
-		value = round(score.value * 100, 2)
-		body = {
-			'token': token,
-			'contractId': CONTRACT_ID,
-			'hatName': hat,
-			'body': {'score': value, 'timestamp': timestamp}}
-		url = ''.join((CREATE_URL.format(hat), namespace))
-		response = requests.post(url, json=body, headers=CONTENT_TYPE_HEADER)
-		responses.append(response)
-	return responses
-
-
-def _to_timestamp(ms_timestamp: float) -> datetime.datetime:
-	return datetime.datetime.utcfromtimestamp(ms_timestamp / 1000)
+		namespace = ''.join((CLIENT_NAMESPACE, CREATE_SCORE_NAMESPACE))
+		responses = await asyncio.gather((h, post(h, s)) for h, s in scores)
+		return np.array(responses)

@@ -3,23 +3,23 @@ import datetime
 import itertools
 import random
 from typing import (
-	Any, Collection, DefaultDict, Generator, Hashable, Iterable, Mapping,
-	NoReturn,
-	Set, Tuple)
+	Any, DefaultDict, Generator, Hashable, Iterable, Mapping, NoReturn, Set,
+	Tuple)
 
 import attr
-import networkx as nx
+import codetiming
 import numpy as np
 
+import backend
 import model
 
 _TWO_DAYS = datetime.timedelta(days=2)
 _DEFAULT_MESSAGE = model.RiskScore(
-	id='DEFAULT_ID', timestamp=datetime.datetime.today(), value=0)
+	id='DEFAULT_ID', timestamp=datetime.datetime.utcnow(), value=0)
 _RiskScores = Iterable[model.RiskScore]
 _GroupedRiskScores = Iterable[Tuple[str, Iterable[model.RiskScore]]]
 _Contacts = Iterable[model.Contact]
-
+log = backend.LOGGER
 """
 Optimization best practices:
 	- Use itertools over custom implementations
@@ -29,7 +29,7 @@ Optimization best practices:
 
 
 @attr.s(slots=True)
-class BeliefPropagation(nx.Graph):
+class BeliefPropagation:
 	"""A factor graph that performs a variation of belief propagation to
 	compute the propagated risk of exposure to a condition among a
 	population. Factor nodes represent contacts between pairs of people,
@@ -71,12 +71,18 @@ class BeliefPropagation(nx.Graph):
 	transmission_rate = attr.ib(type=float, default=0.8, converter=float)
 	tolerance = attr.ib(type=float, default=1e-5, converter=float)
 	iterations = attr.ib(type=int, default=4, converter=int)
-	_factors = attr.ib(type=Collection[Hashable], factory=frozenset)
-	_variables = attr.ib(type=Collection[Hashable], factory=frozenset)
+	_backend = attr.ib(type=str, default=backend.IGRAPH)
+	_graph = attr.ib(type=backend.FactorGraph, init=False)
 	_seed = attr.ib(default=None)
 
 	def __attrs_post_init__(self):
-		super(BeliefPropagation, self).__init__()
+		if self._backend == backend.IGRAPH:
+			self._graph = backend.IGraphFactorGraph()
+		elif self._backend == backend.NETWORKX:
+			self._graph = backend.NetworkXFactorGraph()
+		else:
+			raise AttributeError(
+				f'Backend must be one of the following: {backend.OPTIONS}')
 		if self._seed is not None:
 			random.seed(self._seed)
 			np.random.seed(self._seed)
@@ -97,31 +103,46 @@ class BeliefPropagation(nx.Graph):
 		if value < 1:
 			raise ValueError('Iterations must be at least 1')
 
-	def run(
+	def __call__(
 			self,
 			factors: _Contacts,
-			variables: _GroupedRiskScores,
-			as_generator: bool = True
+			variables: _GroupedRiskScores
 	) -> Iterable[Tuple[Hashable, model.RiskScore]]:
-		self._create_graph(factors, variables)
+		txt = 'BELIEF PROPAGATION: {:0.6f} s'
+		with codetiming.Timer(text=txt, logger=log):
+			return self.call(factors=factors, variables=variables)
+
+	def call(
+			self,
+			factors: _Contacts,
+			variables: _GroupedRiskScores
+	) -> Iterable[Tuple[Hashable, model.RiskScore]]:
+		with codetiming.Timer(text='Creating the graph: {:0.6f} s'):
+			self._create_graph(factors, variables)
 		max_risks = np.array(self._get_max_risks())
 		iteration, tolerance = 0, np.inf
+		log('-----------Start of algorithm-----------')
 		while iteration < self.iterations and tolerance > self.tolerance:
-			self._send_to_factors()
-			self._send_to_variables()
+			log(f'-----------Iteration {iteration + 1}-----------')
+			with codetiming.Timer(text='To factors: {:0.6f} s', logger=log):
+				self._send_to_factors()
+			with codetiming.Timer(text='To variables: {:0.6f} s', logger=log):
+				self._send_to_variables()
 			iteration += 1
-			iter_risks = self._update_max_risks()
-			tolerance = sum(iter_risks - max_risks)
-			max_risks = iter_risks
-			if iteration < self.iterations:
-				self._copy_to_previous()
-				self._clear_messages()
-		risks = ((v, self._get_max_risk(v)) for v in self._variables)
-		return risks if as_generator else tuple((k, risk) for k, risk in risks)
+			with codetiming.Timer(text='Updating: {:0.6f} s', logger=log):
+				iter_risks = self._update_max_risks()
+				tolerance = sum(iter_risks - max_risks)
+				max_risks = iter_risks
+				if iteration < self.iterations:
+					self._copy_to_previous()
+					self._clear_messages()
+			log(f'Tolerance: {round(tolerance, 6)}')
+		log('-----------End of algorithm-----------')
+		return ((v, self._get_max_risk(v)) for v in self._graph.variables)
 
 	def _update_max_risks(self) -> np.ndarray:
 		updated = []
-		for v in self._variables:
+		for v in self._graph.variables:
 			messages = self._get_messages_to_variable(v).values()
 			max_risk = self._get_max_risk(v)
 			max_risk = _chain_max(messages, [max_risk], key=lambda r: r.value)
@@ -133,40 +154,43 @@ class BeliefPropagation(nx.Graph):
 			self,
 			factors: _Contacts,
 			variables: _GroupedRiskScores) -> NoReturn:
-		self._add_factors(factors)
+		# Must create variable vertices first before creating edges
 		self._add_variables(variables)
+		self._add_factors(factors)
 
 	def _add_factors(self, factors: _Contacts) -> NoReturn:
 		def make_key(factor: model.Contact):
-			return tuple(u for u in sorted(factor.users))
+			parts = [str(u) for u in sorted(factor.users)]
+			key = '_'.join(parts)
+			return key, parts
 
-		factors = np.array([(make_key(f), f) for f in factors])
-		keys = frozenset(k for k, _ in factors)
-		self._factors = keys
-		self.add_nodes_from(keys, bipartite=1)
-		attrs = {k: {'occurrences': f.occurrences} for k, f in factors}
-		nx.set_node_attributes(self, attrs)
-
+		factors = np.array([(make_key(f), f) for f in factors], dtype=object)
+		keys = frozenset(k for ((k, _), _) in factors)
+		self._graph.factors = keys
+		attrs = {k: {'occurrences': f.occurrences} for ((k, _), f) in factors}
+		self._graph.add_vertices(keys, attrs)
 		edges = itertools.chain(
-			((k[0], k, _edge_data_factory()) for k, f in factors),
-			((k[1], k, _edge_data_factory()) for k, f in factors))
-		self.add_edges_from(edges)
+			((p, k) for ((k, (p, _)), _) in factors),
+			((p, k) for ((k, (_, p)), _) in factors))
+		edges1, edges2 = itertools.tee(edges)
+		attrs = {e: _edge_data_factory() for e in edges1}
+		self._graph.add_edges(edges2, attrs)
 
 	def _add_variables(self, variables: _GroupedRiskScores) -> NoReturn:
-		variables = np.array([(k, np.array(list(v))) for k, v in variables])
+		variables = np.array(
+			[(str(k), np.array(list(v))) for k, v in variables], dtype=object)
 		keys = frozenset(k for k, _ in variables)
-		self._variables = keys
-		self.add_nodes_from(keys, bipartite=0)
+		self._graph.variables = keys
 		attrs = {
 			k: {
 				'local_risks': _local_factory(v),
 				'max_risk': max(v),
 				'previous': _previous_factory()}
 			for k, v in variables}
-		nx.set_node_attributes(self, attrs)
+		self._graph.add_vertices(keys, attrs)
 
 	def _send_to_variables(self) -> NoReturn:
-		for factor, variable in self._graph_iter(self._factors):
+		for factor, variable in self._graph_iter(self._graph.factors):
 			neighbor = self._get_neighbor(factor, variable)
 			local = self._get_local_values(neighbor)
 			previous = self._get_previous(neighbor).values()
@@ -191,7 +215,7 @@ class BeliefPropagation(nx.Graph):
 			element, neighbor of outer element).
 		"""
 		for o in outer:
-			for n in self.neighbors(o):
+			for n in self._graph.get_neighbors(o):
 				yield o, n
 
 	def _compute_message(
@@ -235,7 +259,7 @@ class BeliefPropagation(nx.Graph):
 		return message
 
 	def _send_to_factors(self) -> NoReturn:
-		for variable, factor in self._graph_iter(self._variables):
+		for variable, factor in self._graph_iter(self._graph.variables):
 			local = self._get_local_values(variable)
 			from_others = self._get_from_other_factors(factor, variable)
 			messages = itertools.chain(local, from_others.values())
@@ -246,8 +270,8 @@ class BeliefPropagation(nx.Graph):
 			self, variable: Hashable) -> Mapping[Hashable, model.RiskScore]:
 		to_variable = _previous_factory()
 		to_variable.update({
-			f: self[variable][f]['to_variable']
-			for f in self.neighbors(variable)})
+			f: self._graph.get_edge_attr(edge=(variable, f), key='to_variable')
+			for f in self._graph.get_neighbors(variable)})
 		return to_variable
 
 	def _get_from_other_factors(
@@ -267,60 +291,71 @@ class BeliefPropagation(nx.Graph):
 			factor: Hashable,
 			variable: Hashable,
 			messages: Iterable[model.RiskScore]) -> NoReturn:
-		self[variable][factor]['to_factor'].update(messages)
+		edge = (variable, factor)
+		value = self._graph.get_edge_attr(edge=edge, key='to_factor')
+		value.update(messages)
+		self._graph.set_edge_attr(edge=edge, key='to_factor', value=value)
 
 	def _send_to_variable(
 			self,
 			factor: Hashable,
 			variable: Hashable,
 			message: model.RiskScore) -> NoReturn:
-		self[variable][factor]['to_variable'] = message
+		self._graph.set_edge_attr(
+			edge=(variable, factor), key='to_variable', value=message)
 
 	def _copy_to_previous(self) -> NoReturn:
-		for v in self._variables:
+		for v in self._graph.variables:
 			messages = self._get_messages_to_variable(v)
 			self._set_previous(v, messages)
 
 	def _clear_messages(self):
-		for v, f in self._graph_iter(self._variables):
-			self[v][f]['to_variable'] = None
-			self[v][f]['to_factor'].clear()
+		for v, f in self._graph_iter(self._graph.variables):
+			self._graph.set_edge_attr(
+				edge=(v, f), key='to_variable', value=None)
+			self._graph.set_edge_attr(
+				edge=(v, f), key='to_factor', value=_to_factor_factory())
 
 	# Factor node getters / setters
 	def _get_factor_value(
 			self, factor: Hashable) -> Iterable[model.Occurrence]:
-		return frozenset(self.nodes[factor]['occurrences'])
+		return self._graph.get_vertex_attr(vertex=factor, key='occurrences')
 
 	# Variable node getters / setters
 	def _get_neighbor(self, factor: Hashable, variable: Hashable) -> Hashable:
-		neighbors = self.neighbors(factor)
+		neighbors = iter(self._graph.get_neighbors(factor))
 		neighbor = next(neighbors)
 		return neighbor if neighbor != variable else next(neighbors)
 
 	def _get_local_values(
 			self, variable: Hashable) -> Iterable[model.RiskScore]:
-		return frozenset(self.nodes[variable]['local_risks'])
+		local = self._graph.get_vertex_attr(vertex=variable, key='local_risks')
+		return _local_factory(local)
 
 	def _get_previous(
 			self, variable: Hashable) -> Mapping[Hashable, model.RiskScore]:
-		return _previous_factory(self.nodes[variable]['previous'])
+		previous = self._graph.get_vertex_attr(vertex=variable, key='previous')
+		return _previous_factory(previous)
 
 	def _set_previous(
 			self,
 			variable: Hashable,
 			value: Mapping[Hashable, model.RiskScore]) -> NoReturn:
-		self.nodes[variable]['previous'] = value
+		self._graph.set_vertex_attr(
+			vertex=variable, key='previous', value=value)
 
 	def _get_max_risks(self) -> Iterable[model.RiskScore]:
-		max_risks = (self._get_max_risk(v).value for v in self._variables)
+		max_risks = (
+			self._get_max_risk(v).value for v in self._graph.variables)
 		return np.array(list(max_risks))
 
 	def _get_max_risk(self, variable: Hashable) -> model.RiskScore:
-		return self.nodes[variable]['max_risk']
+		return self._graph.get_vertex_attr(vertex=variable, key='max_risk')
 
 	def _set_max_risk(
 			self, variable: Hashable, value: model.RiskScore) -> NoReturn:
-		self.nodes[variable]['max_risk'] = value
+		self._graph.set_vertex_attr(
+			vertex=variable, key='max_risk', value=value)
 
 
 def _previous_factory(values=None) -> DefaultDict[Hashable, model.RiskScore]:
@@ -334,7 +369,7 @@ def _to_factor_factory(values=None) -> Set[model.RiskScore]:
 	return set(values) if values is not None else set()
 
 
-def _local_factory(values) -> Set[model.RiskScore]:
+def _local_factory(values=None) -> Set[model.RiskScore]:
 	return set(values) if values is not None else set()
 
 

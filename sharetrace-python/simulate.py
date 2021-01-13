@@ -1,9 +1,8 @@
 import datetime
 import random
 
-import codetiming as codetiming
-
 import algorithm
+import backend
 import contactmatching
 import model
 
@@ -22,21 +21,17 @@ def setup(
 	for u in range(users):
 		risks = [
 			model.RiskScore(
-				id=u,
+				id=str(u),
 				timestamp=start + datetime.timedelta(random.randint(0, days)),
 				value=random.random())
 			for _ in range(scores)]
 		variables.append((u, risks))
-		locs = (
-			model.LocationHistory(
-				id=u,
-				history=(
-					model.TemporalLocation(
-						timestamp=
-						start + datetime.timedelta(random.randint(0, days)),
-						location=random.randint(0, locations))
-					for _ in range(locations))))
-		factors.append(locs)
+		history = (
+			model.TemporalLocation(
+				timestamp=start + datetime.timedelta(random.randint(0, days)),
+				location=random.randint(0, locations))
+			for _ in range(locations))
+		factors.append(model.LocationHistory(id=u, history=history))
 	return factors, variables
 
 
@@ -45,22 +40,23 @@ def simulate(
 		variables,
 		transmission_rate: float = 0.8,
 		iterations: int = 4,
-		tolerance: float = 1e-5):
+		tolerance: float = 1e-5,
+		impl=backend.IGRAPH):
 	transmission_rate = max((min((1, transmission_rate)), 0))
 	iterations = max((1, iterations))
 	tolerance = max(1e-16, tolerance)
 	bp = algorithm.BeliefPropagation(
 		iterations=iterations,
 		transmission_rate=transmission_rate,
-		tolerance=tolerance)
-	return bp.run(factors=factors, variables=variables)
+		tolerance=tolerance,
+		backend=impl)
+	return bp(factors=factors, variables=variables)
 
 
 if __name__ == '__main__':
-	with codetiming.Timer(text='Setup: {:0.4f} seconds'):
-		factors, variables = setup(users=1000)
-	with codetiming.Timer(text='Contact matching: {:0.4f} seconds'):
-		factors = list(contactmatching.compute(factors))
-	print(f'Number of contacts: {len(factors)}')
-	with codetiming.Timer(text='Belief propagation: {:0.4f} seconds'):
-		risks = simulate(factors, variables)
+	with backend.ray_context(num_cpus=backend.NUM_CPUS):
+		factors, variables = setup(users=100)
+		factors = contactmatching.compute(factors, as_iterator=False)
+		for impl in backend.OPTIONS:
+			print(impl)
+			risks = simulate(factors, variables, impl=impl)
