@@ -25,6 +25,7 @@ def _compute(
 		locations: Iterable[model.LocationHistory],
 		as_iterator: bool = True) -> Iterable[model.Contact]:
 	with ct.Timer(text='Creating unique pairs: {:0.6f} s', logger=log):
+		# TODO Look into possibility of splitting an iterable
 		pairs = list(itertools.combinations(locations, 2))
 	with ct.Timer(text='Finding contacts: {:0.6f} s', logger=log):
 		pairs = it.from_items(pairs, num_shards=backend.NUM_CPUS)
@@ -32,10 +33,9 @@ def _compute(
 			lambda p: _find_contact(*p), max_concurrency=2)
 		contacts = contacts.filter(lambda c: len(c.occurrences) > 0)
 	with ct.Timer(text='Outputting contacts: {:0.6f} s', logger=log):
-		if as_iterator:
-			contacts = contacts.gather_async(num_async=backend.NUM_CPUS)
-		else:
-			contacts = np.array(list(contacts.gather_sync()))
+		contacts = contacts.gather_sync()
+		if not as_iterator:
+			contacts = np.array(list(contacts))
 		return contacts
 
 
