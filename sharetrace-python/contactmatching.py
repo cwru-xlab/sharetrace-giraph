@@ -1,23 +1,42 @@
 import datetime
 import itertools
 import random
-from typing import Collection, Iterable, Optional, Union
+from typing import Iterable, Optional
 
+import codetiming as ct
+import numpy as np
+from ray.util import iter as it
+
+import backend
 import model
 
 _MIN_DURATION = datetime.timedelta(minutes=15)
+log = backend.LOGGER
 
 
 def compute(
 		locations: Iterable[model.LocationHistory],
-		as_generator: bool = True
-) -> Union[Iterable[model.Contact], Collection[model.Contact]]:
-	pairs = itertools.combinations(locations, 2)
-	contacts = (_find_contact(*pair) for pair in pairs)
-	contacts = (c for c in contacts if len(c.occurrences) > 0)
-	if not as_generator:
-		contacts = frozenset(contacts)
-	return contacts
+		as_iterator: bool = True) -> Iterable[model.Contact]:
+	with ct.Timer(text='CONTACT MATCHING: {:0.6f} s'):
+		return _compute(locations, as_iterator)
+
+
+def _compute(
+		locations: Iterable[model.LocationHistory],
+		as_iterator: bool = True) -> Iterable[model.Contact]:
+	with ct.Timer(text='Creating unique pairs: {:0.6f} s', logger=log):
+		pairs = list(itertools.combinations(locations, 2))
+	with ct.Timer(text='Finding contacts: {:0.6f} s', logger=log):
+		pairs = it.from_items(pairs, num_shards=backend.NUM_CPUS)
+		contacts = pairs.for_each(
+			lambda p: _find_contact(*p), max_concurrency=2)
+		contacts = contacts.filter(lambda c: len(c.occurrences) > 0)
+	with ct.Timer(text='Outputting contacts: {:0.6f} s', logger=log):
+		if as_iterator:
+			contacts = contacts.gather_async(num_async=backend.NUM_CPUS)
+		else:
+			contacts = np.array(list(contacts.gather_sync()))
+		return contacts
 
 
 def _find_contact(
