@@ -4,6 +4,7 @@ import random
 import algorithm
 import backend
 import contactmatching
+import graphs
 import model
 
 
@@ -41,7 +42,7 @@ def simulate(
 		transmission_rate: float = 0.8,
 		iterations: int = 4,
 		tolerance: float = 1e-5,
-		impl=backend.IGRAPH):
+		impl=graphs.IGRAPH):
 	transmission_rate = max((min((1, transmission_rate)), 0))
 	iterations = max((1, iterations))
 	tolerance = max(1e-16, tolerance)
@@ -54,9 +55,7 @@ def simulate(
 
 
 if __name__ == '__main__':
-	with backend.ray_context(num_cpus=backend.NUM_CPUS):
-		factors, variables = setup(users=1000)
-		factors = contactmatching.compute(factors, as_iterator=False)
-		for impl in backend.OPTIONS:
-			print(impl)
-			risks = simulate(factors, variables, impl=impl)
+	with graphs.ray_context(num_cpus=backend.NUM_CPUS):
+		factors, variables = setup(users=100)
+		factors = contactmatching.compute(factors)
+	# risks = simulate(factors, variables, impl=_backend.IGRAPH)
