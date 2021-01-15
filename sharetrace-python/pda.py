@@ -3,7 +3,7 @@ import datetime
 import functools
 import json
 import time
-from typing import Any, Iterable, Mapping, NoReturn, Tuple
+from typing import Any, Iterable, Mapping, NoReturn, Optional, Tuple
 
 import aiohttp
 import attr
@@ -12,24 +12,10 @@ import numpy as np
 import model
 
 """
-	Assumed HAT API data schema:
-	data = {
-		hat: {
-			scores: {
-				data: {
-					score: <score>,
-					timestamp: <timestamp>
-				}
-			}
-			locations: [
-				data: {
-					hash: <hash>,
-					timestamp: <timestamp>
-				}
-			]
-		}
-	}
-	"""
+Assumed HAT API data schema (for a single HAT):
+	scores = [{data: {score: <score>, timestamp: <timestamp>}} ...]
+	locations = [{data: {hash: <hash>, timestamp: <timestamp>}} ...]
+"""
 
 CLIENT_NAMESPACE = '/emitto'
 READ_SCORE_NAMESPACE = '/healthsurveyscores'
@@ -71,12 +57,7 @@ class PdaContext:
 	async def get_token_and_hats(self) -> Tuple[str, Iterable[str]]:
 		async with self._session.get(
 				KEYRING_URL, headers=AUTH_HEADER) as r:
-			status = r.status
-			text = await r.text()
-			text = json.loads(text)
-			if status != SUCCESS_CODE:
-				msg = f'{status}: unable to authorize keyring\n{text}'
-				raise IOError(msg)
+			text = await self._handle_response(r)
 			return text['token'], np.array(text['associatedHats'])
 
 	async def get_scores(
@@ -103,7 +84,7 @@ class PdaContext:
 		values = (
 			(s['score'] / 1e2, _to_timestamp(s['timestamp'])) for s in values)
 		scores = (
-			model.RiskScore(id=hat, value=v, timestamp=t,)
+			model.RiskScore(id=hat, value=v, timestamp=t)
 			for t, v in values if t >= since)
 		return hat, scores
 
@@ -116,14 +97,13 @@ class PdaContext:
 		namespace = ''.join((CLIENT_NAMESPACE, LOCATION_NAMESPACE))
 		get_data = functools.partial(
 			self._get_data, namespace=namespace, token=token)
-		to_gather = [
+		return await asyncio.gather(*[
 			self._to_locations(
 				hat=h,
 				data=await get_data(hat=h),
 				since=since,
 				hash_obfuscation=hash_obfuscation)
-			for h in hats]
-		return await asyncio.gather(*to_gather)
+			for h in hats])
 
 	@staticmethod
 	async def _to_locations(
@@ -147,13 +127,7 @@ class PdaContext:
 		url = ''.join((READ_URL.format(hat), namespace))
 		async with self._session.post(
 				url, json=body, headers=CONTENT_TYPE_HEADER) as r:
-			text = await r.text()
-			text = json.loads(text)
-			status = r.status
-			if status != SUCCESS_CODE:
-				msg = f'{status}: failed to get data from {hat}\n{text}'
-				raise IOError(msg)
-			return text
+			return await self._handle_response(r, hat=hat, send=False)
 
 	async def post_scores(
 			self,
@@ -172,14 +146,34 @@ class PdaContext:
 			url = ''.join((CREATE_URL.format(hat), namespace))
 			async with self._session.post(
 					url, json=body, headers=CONTENT_TYPE_HEADER) as r:
-				text = await r.text()
-				text = json.loads(text)
-				status = r.status
-				if status != SUCCESS_CODE:
-					msg = f'{status}: failed to send data to {hat}\n{text}'
-					raise IOError(msg)
+				await self._handle_response(r, hat=hat)
 
-		await asyncio.gather(post(h, s) for h, s in scores)
+		await asyncio.gather(*[post(h, s) for h, s in scores])
+
+	@staticmethod
+	async def _handle_response(
+			response: aiohttp.ClientResponse,
+			hat: Optional[str] = None,
+			send: Optional[bool] = True) -> Mapping[str, Any]:
+		def check_hat():
+			if send is not None and hat is None:
+				raise ValueError(
+					'Must provide HAT name to handle non-keyring response')
+
+		text = await response.text()
+		text = json.loads(text)
+		status = response.status
+		if status != SUCCESS_CODE:
+			if send:
+				check_hat()
+				msg = f'{status}: failed to send data to {hat}\n{text}'
+			elif send is False:
+				check_hat()
+				msg = f'{status}: failed to get data from {hat}\n{text}'
+			else:
+				msg = f'{status}: failed to authorize keyring\n{text}'
+			raise IOError(msg)
+		return text
 
 
 def _to_timestamp(ms_timestamp: float):
