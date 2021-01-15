@@ -1,5 +1,4 @@
 import abc
-import contextlib
 from typing import Any, Hashable, Iterable, Mapping, NoReturn, Tuple
 
 import attr
@@ -18,14 +17,6 @@ OPTIONS = [NETWORKX, IGRAPH]
 
 def _array_factory():
 	return np.empty((0,))
-
-
-@contextlib.contextmanager
-def ray_context(*args, **kwargs):
-	try:
-		yield ray.init(*args, **kwargs)
-	finally:
-		ray.shutdown()
 
 
 @attr.s(slots=True)
@@ -226,13 +217,3 @@ class RayFactorGraph(FactorGraph):
 
 	def add_edges(self, edges, attributes):
 		return ray.get(self._graph.add_eges.remote(edges, attributes))
-
-
-@attr.s(slots=True)
-class DataStore:
-	_items = attr.ib(type=np.array, converter=np.array)
-
-	def lookup(self, value):
-		return self._items[value]
-
-
