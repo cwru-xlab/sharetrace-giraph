@@ -55,7 +55,7 @@ def simulate(
 
 
 if __name__ == '__main__':
-	with graphs.ray_context(num_cpus=backend.NUM_CPUS):
+	with backend.ray_context(num_cpus=backend.NUM_CPUS):
 		factors, variables = setup(users=100)
 		factors = contactmatching.compute(factors)
-	# risks = simulate(factors, variables, impl=_backend.IGRAPH)
+		risks = simulate(factors, variables, impl=graphs.IGRAPH)

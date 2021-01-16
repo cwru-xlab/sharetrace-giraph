@@ -71,8 +71,7 @@ class PdaContext:
 			self._get_data(token=token, namespace=namespace, hat=h)
 			for h in hats])
 		return await asyncio.gather(*[
-			self._to_scores(hat=h, data=d, since=since)
-			for h, d in zip(hats, data)])
+			self._to_scores(h, d, since) for h, d in zip(hats, data)])
 
 	@staticmethod
 	async def _to_scores(
@@ -81,8 +80,7 @@ class PdaContext:
 			since: datetime.datetime = TWO_WEEKS_AGO
 	) -> Tuple[str, Iterable[model.RiskScore]]:
 		values = (s['data'] for s in data)
-		values = (
-			(s['score'] / 1e2, _to_timestamp(s['timestamp'])) for s in values)
+		values = ((s['score'], _to_timestamp(s['timestamp'])) for s in values)
 		scores = (
 			model.RiskScore(id=hat, value=v, timestamp=t)
 			for t, v in values if t >= since)
@@ -93,16 +91,12 @@ class PdaContext:
 			token: str,
 			hats: Iterable[str],
 			since: datetime.datetime = TWO_WEEKS_AGO,
-			hash_obfuscation: int = 3) -> Iterable[model.LocationHistory]:
+			obfuscation: int = 3) -> Iterable[model.LocationHistory]:
 		namespace = ''.join((CLIENT_NAMESPACE, LOCATION_NAMESPACE))
 		get_data = functools.partial(
 			self._get_data, namespace=namespace, token=token)
 		return await asyncio.gather(*[
-			self._to_locations(
-				hat=h,
-				data=await get_data(hat=h),
-				since=since,
-				hash_obfuscation=hash_obfuscation)
+			self._to_locations(h, await get_data(hat=h), since, obfuscation)
 			for h in hats])
 
 	@staticmethod
@@ -110,10 +104,10 @@ class PdaContext:
 			hat: str,
 			data: Iterable[Mapping[str, Any]],
 			since: datetime.datetime = TWO_WEEKS_AGO,
-			hash_obfuscation: int = 3) -> model.LocationHistory:
+			obfuscation: int = 3) -> model.LocationHistory:
 		locs = (loc['data'] for loc in data)
 		locs = (
-			(_to_timestamp(loc['timestamp']), loc['hash'][:-hash_obfuscation])
+			(_to_timestamp(loc['timestamp']), loc['hash'][:-obfuscation])
 			for loc in locs)
 		locs = (
 			model.TemporalLocation(timestamp=t, location=h)
@@ -137,7 +131,7 @@ class PdaContext:
 		timestamp = time.time() * 1e3
 
 		async def post(hat: str, score: model.RiskScore):
-			value = round(score.value * 1e2, 2)
+			value = round(score.value, 2)
 			body = {
 				'token': token,
 				'contractId': CONTRACT_ID,

@@ -2,8 +2,9 @@ import datetime
 from typing import Hashable, Iterable
 
 import attr
+import numpy as np
 
-"""IMPORTANT: Order of attributes affects attr order attribute"""
+"""IMPORTANT: Order of attributes affects attr 'order' attribute"""
 
 
 @attr.s(slots=True, frozen=True, order=True)
@@ -12,12 +13,22 @@ class RiskScore:
 	timestamp = attr.ib(
 		type=datetime.datetime,
 		validator=attr.validators.instance_of(datetime.datetime))
-	id = attr.ib(type=Hashable)
+	id = attr.ib(type=Hashable, default='')
 
-	@value.validator
-	def _check_value(self, attribute, value):
-		if value < 0 or value > 1:
-			raise ValueError('Value must be between 0 and 1, inclusive')
+	def as_array(self):
+		dt = np.dtype([
+			('id', 'U128'),
+			('timestamp', 'float64'),
+			('value', 'float64')])
+		return np.array(
+			[(self.id, self.timestamp.timestamp(), self.value)], dtype=dt)
+
+	@classmethod
+	def from_array(cls, a: np.ndarray) -> 'RiskScore':
+		return RiskScore(
+			id=a['id'][0],
+			timestamp=_from_timestamp(a['timestamp'][0]),
+			value=a['value'][0])
 
 
 @attr.s(slots=True, frozen=True, order=True)
@@ -43,6 +54,18 @@ class Occurrence:
 		type=datetime.timedelta,
 		validator=attr.validators.instance_of(datetime.timedelta))
 
+	def as_array(self) -> np.ndarray:
+		dt = np.dtype([('timestamp', 'float64'), ('duration', 'float64')])
+		timestamp = self.timestamp.timestamp()
+		duration = self.duration.total_seconds()
+		return np.array([(timestamp, duration)], dtype=dt)
+
+	@classmethod
+	def from_array(cls, a: np.ndarray) -> 'Occurrence':
+		timestamp = _from_timestamp(a['timestamp'][0])
+		duration = datetime.timedelta(seconds=a['duration'][0])
+		return Occurrence(timestamp=timestamp, duration=duration)
+
 
 @attr.s(slots=True, frozen=True)
 class Contact:
@@ -52,3 +75,21 @@ class Contact:
 	def __attrs_post_init__(self):
 		if len(self.users) != 2:
 			raise AttributeError('Contact must have 2 distinct users')
+
+	@classmethod
+	def from_array(cls, users: Iterable[Hashable], a: np.ndarray) -> 'Contact':
+		occurrences = (
+			Occurrence(
+				timestamp=_from_timestamp(o['timestamp'][0]),
+				duration=datetime.timedelta(seconds=o['duration'][0]))
+			for o in np.nditer(a))
+		return Contact(users=users, occurrences=occurrences)
+
+	def as_array(self) -> np.ndarray:
+		array = np.array([o.as_array() for o in self.occurrences]).flatten()
+		array.sort(order=['timestamp', 'duration'])
+		return array
+
+
+def _from_timestamp(timestamp: float):
+	return datetime.datetime.utcfromtimestamp(timestamp)

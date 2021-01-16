@@ -1,10 +1,9 @@
 import abc
-from typing import Any, Hashable, Iterable, Mapping, NoReturn, Tuple
+from typing import Any, Hashable, Iterable, Mapping, NoReturn, Optional, Tuple
 
 import attr
 import igraph
 import networkx
-import numpy as np
 import ray
 
 Edge = Tuple[Hashable, Hashable]
@@ -13,10 +12,6 @@ Vertex = Hashable
 NETWORKX = 'networkx'
 IGRAPH = 'igraph'
 OPTIONS = [NETWORKX, IGRAPH]
-
-
-def _array_factory():
-	return np.empty((0,))
 
 
 @attr.s(slots=True)
@@ -59,34 +54,41 @@ class FactorGraph(abc.ABC):
 		pass
 
 	@abc.abstractmethod
-	def add_vertices(self, vertices, attributes):
+	def add_variables(self, vertices, attributes=None):
 		pass
 
 	@abc.abstractmethod
-	def add_edges(self, edges, attributes):
+	def add_factors(self, vertices, attributes=None):
+		pass
+
+	@abc.abstractmethod
+	def add_edges(self, edges, attributes=None):
 		pass
 
 
 @attr.s(slots=True)
 class IGraphFactorGraph(FactorGraph):
-	_graph = attr.ib(type=igraph.Graph, factory=igraph.Graph)
-	_factors = attr.ib(type=Iterable[Vertex], factory=_array_factory)
-	_variables = attr.ib(type=Iterable[Vertex], factory=_array_factory)
+	_graph = attr.ib(type=igraph.Graph, init=False)
+	_factors = attr.ib(type=Iterable[Vertex], init=False)
+	_variables = attr.ib(type=Iterable[Vertex], init=False)
 
 	def __attrs_post_init__(self):
 		super(IGraphFactorGraph, self).__init__()
+		self._graph = igraph.Graph()
+		self._factors = set()
+		self._variables = set()
 
-	def get_factors(self) -> Iterable[Hashable]:
-		return self._factors
+	def get_factors(self) -> Iterable[Vertex]:
+		return frozenset(self._factors)
 
 	def set_factors(self, value: Iterable[Vertex]) -> NoReturn:
-		self._factors = np.array(list(value))
+		self._factors = set(value)
 
 	def get_variables(self) -> Iterable[Vertex]:
-		return self._variables
+		return frozenset(self._variables)
 
 	def set_variables(self, value: Iterable[Vertex]) -> NoReturn:
-		self._variables = np.array(list(value))
+		self._variables = set(value)
 
 	def get_neighbors(self, vertex: Vertex) -> Iterable[igraph.Vertex]:
 		return self._graph.neighbors(vertex)
@@ -105,41 +107,66 @@ class IGraphFactorGraph(FactorGraph):
 		edge = self._graph.es[self._graph.get_eid(*edge)]
 		edge.update_attributes({key: value})
 
-	def add_vertices(
+	def add_variables(
 			self,
 			vertices: Iterable[Vertex],
-			attributes: Mapping[Vertex, Attributes]) -> NoReturn:
-		for v in vertices:
-			self._graph.add_vertex(v, **attributes[v])
+			attributes: Mapping[Vertex, Attributes] = None) -> NoReturn:
+		self._add_vertices(vertices, attributes)
+		self._variables.update(vertices)
+
+	def add_factors(
+			self,
+			vertices: Iterable[Vertex],
+			attributes: Mapping[Vertex, Attributes] = None) -> NoReturn:
+		self._add_vertices(vertices, attributes)
+		self._factors.update(vertices)
+
+	def _add_vertices(
+			self,
+			vertices: Iterable[Vertex],
+			attributes: Mapping[Vertex, Attributes] = None) -> NoReturn:
+		if attributes is None:
+			for v in vertices:
+				self._graph.add_vertex(v)
+		else:
+			for v in vertices:
+				self._graph.add_vertex(v, **attributes[v])
 
 	def add_edges(
 			self,
 			edges: Iterable[Edge],
-			attributes: Mapping[Edge, Attributes]) -> NoReturn:
-		for e in edges:
-			self._graph.add_edge(*e, **attributes[e])
+			attributes: Mapping[Edge, Attributes] = None) -> NoReturn:
+		if attributes is None:
+			for e in edges:
+				self._graph.add_edge(*e)
+		else:
+			for e in edges:
+				self._graph.add_edge(*e, **attributes[e])
 
 
 @attr.s(slots=True)
 class NetworkXFactorGraph(FactorGraph):
-	_graph = attr.ib(type=networkx.Graph, factory=networkx.Graph)
-	_factors = attr.ib(type=Iterable[Vertex], factory=_array_factory)
-	_variables = attr.ib(type=Iterable[Vertex], factory=_array_factory)
+	_graph = attr.ib(type=networkx.Graph, init=False)
+	_factors = attr.ib(type=Iterable[Vertex], init=False)
+	_variables = attr.ib(type=Iterable[Vertex], init=False)
 
 	def __attrs_post_init__(self):
 		super(NetworkXFactorGraph, self).__init__()
+		self._graph = networkx.Graph()
+		self._factors = set()
+		self._variables = set()
 
 	def get_factors(self) -> Iterable[Vertex]:
-		return self._factors
+		return frozenset(self._factors)
 
 	def set_factors(self, value: Iterable[Vertex]) -> NoReturn:
-		self._factors = np.array(list(value))
+		self._factors = set(value)
 
 	def get_variables(self) -> Iterable[Vertex]:
-		return self._variables
+		return frozenset(self._variables)
 
 	def set_variables(self, value: Iterable[Vertex]) -> NoReturn:
-		self._variables = np.array(list(value))
+		self._variables = set(value)
 
 	def get_neighbors(self, vertex: Vertex) -> Iterable[Vertex]:
 		return self._graph.neighbors(vertex)
@@ -157,16 +184,33 @@ class NetworkXFactorGraph(FactorGraph):
 	def set_edge_attr(self, edge: Edge, key: Hashable, value: Any) -> NoReturn:
 		self._graph[edge[0]][edge[1]][key] = value
 
-	def add_vertices(
+	def add_variables(
 			self,
 			vertices: Iterable[Vertex],
-			attributes: Mapping[Vertex, Attributes]) -> NoReturn:
-		self._graph.add_nodes_from((v, attributes[v]) for v in vertices)
+			attributes: Mapping[Vertex, Attributes] = None) -> NoReturn:
+		self._add_vertices(vertices, attributes)
+		self._variables.update(vertices)
+
+	def add_factors(
+			self,
+			vertices: Iterable[Vertex],
+			attributes: Mapping[Vertex, Attributes] = None) -> NoReturn:
+		self._add_vertices(vertices, attributes)
+		self._factors.update(vertices)
+
+	def _add_vertices(
+			self,
+			vertices: Iterable[Vertex],
+			attributes: Mapping[Vertex, Attributes] = None) -> NoReturn:
+		if attributes is None:
+			self._graph.add_nodes_from(vertices)
+		else:
+			self._graph.add_nodes_from((v, attributes[v]) for v in vertices)
 
 	def add_edges(
 			self,
 			edges: Iterable[Edge],
-			attributes: Mapping[Edge, Attributes]) -> NoReturn:
+			attributes: Mapping[Edge, Attributes] = None) -> NoReturn:
 		self._graph.add_edges_from(((*e, attributes[e]) for e in edges))
 
 
@@ -178,9 +222,9 @@ class RayFactorGraph(FactorGraph):
 
 	def __attrs_post_init__(self):
 		if self.backend == IGRAPH:
-			self._graph = ray.remote(IGraphFactorGraph()).remote()
+			self._graph = ray.remote(IGraphFactorGraph).remote()
 		elif self.backend == NETWORKX:
-			self._graph = ray.remote(NetworkXFactorGraph()).remote()
+			self._graph = ray.remote(NetworkXFactorGraph).remote()
 		else:
 			msg = f'Backend must be one of the following: {OPTIONS}'
 			raise AttributeError(msg)
@@ -212,8 +256,80 @@ class RayFactorGraph(FactorGraph):
 	def set_edge_attr(self, edge, key, value):
 		return ray.get(self._graph.set_edge_attr.remote(edge, key, value))
 
-	def add_vertices(self, vertices, attributes):
-		return ray.get(self._graph.add_vertices.remote(vertices, attributes))
+	def add_variables(self, vertices, attributes=None):
+		return ray.get(self._graph.add_variables.remote(vertices, attributes))
 
-	def add_edges(self, edges, attributes):
+	def add_factors(self, vertices, attributes=None):
+		return ray.get(self._graph.add_factors.remote(vertices, attributes))
+
+	def add_edges(self, edges, attributes=None):
 		return ray.get(self._graph.add_eges.remote(edges, attributes))
+
+
+@attr.s(slots=True, frozen=True)
+class Message:
+	sender = attr.ib(type=Hashable)
+	receiver = attr.ib(type=Hashable)
+	content = attr.ib(type=Any)
+
+
+@attr.s(slots=True)
+class _VertexStoreActor:
+	_store = attr.ib(type=Mapping[Hashable, Any], init=False)
+
+	def __attrs_post_init__(self):
+		self._store = {}
+
+	def get(self, key: Hashable, attribute: Any = None) -> Any:
+		if attribute is None:
+			value = self._store[key]
+			value = key if value is None else value
+		else:
+			value = self._store[key][attribute]
+		return value
+
+	def put(
+			self,
+			keys: Iterable[Hashable],
+			attributes: Mapping[Hashable, Any] = None) -> NoReturn:
+		if attributes is None:
+			for k in keys:
+				self._store[k] = None
+		else:
+			for k in keys:
+				self._store[k] = attributes[k]
+
+
+@attr.s(slots=True)
+class VertexStore:
+	_actor = attr.ib(type=_VertexStoreActor, init=False)
+	as_actor = attr.ib(type=bool, default=True, converter=bool)
+
+	def __attrs_post_init__(self):
+		if self.as_actor:
+			self._actor = ray.remote(_VertexStoreActor).remote()
+		else:
+			self._actor = _VertexStoreActor()
+
+	def get(
+			self,
+			key: Hashable,
+			attribute: Any = None,
+			as_ref: bool = False) -> Any:
+		if self.as_actor:
+			value = self._actor.get.remote(key, attribute)
+		else:
+			value = self._actor.get(key, attribute)
+		return value if as_ref or not self.as_actor else ray.get(value)
+
+	def put(
+			self,
+			keys: Iterable[Hashable],
+			attributes: Mapping[Hashable, Any] = None,
+			as_ref: bool = False) -> Optional[ray.ObjectRef]:
+		value = None
+		if self.as_actor:
+			value = self._actor.put.remote(keys, attributes)
+		else:
+			self._actor.put(keys, attributes)
+		return value if as_ref or not self.as_actor else ray.get(value)
