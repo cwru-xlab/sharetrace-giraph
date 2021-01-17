@@ -18,10 +18,9 @@ class RiskScore:
 	def as_array(self):
 		dt = np.dtype([
 			('id', 'U128'),
-			('timestamp', 'float64'),
+			('timestamp', 'datetime64[s]'),
 			('value', 'float64')])
-		return np.array(
-			[(self.id, self.timestamp.timestamp(), self.value)], dtype=dt)
+		return np.array([(self.id, self.timestamp, self.value)], dtype=dt)
 
 	@classmethod
 	def from_array(cls, a: np.ndarray) -> 'RiskScore':
@@ -55,10 +54,9 @@ class Occurrence:
 		validator=attr.validators.instance_of(datetime.timedelta))
 
 	def as_array(self) -> np.ndarray:
-		dt = np.dtype([('timestamp', 'float64'), ('duration', 'float64')])
-		timestamp = self.timestamp.timestamp()
-		duration = self.duration.total_seconds()
-		return np.array([(timestamp, duration)], dtype=dt)
+		dt = np.dtype([
+			('timestamp', 'datetime64[s]'), ('duration', 'timedelta64[s]')])
+		return np.array([(self.timestamp, self.duration)], dtype=dt)
 
 	@classmethod
 	def from_array(cls, a: np.ndarray) -> 'Occurrence':
@@ -78,11 +76,7 @@ class Contact:
 
 	@classmethod
 	def from_array(cls, users: Iterable[Hashable], a: np.ndarray) -> 'Contact':
-		occurrences = (
-			Occurrence(
-				timestamp=_from_timestamp(o['timestamp'][0]),
-				duration=datetime.timedelta(seconds=o['duration'][0]))
-			for o in np.nditer(a))
+		occurrences = (Occurrence.from_array(o) for o in np.nditer(a))
 		return Contact(users=users, occurrences=occurrences)
 
 	def as_array(self) -> np.ndarray:
