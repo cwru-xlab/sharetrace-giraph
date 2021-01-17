@@ -1,4 +1,5 @@
 import datetime
+import functools
 import itertools
 import random
 from typing import Hashable, Iterable, NoReturn, Optional, Sequence, Sized, \
@@ -34,6 +35,16 @@ _RiskScores = Iterable[model.RiskScore]
 _GroupedRiskScores = Iterable[Tuple[Hashable, _RiskScores]]
 _Contacts = Iterable[model.Contact]
 log = backend.LOGGER
+
+
+def _get_index_ranges(vertices: Sized) -> Iterable[np.ndarray]:
+	num_vertices = len(vertices)
+	num_cpus = backend.NUM_CPUS
+	step = np.ceil(num_vertices / num_cpus)
+	stop = functools.partial(min, num_vertices)
+	return [
+		np.arange(i * step, stop(step * (i + 1)) - 1, dtype=np.int64)
+		for i in range(num_cpus)]
 
 
 @attr.s(slots=True)
@@ -130,9 +141,9 @@ class BeliefPropagation:
 	) -> Iterable[Tuple[Vertex, model.RiskScore]]:
 		txt = 'BELIEF PROPAGATION: {:0.6f} s'
 		with codetiming.Timer(text=txt, logger=log):
-			return self.call(factors=factors, variables=variables)
+			return self._call(factors=factors, variables=variables)
 
-	def call(
+	def _call(
 			self,
 			factors: _Contacts,
 			variables: _GroupedRiskScores
@@ -147,6 +158,7 @@ class BeliefPropagation:
 			with codetiming.Timer(text='To factors: {:0.6f} s', logger=log):
 				remaining = self._send_to_factors()
 				self._update_inboxes(remaining)
+				exit()
 			with codetiming.Timer(text='To variables: {:0.6f} s', logger=log):
 				remaining = self._send_to_variables()
 				self._update_inboxes(remaining)
@@ -185,7 +197,7 @@ class BeliefPropagation:
 			builder: graphs.FactorGraphBuilder, variables: _GroupedRiskScores):
 		keys = []
 		attrs = {}
-		for k, v in ((str(k), (v for v in values)) for k, values in variables):
+		for k, v in ((str(k), values) for k, values in variables):
 			v1, v2 = itertools.tee(v)
 			keys.append(k)
 			attrs.update({
@@ -277,32 +289,6 @@ class BeliefPropagation:
 			for indices in ranges]
 
 	@staticmethod
-	@ray.remote
-	def _to_variables(
-			graph: FactorGraph,
-			factors: np.ndarray,
-			vertex_store: graphs.VertexStore,
-			msg_queue: queue.Queue,
-			block_queue: bool,
-			indices: Iterable[np.ndarray],
-			transmission_rate: float):
-		for f in factors[indices]:
-			neighbors = np.array(list(graph.get_neighbors(f)))
-			for i, v in enumerate(neighbors):
-				# Assumes factor vertex has a degree of 2
-				neighbor = neighbors[not i]
-				local = vertex_store.get(key=neighbor, attribute='local')
-				inbox = vertex_store.get(key=neighbor, attribute='inbox')
-				messages = itertools.chain(local, inbox.values())
-				content = BeliefPropagation._compute_message(
-					vertex_store=vertex_store,
-					factor=f,
-					messages=messages,
-					transmission_rate=transmission_rate)
-				msg = graphs.Message(sender=f, receiver=v, content=content)
-				msg_queue.put(msg, block=block_queue)
-
-	@staticmethod
 	def _compute_message(
 			vertex_store: graphs.VertexStore,
 			factor: Vertex,
@@ -344,6 +330,32 @@ class BeliefPropagation:
 			msg = model.RiskScore.from_array(old_enough[np.argmax(weighted)])
 		return msg
 
+	@staticmethod
+	@ray.remote
+	def _to_variables(
+			graph: FactorGraph,
+			factors: np.ndarray,
+			vertex_store: graphs.VertexStore,
+			msg_queue: queue.Queue,
+			block_queue: bool,
+			indices: Iterable[np.ndarray],
+			transmission_rate: float):
+		for f in factors[indices]:
+			neighbors = np.array(list(graph.get_neighbors(f)))
+			for i, v in enumerate(neighbors):
+				# Assumes factor vertex has a degree of 2
+				neighbor = neighbors[not i]
+				local = vertex_store.get(key=neighbor, attribute='local')
+				inbox = vertex_store.get(key=neighbor, attribute='inbox')
+				messages = itertools.chain(local, inbox.values())
+				content = BeliefPropagation._compute_message(
+					vertex_store=vertex_store,
+					factor=f,
+					messages=messages,
+					transmission_rate=transmission_rate)
+				msg = graphs.Message(sender=f, receiver=v, content=content)
+				msg_queue.put(msg, block=block_queue)
+
 	def _update_maxes(self) -> np.ndarray:
 		updated = []
 		for v in ray.get(self._variables):
@@ -353,12 +365,3 @@ class BeliefPropagation:
 			self._vertex_store.put(keys=[v], attributes={v: {'max': mx}})
 			updated.append(mx.value)
 		return np.array(updated)
-
-
-def _get_index_ranges(vertices: Sized) -> Iterable[np.ndarray]:
-	num_vertices = len(vertices)
-	num_cpus = backend.NUM_CPUS
-	step = np.ceil(num_vertices / num_cpus)
-	return [
-		np.arange(i, min(num_vertices, step * (i + 1)) - 1)
-		for i in range(num_cpus)]

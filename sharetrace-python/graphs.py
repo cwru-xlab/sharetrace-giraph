@@ -71,12 +71,14 @@ class FactorGraph(abc.ABC):
 @attr.s(slots=True)
 class IGraphFactorGraph(FactorGraph):
 	_graph = attr.ib(type=igraph.Graph, init=False)
-	_factors = attr.ib(type=Iterable[Vertex], factory=set)
-	_variables = attr.ib(type=Iterable[Vertex], factory=set)
+	_factors = attr.ib(type=Iterable[Vertex], init=False)
+	_variables = attr.ib(type=Iterable[Vertex], init=False)
 
 	def __attrs_post_init__(self):
 		super(IGraphFactorGraph, self).__init__()
 		self._graph = igraph.Graph()
+		self._factors = set()
+		self._variables = set()
 
 	def get_factors(self) -> Iterable[Vertex]:
 		return frozenset(self._factors)
@@ -145,12 +147,14 @@ class IGraphFactorGraph(FactorGraph):
 @attr.s(slots=True)
 class NetworkXFactorGraph(FactorGraph):
 	_graph = attr.ib(type=networkx.Graph, init=False)
-	_factors = attr.ib(type=Iterable[Vertex], factory=set)
-	_variables = attr.ib(type=Iterable[Vertex], factory=set)
+	_factors = attr.ib(type=Iterable[Vertex], init=False)
+	_variables = attr.ib(type=Iterable[Vertex], init=False)
 
 	def __attrs_post_init__(self):
 		super(NetworkXFactorGraph, self).__init__()
 		self._graph = networkx.Graph()
+		self._factors = set()
+		self._variables = set()
 
 	def get_factors(self) -> Iterable[Vertex]:
 		return frozenset(self._factors)
@@ -208,7 +212,6 @@ class NetworkXFactorGraph(FactorGraph):
 		self._graph.add_edges_from(((*e, attributes[e]) for e in edges))
 
 
-@ray.remote
 @attr.s(slots=True)
 class RayFactorGraph(FactorGraph):
 	backend = attr.ib(type=str, default=DEFAULT)
@@ -348,8 +351,8 @@ class _FactorGraphBuilder:
 	backend = attr.ib(type=str, default=DEFAULT)
 	as_ref = attr.ib(type=bool, default=True)
 	_graph = attr.ib(type=FactorGraph, init=False)
-	_factors = attr.ib(type=Iterable[Vertex], factory=set)
-	_variables = attr.ib(type=Iterable[Vertex], factory=set)
+	_factors = attr.ib(type=Iterable[Vertex], init=False)
+	_variables = attr.ib(type=Iterable[Vertex], init=False)
 	_vertex_store = attr.ib(type=VertexStore, init=False)
 
 	def __attrs_post_init__(self):
@@ -357,6 +360,8 @@ class _FactorGraphBuilder:
 			backend=self.backend, as_ref=False)
 		if self.use_vertex_store:
 			self._vertex_store = VertexStore(as_ref=True)
+		self._factors = set()
+		self._variables = set()
 
 	def add_variables(
 			self,
@@ -392,9 +397,9 @@ class _FactorGraphBuilder:
 		Optional[Iterable[Vertex]],
 		Optional[VertexStore]]:
 		if self.as_ref:
+			graph = ray.put(self._graph)
 			factors = ray.put(np.array(list(self._factors)))
 			variables = ray.put(np.array(list(self._variables)))
-			graph = ray.put(self._graph)
 			if self.use_vertex_store:
 				handles = (graph, factors, variables, self._vertex_store)
 			else:
@@ -429,30 +434,30 @@ class FactorGraphBuilder:
 				as_ref=self.as_ref)
 
 	def add_variables(self, vertices, attributes=None) -> Optional[Any]:
-		value = None
 		if self.as_ref:
 			value = self._actor.add_variables.remote(vertices, attributes)
 			value = ray.get(value)
 		else:
 			self._actor.add_variables(vertices, attributes)
+			value = None
 		return value
 
 	def add_factors(self, vertices, attributes=None) -> Optional[Any]:
-		value = None
 		if self.as_ref:
 			value = self._actor.add_factors.remote(vertices, attributes)
 			value = ray.get(value)
 		else:
 			self._actor.add_factors(vertices, attributes)
+			value = None
 		return value
 
 	def add_edges(self, edges, attributes=None) -> Optional[Any]:
-		value = None
 		if self.as_ref:
 			value = self._actor.add_edges.remote(edges, attributes)
 			value = ray.get(value)
 		else:
 			self._actor.add_edges(edges, attributes)
+			value = None
 		return value
 
 	def build(self) -> Tuple[
