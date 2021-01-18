@@ -1,3 +1,4 @@
+import asyncio
 import datetime
 import functools
 import itertools
@@ -5,6 +6,7 @@ import random
 from typing import Any, Hashable, Iterable, NoReturn, Optional, Sequence, \
 	Sized, Tuple, Union
 
+import attr
 import codetiming
 import numpy as np
 import ray
@@ -35,6 +37,7 @@ _Contacts = Iterable[model.Contact]
 log = backend.LOGGER
 
 
+@attr.s(slots=True)
 class BeliefPropagation:
 	"""A factor graph that performs a variation of belief propagation to
 	compute the propagated risk of exposure to a condition among a
@@ -74,81 +77,74 @@ class BeliefPropagation:
 	Edge data:
 		- msg between factor and variable vertices
 	"""
-	__slots__ = [
-		'transmission_rate',
-		'tolerance',
-		'iterations',
-		'max_messages',
-		'backend',
-		'_local_mode',
-		'seed',
-		'_graph',
-		'_factors',
-		'_variables',
-		'_vertex_store',
-		'_queue']
+	transmission_rate = attr.ib(type=float, default=0.8, converter=float)
+	tolerance = attr.ib(type=float, default=1e-5, converter=float)
+	iterations = attr.ib(type=int, default=4, converter=int)
+	max_messages = attr.ib(type=Optional[int], default=None)
+	backend = attr.ib(type=str, default=graphs.DEFAULT)
+	seed = attr.ib(type=Any, default=None)
+	_local_mode = attr.ib(type=bool, default=False, converter=bool)
+	_queue = attr.ib(
+		type=Union[asyncio.Queue, queue.Queue], init=False, repr=False)
+	_graph = attr.ib(type=graphs.FactorGraph, init=False, repr=False)
+	_factors = attr.ib(type=Iterable[graphs.Vertex], init=False, repr=False)
+	_variables = attr.ib(type=Iterable[graphs.Vertex], init=False, repr=False)
+	_vertex_store = attr.ib(type=graphs.VertexStore, init=False, repr=False)
 
-	def __init__(
-			self,
-			transmission_rate: float = 0.8,
-			tolerance: float = 1e-5,
-			iterations: int = 4,
-			max_messages: Optional[int] = None,
-			backend: str = graphs.DEFAULT,
-			local_mode: bool = False,
-			seed: Any = None):
-		self.transmission_rate = self._check_transmission_rate(
-			transmission_rate)
-		self.tolerance = self._check_tolerance(tolerance)
-		self.iterations = self._check_iterations(iterations)
-		self.max_messages = self._check_max_messages(max_messages)
+	def __attrs_post_init__(self):
+		backend.LOCAL_MODE = self._local_mode
 		if self.max_messages is None:
-			self._queue = queue.Queue()
+			if self._local_mode:
+				self._queue = asyncio.Queue()
+			else:
+				self._queue = queue.Queue()
 		else:
-			self._queue = queue.Queue(maxsize=self.max_messages)
-		self.backend = backend
-		self._local_mode = bool(local_mode)
-		self.seed = seed
-		if seed is not None:
-			random.seed(seed)
-			np.random.seed(seed)
+			if self._local_mode:
+				self._queue = asyncio.Queue(maxsize=self.max_messages)
+			else:
+				self._queue = queue.Queue(maxsize=self.max_messages)
+		if self.seed is not None:
+			random.seed(self.seed)
+			np.random.seed(self.seed)
 
-	@staticmethod
-	def _check_transmission_rate(value):
+	@transmission_rate.validator
+	def _check_transmission_rate(self, attribute, value):
 		if value < 0 or value > 1:
 			raise ValueError(
 				"'transmission_rate' must be between 0 and 1, inclusive")
-		return float(value)
 
-	@staticmethod
-	def _check_tolerance(value):
+	@tolerance.validator
+	def _check_tolerance(self, attribute, value):
 		if value <= 0:
 			raise ValueError("'tolerance' must be greater than 0")
-		return float(value)
 
-	@staticmethod
-	def _check_iterations(value):
+	@iterations.validator
+	def _check_iterations(self, attribute, value):
 		if value < 1:
 			raise ValueError("'iterations' must be at least 1")
-		return int(value)
 
-	@staticmethod
-	def _check_max_messages(value):
+	@max_messages.validator
+	def _check_max_messages(self, attribute, value):
 		if value is not None:
 			if not isinstance(value, int):
 				raise TypeError("'max_messages' must of type int or None")
 			if value < 0:
 				raise ValueError("'max_messages' must be least 1")
-		return None if value is None else int(value)
 
-	def __call__(
+	@backend.validator
+	def _check_backend(self, attribute, value):
+		options = graphs.OPTIONS
+		if value not in graphs.OPTIONS:
+			raise ValueError(f"'backend' must be one of {options}")
+
+	async def __call__(
 			self,
+			*,
 			factors: _Contacts,
 			variables: _GroupedRiskScores
 	) -> Iterable[Tuple[graphs.Vertex, model.RiskScore]]:
-		with codetiming.Timer(
-				text='BELIEF PROPAGATION: {:0.6f} s', logger=log):
-			log('-----------Start of algorithm-----------')
+		log('-----------START BELIEF PROPAGATION-----------')
+		with codetiming.Timer(text='Total duration: {:0.6f} s', logger=log):
 			with codetiming.Timer(text='Creating the graph: {:0.6f} s'):
 				self._create_graph(factors=factors, variables=variables)
 			maxes = self._get_maxes(only_value=True)
@@ -156,12 +152,12 @@ class BeliefPropagation:
 			while i < self.iterations and t > self.tolerance:
 				log(f'-----------Iteration {i + 1}-----------')
 				with codetiming.Timer(text='To factor: {:0.6f} s', logger=log):
-					remaining = self._send_to_factors()
-					self._update_inboxes(remaining)
+					remaining = await self._send_to_factors()
+					await self._update_inboxes(remaining)
 				with codetiming.Timer(
 						text='To variable: {:0.6f} s', logger=log):
-					remaining = self._send_to_variables()
-					self._update_inboxes(remaining)
+					remaining = await self._send_to_variables()
+					await self._update_inboxes(remaining)
 				with codetiming.Timer(text='Updating: {:0.6f} s', logger=log):
 					iter_maxes = self._update_maxes()
 					t = np.sum(iter_maxes - maxes)
@@ -169,10 +165,10 @@ class BeliefPropagation:
 					self._clear_inboxes()
 					i += 1
 				log(f'Tolerance: {np.round(t, 6)}')
-			log('-----------End of algorithm-----------')
 			variables = self._get_variables()
 			maxes = self._get_maxes()
-			return zip(variables, maxes)
+		log('-----------END BELIEF PROPAGATION-----------')
+		return zip(variables, maxes)
 
 	def _create_graph(
 			self,
@@ -180,12 +176,12 @@ class BeliefPropagation:
 			variables: _GroupedRiskScores) -> NoReturn:
 		if self._local_mode:
 			builder = graphs.FactorGraphBuilder(
-				as_actor=False,
+				as_actor=False,  # Single-process
 				backend=self.backend,
-				share_graph=False,
-				graph_as_actor=False,
+				share_graph=False,  # No ray shared object memory store
+				graph_as_actor=False,  # Single-process
 				use_vertex_store=True,  # Only vertex ids, no attributes
-				vertex_store_as_actor=False)
+				vertex_store_as_actor=False)  # Single-process
 			self._add_variables(builder, variables)
 			self._add_factors_and_edges(builder, factors)
 			graph, vertex_store = builder.build()
@@ -201,7 +197,7 @@ class BeliefPropagation:
 				backend=self.backend,
 				share_graph=True,  # Graph structure is static
 				graph_as_actor=False,  # Would incur unnecessary overhead
-				use_vertex_store=True,
+				use_vertex_store=True,  # Only vertex ids, no attributes
 				vertex_store_as_actor=True)  # For later remote functions
 			add_variables = ray.remote(self._add_variables)
 			ray.get(add_variables.remote(builder, variables))
@@ -256,33 +252,33 @@ class BeliefPropagation:
 			maxes = np.array(list(maxes))
 		return maxes
 
-	def _send_to_factors(self) -> Optional[Sequence[ray.ObjectRef]]:
+	async def _send_to_factors(self) -> Optional[Sequence[ray.ObjectRef]]:
+		kwargs = {
+			'graph': self._graph,
+			'vertex_store': self._vertex_store,
+			'msg_queue': self._queue,
+			'block_queue': self.max_messages is None}
 		if self._local_mode:
-			self._to_factors(
-				graph=self._graph,
-				vertex_store=self._vertex_store,
-				variables=self._variables,
-				msg_queue=self._queue,
-				block_queue=self.max_messages is None,
-				indices=np.arange(len(self._variables)))
+			variables = self._get_variables()
+			await self._to_factors(
+				variables=variables,
+				indices=np.arange(len(variables)),
+				**kwargs)
 		else:
-			ranges = _get_index_ranges(ray.get(self._variables))
+			ranges = self._get_index_ranges(self._get_variables())
 			return [
 				ray.remote(self._to_factors).remote(
-					graph=self._graph,
-					vertex_store=self._vertex_store,
-					variables=self._variables,
-					msg_queue=self._queue,
-					block_queue=self.max_messages is None,
-					indices=indices)
+					variables=self._get_variables(as_ref=True),
+					indices=indices,
+					**kwargs)
 				for indices in ranges]
 
 	@staticmethod
-	def _to_factors(
+	async def _to_factors(
 			graph: graphs.FactorGraph,
 			vertex_store: graphs.VertexStore,
 			variables: np.ndarray,
-			msg_queue: queue.Queue,
+			msg_queue: Union[asyncio.Queue, queue.Queue],
 			block_queue: bool,
 			indices: np.ndarray):
 		for v in variables[indices]:
@@ -292,42 +288,44 @@ class BeliefPropagation:
 				from_others = {o: msg for o, msg in inbox.items() if o != f}
 				content = itertools.chain(local, from_others.values())
 				msg = graphs.Message(sender=v, receiver=f, content=content)
-				msg_queue.put(msg, block=block_queue)
+				if isinstance(msg_queue, asyncio.Queue):
+					if block_queue:
+						await msg_queue.put(msg)
+					else:
+						msg_queue.put_nowait(msg)
+				else:
+					await msg_queue.put(msg, block=block_queue)
 
-	def _update_inboxes(
+	async def _update_inboxes(
 			self,
 			remaining: Optional[Sequence[ray.ObjectRef]] = None) -> NoReturn:
-		remaining = [] if remaining is None else remaining
-		while len(remaining) or self._queue.size():
-			if not self._local_mode:
+		remaining = () if remaining is None else remaining
+		while len(remaining) or self._queue.qsize():
+			if self._local_mode:
+				msg = await self._queue.get()
+			else:
 				_, remaining = ray.wait(remaining)
-			msg = self._queue.get()
-			attributes = self._vertex_store.get(key=msg.receiver)
-			attributes['inbox'][msg.sender] = msg.content
-			self._vertex_store.put(
-				keys=[msg.receiver], attributes={msg.receiver: attributes})
+				msg = self._queue.get()
+			attributes = {msg.receiver: {'inbox': {msg.sender: msg.content}}}
+			self._vertex_store.put(keys=[msg.receiver], attributes=attributes)
 
-	def _send_to_variables(self) -> Optional[Sequence[ray.ObjectRef]]:
+	async def _send_to_variables(self) -> Optional[Sequence[ray.ObjectRef]]:
+		kwargs = {
+			'graph': self._graph,
+			'vertex_store': self._vertex_store,
+			'msg_queue': self._queue,
+			'block_queue': self.max_messages is None,
+			'transmission_rate': self.transmission_rate}
 		if self._local_mode:
-			self._to_variables(
-				graph=self._graph,
-				vertex_store=self._vertex_store,
-				factors=self._factors,
-				msg_queue=self._queue,
-				block_queue=self.max_messages is None,
-				indices=np.arange(len(self._factors)),
-				transmission_rate=self.transmission_rate)
+			factors = self._get_factors(as_ref=False)
+			await self._to_variables(
+				factors=factors, indices=np.arange(len(factors)), **kwargs)
 		else:
-			ranges = _get_index_ranges(ray.get(self._factors))
+			ranges = self._get_index_ranges(self._get_factors())
+			factors = self._get_factors(as_ref=True)
 			return [
 				ray.remote(self._to_variables).remote(
-					graph=self._graph,
-					vertex_store=self._vertex_store,
-					factors=self._factors,
-					msg_queue=self._queue,
-					block_queue=self.max_messages is None,
-					indices=indices,
-					transmission_rate=self.transmission_rate)
+					factors=factors, indices=indices, **kwargs)
 				for indices in ranges]
 
 	@staticmethod
@@ -377,11 +375,11 @@ class BeliefPropagation:
 		return msg
 
 	@staticmethod
-	def _to_variables(
+	async def _to_variables(
 			graph: graphs.FactorGraph,
 			factors: np.ndarray,
 			vertex_store: graphs.VertexStore,
-			msg_queue: queue.Queue,
+			msg_queue: Union[asyncio.Queue, queue.Queue],
 			block_queue: bool,
 			indices: np.ndarray,
 			transmission_rate: float):
@@ -399,7 +397,13 @@ class BeliefPropagation:
 					messages=messages,
 					transmission_rate=transmission_rate)
 				msg = graphs.Message(sender=f, receiver=v, content=content)
-				msg_queue.put(msg, block=block_queue)
+				if isinstance(msg_queue, asyncio.Queue):
+					if block_queue:
+						await msg_queue.put(msg)
+					else:
+						msg_queue.put_nowait(msg)
+				else:
+					await msg_queue.put(msg, block=block_queue)
 
 	def _update_maxes(self) -> np.ndarray:
 		updated = []
@@ -415,30 +419,33 @@ class BeliefPropagation:
 
 	def _clear_inboxes(self) -> NoReturn:
 		def clear(vertices: np.ndarray):
-			for v in vertices:
-				attributes = self._vertex_store.get(key=v)
-				attributes['inbox'] = {}
-				self._vertex_store.put(keys=[v], attributes={v: attributes})
+			attributes = dict.fromkeys(vertices, {'inbox': {}})
+			self._vertex_store.put(keys=vertices, attributes=attributes)
 
 		clear(self._get_variables())
 		clear(self._get_factors())
 
-	def _get_variables(self) -> np.ndarray:
-		return self._get_vertices(variables=True)
+	def _get_variables(
+			self, as_ref: bool = False) -> Union[np.ndarray, ray.ObjectRef]:
+		return self._get_vertices(variables=True, as_ref=as_ref)
 
-	def _get_factors(self) -> np.ndarray:
-		return self._get_vertices(variables=False)
+	def _get_factors(
+			self, as_ref: bool = False) -> Union[np.ndarray, ray.ObjectRef]:
+		return self._get_vertices(variables=False, as_ref=as_ref)
 
-	def _get_vertices(self, variables: bool = True) -> np.ndarray:
+	def _get_vertices(
+			self,
+			variables: bool = True,
+			as_ref: bool = False) -> Union[np.ndarray, ray.ObjectRef]:
 		vertices = self._variables if variables else self._factors
-		return vertices if self._local_mode else ray.get(vertices)
+		return vertices if self._local_mode or as_ref else ray.get(vertices)
 
-
-def _get_index_ranges(vertices: Sized) -> Iterable[np.ndarray]:
-	num_vertices = len(vertices)
-	num_cpus = backend.NUM_CPUS
-	step = np.ceil(num_vertices / num_cpus)
-	stop = functools.partial(min, num_vertices)
-	return [
-		np.arange(i * step, stop(step * (i + 1)) - 1, dtype=np.int64)
-		for i in range(num_cpus)]
+	@staticmethod
+	def _get_index_ranges(vertices: Sized) -> Iterable[np.ndarray]:
+		num_vertices = len(vertices)
+		num_cpus = backend.NUM_CPUS
+		step = np.ceil(num_vertices / num_cpus)
+		stop = functools.partial(min, num_vertices)
+		return [
+			np.arange(i * step, stop(step * (i + 1)) - 1, dtype=np.int64)
+			for i in range(num_cpus)]
