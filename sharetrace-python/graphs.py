@@ -12,7 +12,7 @@ Attributes = Mapping[str, Any]
 Vertex = Hashable
 NETWORKX = 'networkx'
 IGRAPH = 'igraph'
-OPTIONS = [NETWORKX, IGRAPH]
+OPTIONS = (NETWORKX, IGRAPH)
 DEFAULT = IGRAPH
 
 
@@ -267,31 +267,6 @@ class RayFactorGraph(FactorGraph):
 		return ray.get(self._graph.add_edges.remote(edges, attributes))
 
 
-def _factor_graph_factory(
-		backend: str = DEFAULT, as_actor: bool = False) -> FactorGraph:
-	if backend == IGRAPH:
-		if as_actor:
-			graph = ray.remote(IGraphFactorGraph).remote()
-		else:
-			graph = IGraphFactorGraph()
-	elif backend == NETWORKX:
-		if as_actor:
-			graph = ray.remote(NetworkXFactorGraph).remote()
-		else:
-			graph = NetworkXFactorGraph()
-	else:
-		raise ValueError(f'Backend must be one of the following: {OPTIONS}')
-	return graph
-
-
-def factor_graph_factory(backend: str, as_actor: bool = False) -> FactorGraph:
-	if as_actor:
-		graph = RayFactorGraph(backend=backend)
-	else:
-		graph = _factor_graph_factory(backend=backend, as_actor=False)
-	return graph
-
-
 class _VertexStore:
 	__slots__ = ['_store']
 
@@ -528,10 +503,26 @@ class FactorGraphBuilder:
 		return value
 
 
-class Message:
-	__slots__ = ['sender', 'receiver', 'content']
+def _factor_graph_factory(
+		backend: str = DEFAULT, as_actor: bool = False) -> FactorGraph:
+	if backend == IGRAPH:
+		if as_actor:
+			graph = ray.remote(IGraphFactorGraph).remote()
+		else:
+			graph = IGraphFactorGraph()
+	elif backend == NETWORKX:
+		if as_actor:
+			graph = ray.remote(NetworkXFactorGraph).remote()
+		else:
+			graph = NetworkXFactorGraph()
+	else:
+		raise ValueError(f'Backend must be one of the following: {OPTIONS}')
+	return graph
 
-	def __init__(self, sender: Hashable, receiver: Hashable, content: Any):
-		self.sender = sender
-		self.receiver = receiver
-		self.content = content
+
+def factor_graph_factory(backend: str, as_actor: bool = False) -> FactorGraph:
+	if as_actor:
+		graph = RayFactorGraph(backend=backend)
+	else:
+		graph = _factor_graph_factory(backend=backend, as_actor=False)
+	return graph

@@ -1,10 +1,11 @@
 import datetime
-from typing import Hashable, Iterable
+from typing import Any, Hashable, Iterable
 
 import attr
 import numpy as np
 
-"""IMPORTANT: Order of attributes affects attr 'order' attribute"""
+
+# Order of attributes affects attr 'order' attribute
 
 
 @attr.s(slots=True, frozen=True, order=True)
@@ -90,6 +91,13 @@ class Contact:
 		array = np.array([o.as_array() for o in self.occurrences]).flatten()
 		array.sort(order=['timestamp', 'duration'])
 		return array
+
+
+@attr.s(slots=True, frozen=True)
+class Message:
+	sender = attr.ib(type=Hashable, kw_only=True)
+	receiver = attr.ib(type=Hashable, kw_only=True)
+	content = attr.ib(type=Any, kw_only=True)
 
 
 def _from_datetime64(timestamp: np.datetime64) -> datetime.datetime:
