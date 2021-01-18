@@ -306,14 +306,18 @@ class _VertexStore:
 			value = self._store[key][attribute]
 		return value
 
-	# TODO Modify to allow updating a single attribute value; otherwise need
-	#  to get all attributes at once, modify, and then put back
 	def put(
 			self,
 			keys: Iterable[Hashable],
-			attributes: Mapping[Hashable, Any] = None) -> NoReturn:
+			attributes: Optional[Any] = None) -> NoReturn:
 		if attributes is None:
-			self._store.update({k: None for k in keys})
+			self._store.update(dict.fromkeys(keys, None))
+		elif isinstance(attributes, Mapping):
+			for k in keys:
+				if k in self._store:
+					self._store[k].update(attributes[k])
+				else:
+					self._store[k] = attributes[k]
 		else:
 			self._store.update(attributes)
 
