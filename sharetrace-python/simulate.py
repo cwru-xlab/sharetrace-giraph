@@ -61,11 +61,23 @@ async def simulate(
 
 
 if __name__ == '__main__':
-	with backend.ray_context(num_cpus=backend.NUM_CPUS):
-		factors, variables = setup(users=1000)
+	local_mode = True
+	impl = graphs.IGRAPH
+	users = 50
+	if local_mode:
+		factors, variables = setup(users=users)
 		factors = contactmatching.compute(factors)
 		risks = asyncio.run(simulate(
 			factors=factors,
 			variables=variables,
-			impl=graphs.IGRAPH,
-			local_mode=True))
+			impl=impl,
+			local_mode=local_mode))
+	else:
+		with backend.ray_context(num_cpus=backend.NUM_CPUS):
+			factors, variables = setup(users=users)
+			factors = contactmatching.compute(factors)
+			risks = asyncio.run(simulate(
+				factors=factors,
+				variables=variables,
+				impl=impl,
+				local_mode=local_mode))
