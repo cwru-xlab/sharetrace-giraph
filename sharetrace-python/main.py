@@ -16,7 +16,7 @@ async def main():
 	with backend.ray_context():
 		factors = contactmatching.compute(locations)
 		bp = algorithm.BeliefPropagation()
-		updated_scores = bp(factors=factors, variables=variables)
+		updated_scores = await bp(factors=factors, variables=variables)
 	async with pda.PdaContext() as p:
 		await p.post_scores(scores=updated_scores, token=token)
 
