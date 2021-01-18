@@ -86,7 +86,7 @@ class BeliefPropagation:
 	max_messages = attr.ib(type=Optional[int], default=None)
 	backend = attr.ib(type=str, default=graphs.DEFAULT)
 	seed = attr.ib(type=Any, default=None)
-	_local_mode = attr.ib(type=bool, default=False, converter=bool)
+	_local_mode = attr.ib(type=bool, default=None, converter=bool)
 	_queue = attr.ib(type=_Queue, init=False, repr=False)
 	_graph = attr.ib(type=graphs.FactorGraph, init=False, repr=False)
 	_factors = attr.ib(type=Iterable[graphs.Vertex], init=False, repr=False)
@@ -94,7 +94,8 @@ class BeliefPropagation:
 	_vertex_store = attr.ib(type=graphs.VertexStore, init=False, repr=False)
 
 	def __attrs_post_init__(self):
-		backend.LOCAL_MODE = self._local_mode
+		if self._local_mode is None:
+			self._local_mode = backend.LOCAL_MODE
 		if self.max_messages is None:
 			if self._local_mode:
 				self._queue = asyncio.Queue()

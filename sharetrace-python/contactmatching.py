@@ -18,7 +18,8 @@ def compute(
 		locations: Iterable[model.LocationHistory],
 		*,
 		as_iterator: bool = True,
-		local_mode: bool = False) -> Iterable[model.Contact]:
+		local_mode: bool = None) -> Iterable[model.Contact]:
+	local_mode = backend.LOCAL_MODE if local_mode is None else local_mode
 	log('-----------START CONTACT MATCHING-----------')
 	with ct.Timer(text='Total duration: {:0.6f} s'):
 		result = _compute(
