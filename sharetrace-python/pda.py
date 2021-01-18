@@ -3,7 +3,7 @@ import datetime
 import functools
 import json
 import time
-from typing import Any, Iterable, Mapping, NoReturn, Optional, Tuple
+from typing import Any, Iterable, Mapping, NoReturn, Optional, Tuple, Union
 
 import aiohttp
 import attr
@@ -41,6 +41,7 @@ BASE_READ_BODY = {
 	'ordering': ORDERING,
 	'skip': 0}
 TWO_WEEKS_AGO = datetime.datetime.utcnow() - datetime.timedelta(days=14)
+Response = Union[Iterable[Mapping[str, Any], Mapping[str, Any]]]
 
 
 @attr.s(slots=True)
@@ -62,6 +63,7 @@ class PdaContext:
 
 	async def get_scores(
 			self,
+			*,
 			token: str,
 			hats: Iterable[str],
 			since: datetime.datetime = TWO_WEEKS_AGO
@@ -88,6 +90,7 @@ class PdaContext:
 
 	async def get_locations(
 			self,
+			*,
 			token: str,
 			hats: Iterable[str],
 			since: datetime.datetime = TWO_WEEKS_AGO,
@@ -115,7 +118,7 @@ class PdaContext:
 		return model.LocationHistory(name=hat, history=locs)
 
 	async def _get_data(
-			self, token: str, hat: str, namespace: str) -> Mapping[str, Any]:
+			self, token: str, hat: str, namespace: str) -> Response:
 		body = BASE_READ_BODY.copy()
 		body.update({'token': token, 'hatName': hat, 'skip': 0})
 		url = ''.join((READ_URL.format(hat), namespace))
@@ -148,7 +151,7 @@ class PdaContext:
 	async def _handle_response(
 			response: aiohttp.ClientResponse,
 			hat: Optional[str] = None,
-			send: Optional[bool] = True) -> Mapping[str, Any]:
+			send: Optional[bool] = True) -> Response:
 		def check_hat():
 			if send is not None and hat is None:
 				raise ValueError(
