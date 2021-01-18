@@ -3,11 +3,11 @@ import asyncio
 import algorithm
 import backend
 import contactmatching
-import graphs
 import pda
 
 
 async def main():
+	backend.LOCAL_MODE = False
 	async with pda.PdaContext() as p:
 		token, hats = await p.get_token_and_hats()
 		variables, locations = await asyncio.gather(
