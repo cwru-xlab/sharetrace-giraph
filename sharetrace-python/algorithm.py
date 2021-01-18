@@ -34,6 +34,9 @@ _DEFAULT_MESSAGE = model.RiskScore(
 _RiskScores = Iterable[model.RiskScore]
 _GroupedRiskScores = Iterable[Tuple[Hashable, _RiskScores]]
 _Contacts = Iterable[model.Contact]
+_Vertices = Union[np.ndarray, ray.ObjectRef]
+_OptionalObjectRefs = Optional[Sequence[ray.ObjectRef]]
+_Queue = Union[asyncio.Queue, queue.Queue]
 log = backend.LOGGER
 
 
@@ -84,8 +87,7 @@ class BeliefPropagation:
 	backend = attr.ib(type=str, default=graphs.DEFAULT)
 	seed = attr.ib(type=Any, default=None)
 	_local_mode = attr.ib(type=bool, default=False, converter=bool)
-	_queue = attr.ib(
-		type=Union[asyncio.Queue, queue.Queue], init=False, repr=False)
+	_queue = attr.ib(type=_Queue, init=False, repr=False)
 	_graph = attr.ib(type=graphs.FactorGraph, init=False, repr=False)
 	_factors = attr.ib(type=Iterable[graphs.Vertex], init=False, repr=False)
 	_variables = attr.ib(type=Iterable[graphs.Vertex], init=False, repr=False)
@@ -252,7 +254,7 @@ class BeliefPropagation:
 			maxes = np.array(list(maxes))
 		return maxes
 
-	async def _send_to_factors(self) -> Optional[Sequence[ray.ObjectRef]]:
+	async def _send_to_factors(self) -> _OptionalObjectRefs:
 		kwargs = {
 			'graph': self._graph,
 			'vertex_store': self._vertex_store,
@@ -278,16 +280,17 @@ class BeliefPropagation:
 			graph: graphs.FactorGraph,
 			vertex_store: graphs.VertexStore,
 			variables: np.ndarray,
-			msg_queue: Union[asyncio.Queue, queue.Queue],
+			msg_queue: _Queue,
 			block_queue: bool,
 			indices: np.ndarray):
 		for v in variables[indices]:
-			inbox = vertex_store.get(key=v, attribute='inbox')
-			local = vertex_store.get(key=v, attribute='local')
+			attributes = vertex_store.get(key=v)
+			inbox = attributes['inbox']
+			local = attributes['local']
 			for f in graph.get_neighbors(v):
 				from_others = {o: msg for o, msg in inbox.items() if o != f}
 				content = itertools.chain(local, from_others.values())
-				msg = graphs.Message(sender=v, receiver=f, content=content)
+				msg = model.Message(sender=v, receiver=f, content=content)
 				if isinstance(msg_queue, asyncio.Queue):
 					if block_queue:
 						await msg_queue.put(msg)
@@ -297,8 +300,7 @@ class BeliefPropagation:
 					await msg_queue.put(msg, block=block_queue)
 
 	async def _update_inboxes(
-			self,
-			remaining: Optional[Sequence[ray.ObjectRef]] = None) -> NoReturn:
+			self, remaining: _OptionalObjectRefs = None) -> NoReturn:
 		remaining = () if remaining is None else remaining
 		while len(remaining) or self._queue.qsize():
 			if self._local_mode:
@@ -309,7 +311,7 @@ class BeliefPropagation:
 			attributes = {msg.receiver: {'inbox': {msg.sender: msg.content}}}
 			self._vertex_store.put(keys=[msg.receiver], attributes=attributes)
 
-	async def _send_to_variables(self) -> Optional[Sequence[ray.ObjectRef]]:
+	async def _send_to_variables(self) -> _OptionalObjectRefs:
 		kwargs = {
 			'graph': self._graph,
 			'vertex_store': self._vertex_store,
@@ -379,24 +381,25 @@ class BeliefPropagation:
 			graph: graphs.FactorGraph,
 			factors: np.ndarray,
 			vertex_store: graphs.VertexStore,
-			msg_queue: Union[asyncio.Queue, queue.Queue],
+			msg_queue: _Queue,
 			block_queue: bool,
 			indices: np.ndarray,
-			transmission_rate: float):
+			transmission_rate: float) -> NoReturn:
 		for f in factors[indices]:
 			neighbors = tuple(graph.get_neighbors(f))
 			for i, v in enumerate(graph.get_neighbors(f)):
 				# Assumes factor vertex has a degree of 2
 				neighbor = neighbors[not i]
-				local = vertex_store.get(key=neighbor, attribute='local')
-				inbox = vertex_store.get(key=neighbor, attribute='inbox')
+				attributes = vertex_store.get(key=neighbor)
+				local = attributes['local']
+				inbox = attributes['inbox']
 				messages = itertools.chain(local, inbox.values())
 				content = BeliefPropagation._compute_message(
 					vertex_store=vertex_store,
 					factor=f,
 					messages=messages,
 					transmission_rate=transmission_rate)
-				msg = graphs.Message(sender=f, receiver=v, content=content)
+				msg = model.Message(sender=f, receiver=v, content=content)
 				if isinstance(msg_queue, asyncio.Queue):
 					if block_queue:
 						await msg_queue.put(msg)
@@ -425,18 +428,14 @@ class BeliefPropagation:
 		clear(self._get_variables())
 		clear(self._get_factors())
 
-	def _get_variables(
-			self, as_ref: bool = False) -> Union[np.ndarray, ray.ObjectRef]:
+	def _get_variables(self, as_ref: bool = False) -> _Vertices:
 		return self._get_vertices(variables=True, as_ref=as_ref)
 
-	def _get_factors(
-			self, as_ref: bool = False) -> Union[np.ndarray, ray.ObjectRef]:
+	def _get_factors(self, as_ref: bool = False) -> _Vertices:
 		return self._get_vertices(variables=False, as_ref=as_ref)
 
 	def _get_vertices(
-			self,
-			variables: bool = True,
-			as_ref: bool = False) -> Union[np.ndarray, ray.ObjectRef]:
+			self, variables: bool = True, as_ref: bool = False) -> _Vertices:
 		vertices = self._variables if variables else self._factors
 		return vertices if self._local_mode or as_ref else ray.get(vertices)
 
