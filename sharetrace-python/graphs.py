@@ -306,6 +306,8 @@ class _VertexStore:
 			value = self._store[key][attribute]
 		return value
 
+	# TODO Modify to allow updating a single attribute value; otherwise need
+	#  to get all attributes at once, modify, and then put back
 	def put(
 			self,
 			keys: Iterable[Hashable],

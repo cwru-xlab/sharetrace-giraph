@@ -17,7 +17,7 @@ class RiskScore:
 
 	def as_array(self):
 		dt = np.dtype([
-			('id', 'U128'),
+			('name', 'U128'),
 			('timestamp', 'datetime64[s]'),
 			('value', 'float64')])
 		return np.array([(self.name, self.timestamp, self.value)], dtype=dt)
@@ -25,9 +25,9 @@ class RiskScore:
 	@classmethod
 	def from_array(cls, a: np.ndarray) -> 'RiskScore':
 		return RiskScore(
-			id=a['id'][0],
-			timestamp=_from_timestamp(a['timestamp'][0]),
-			value=a['value'][0])
+			name=a['name'],
+			timestamp=_from_datetime64(a['timestamp']),
+			value=a['value'])
 
 
 @attr.s(slots=True, frozen=True, order=True)
@@ -60,9 +60,9 @@ class Occurrence:
 
 	@classmethod
 	def from_array(cls, a: np.ndarray) -> 'Occurrence':
-		timestamp = _from_timestamp(a['timestamp'][0])
-		duration = datetime.timedelta(seconds=a['duration'][0])
-		return Occurrence(timestamp=timestamp, duration=duration)
+		return Occurrence(
+			timestamp=_from_datetime64(a['timestamp']),
+			duration=_from_timedelta64(a['duration']))
 
 
 @attr.s(slots=True, frozen=True)
@@ -85,5 +85,9 @@ class Contact:
 		return array
 
 
-def _from_timestamp(timestamp: float):
-	return datetime.datetime.utcfromtimestamp(timestamp)
+def _from_datetime64(timestamp: np.datetime64) -> datetime.datetime:
+	return datetime.datetime.utcfromtimestamp(np.float64(timestamp))
+
+
+def _from_timedelta64(duration: np.timedelta64) -> datetime.timedelta:
+	return datetime.timedelta(seconds=np.float64(duration))

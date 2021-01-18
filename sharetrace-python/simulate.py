@@ -42,7 +42,8 @@ def simulate(
 		transmission_rate: float = 0.8,
 		iterations: int = 4,
 		tolerance: float = 1e-5,
-		impl=graphs.IGRAPH):
+		backend=graphs.IGRAPH,
+		local_mode=True):
 	transmission_rate = max((min((1, transmission_rate)), 0))
 	iterations = max((1, iterations))
 	tolerance = max(1e-16, tolerance)
@@ -50,12 +51,17 @@ def simulate(
 		iterations=iterations,
 		transmission_rate=transmission_rate,
 		tolerance=tolerance,
-		backend=impl)
+		backend=backend,
+		local_mode=local_mode)
 	return bp(factors=factors, variables=variables)
 
 
 if __name__ == '__main__':
 	with backend.ray_context(num_cpus=backend.NUM_CPUS):
-		factors, variables = setup(users=100)
+		factors, variables = setup(users=50)
 		factors = contactmatching.compute(factors)
-		risks = simulate(factors, variables, impl=graphs.NETWORKX)
+		risks = simulate(
+			factors,
+			variables,
+			backend=graphs.NETWORKX,
+			local_mode=True)

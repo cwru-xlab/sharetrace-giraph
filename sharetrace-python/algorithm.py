@@ -8,7 +8,7 @@ from typing import Any, Hashable, Iterable, NoReturn, Optional, Sequence, \
 import codetiming
 import numpy as np
 import ray
-from ray.util import iter as it, queue
+from ray.util import queue
 
 import backend
 import graphs
@@ -25,8 +25,8 @@ Optimizations:
 
 # TODO Update all docstrings
 
-_TWO_DAYS = np.timedelta64(datetime.timedelta(days=2))
-_NOW = np.datetime64(datetime.datetime.utcnow())
+_2_DAYS = np.timedelta64(datetime.timedelta(days=2))
+_NOW = np.datetime64(datetime.datetime.utcnow(), 's')
 _DEFAULT_MESSAGE = model.RiskScore(
 	name='DEFAULT_ID', timestamp=datetime.datetime.utcnow(), value=0)
 _RiskScores = Iterable[model.RiskScore]
@@ -80,6 +80,7 @@ class BeliefPropagation:
 		'iterations',
 		'max_messages',
 		'backend',
+		'_local_mode',
 		'seed',
 		'_graph',
 		'_factors',
@@ -94,6 +95,7 @@ class BeliefPropagation:
 			iterations: int = 4,
 			max_messages: Optional[int] = None,
 			backend: str = graphs.DEFAULT,
+			local_mode: bool = False,
 			seed: Any = None):
 		self.transmission_rate = self._check_transmission_rate(
 			transmission_rate)
@@ -105,6 +107,7 @@ class BeliefPropagation:
 		else:
 			self._queue = queue.Queue(maxsize=self.max_messages)
 		self.backend = backend
+		self._local_mode = bool(local_mode)
 		self.seed = seed
 		if seed is not None:
 			random.seed(seed)
@@ -148,9 +151,7 @@ class BeliefPropagation:
 			log('-----------Start of algorithm-----------')
 			with codetiming.Timer(text='Creating the graph: {:0.6f} s'):
 				self._create_graph(factors=factors, variables=variables)
-				exit()
 			maxes = self._get_maxes(only_value=True)
-			print(maxes)
 			i, t = 0, np.inf
 			while i < self.iterations and t > self.tolerance:
 				log(f'-----------Iteration {i + 1}-----------')
@@ -165,10 +166,11 @@ class BeliefPropagation:
 					iter_maxes = self._update_maxes()
 					t = np.sum(iter_maxes - maxes)
 					maxes = iter_maxes
+					self._clear_inboxes()
 					i += 1
 				log(f'Tolerance: {np.round(t, 6)}')
 			log('-----------End of algorithm-----------')
-			variables = ray.get(self._variables)
+			variables = self._get_variables()
 			maxes = self._get_maxes()
 			return zip(variables, maxes)
 
@@ -176,80 +178,106 @@ class BeliefPropagation:
 			self,
 			factors: _Contacts,
 			variables: _GroupedRiskScores) -> NoReturn:
-		num_cpus = backend.NUM_CPUS
-		builder = graphs.FactorGraphBuilder(
-			as_actor=False,
-			backend=self.backend,
-			share_graph=True,
-			graph_as_actor=False,
-			use_vertex_store=True,
-			vertex_store_as_actor=True)
-		it.from_iterators([variables]).for_each(
-			lambda v: self._add_variable(builder, v),
-			max_concurrency=num_cpus).gather_sync()
-		it.from_iterators([factors]).for_each(
-			lambda f: self._add_factor_and_edges(builder, f),
-			max_concurrency=num_cpus).gather_sync()
-		# TODO Issues with igraph and missing vertices
-		# TODO Pursue reverting back to remote functions
-		graph, factors, variables, vertex_store = builder.build()
-		self._graph = graph
-		self._vertex_store = vertex_store
-		self._factors = factors
-		self._variables = variables
+		if self._local_mode:
+			builder = graphs.FactorGraphBuilder(
+				as_actor=False,
+				backend=self.backend,
+				share_graph=False,
+				graph_as_actor=False,
+				use_vertex_store=True,  # Only vertex ids, no attributes
+				vertex_store_as_actor=False)
+			self._add_variables(builder, variables)
+			self._add_factors_and_edges(builder, factors)
+			graph, vertex_store = builder.build()
+			self._vertex_store = vertex_store
+			self._factors = np.array(list(graph.get_factors()))
+			self._variables = np.array(list(graph.get_variables()))
+			graph.set_factors([])
+			graph.set_variables([])
+			self._graph = graph
+		else:
+			builder = graphs.FactorGraphBuilder(
+				as_actor=True,  # Must be True to use remote functions
+				backend=self.backend,
+				share_graph=True,  # Graph structure is static
+				graph_as_actor=False,  # Would incur unnecessary overhead
+				use_vertex_store=True,
+				vertex_store_as_actor=True)  # For later remote functions
+			add_variables = ray.remote(self._add_variables)
+			ray.get(add_variables.remote(builder, variables))
+			add_factors_and_edges = ray.remote(self._add_factors_and_edges)
+			ray.get(add_factors_and_edges).remote(builder, factors)
+			graph, factors, variables, vertex_store = builder.build()
+			self._graph = graph
+			self._vertex_store = vertex_store
+			self._factors = factors
+			self._variables = variables
 
 	@staticmethod
-	def _add_variable(
+	def _add_variables(
 			builder: graphs.FactorGraphBuilder,
-			variable: Tuple[Hashable, _RiskScores]) -> NoReturn:
-		k, v = variable
-		k = str(k)
-		v1, v2 = itertools.tee(v)
-		attrs = {k: {'local': frozenset(v1), 'max': max(v2), 'inbox': {}}}
-		builder.add_variables([k], attrs)
-		return k
+			variables: _GroupedRiskScores) -> NoReturn:
+		vertices = []
+		attrs = {}
+		for k, v in ((str(k), v) for k, v in variables):
+			vertices.append(k)
+			v1, v2 = itertools.tee(v)
+			attrs.update({
+				k: {'local': frozenset(v1), 'max': max(v2), 'inbox': {}}})
+		builder.add_variables(vertices, attrs)
 
 	@staticmethod
-	def _add_factor_and_edges(
+	def _add_factors_and_edges(
 			builder: graphs.FactorGraphBuilder,
-			factor: model.Contact) -> NoReturn:
-		def make_key(f):
-			parts = tuple(str(u) for u in sorted(f.users))
+			factors: _Contacts) -> NoReturn:
+		def make_key(factor: model.Contact):
+			parts = tuple(str(u) for u in sorted(factor.users))
 			key = '_'.join(parts)
 			return key, parts
 
-		k, (v1, v2) = make_key(factor)
-		attrs = {k: {'occurrences': factor.occurrences, 'inbox': {}}}
-		builder.add_factors([k], attrs)
-		builder.add_edges(((k, v1), (k, v2)))
-		return k
+		vertices, edges = [], []
+		attrs = {}
+		for f in factors:
+			k, (v1, v2) = make_key(f)
+			vertices.append(k)
+			edges.extend(((k, v1), (k, v2)))
+			attrs.update({k: {'occurrences': f.occurrences, 'inbox': {}}})
+		builder.add_factors(vertices, attrs)
+		builder.add_edges(edges)
 
 	def _get_maxes(
 			self,
 			only_value: bool = False) -> Union[_RiskScores, Iterable[float]]:
-		variables = ray.get(self._variables)
-		maxes = (
-			self._vertex_store.get(key=v, attribute='max') for v in variables)
+		get_max = functools.partial(self._vertex_store.get, attribute='max')
+		maxes = (get_max(key=v) for v in self._get_variables())
 		if only_value:
 			maxes = np.array([m.value for m in maxes])
 		else:
 			maxes = np.array(list(maxes))
 		return maxes
 
-	def _send_to_factors(self) -> Sequence[ray.ObjectRef]:
-		ranges = _get_index_ranges(ray.get(self._variables))
-		return [
-			self._to_factors.remote(
+	def _send_to_factors(self) -> Optional[Sequence[ray.ObjectRef]]:
+		if self._local_mode:
+			self._to_factors(
 				graph=self._graph,
 				vertex_store=self._vertex_store,
 				variables=self._variables,
 				msg_queue=self._queue,
 				block_queue=self.max_messages is None,
-				indices=indices)
-			for indices in ranges]
+				indices=np.arange(len(self._variables)))
+		else:
+			ranges = _get_index_ranges(ray.get(self._variables))
+			return [
+				ray.remote(self._to_factors).remote(
+					graph=self._graph,
+					vertex_store=self._vertex_store,
+					variables=self._variables,
+					msg_queue=self._queue,
+					block_queue=self.max_messages is None,
+					indices=indices)
+				for indices in ranges]
 
 	@staticmethod
-	@ray.remote
 	def _to_factors(
 			graph: graphs.FactorGraph,
 			vertex_store: graphs.VertexStore,
@@ -266,27 +294,41 @@ class BeliefPropagation:
 				msg = graphs.Message(sender=v, receiver=f, content=content)
 				msg_queue.put(msg, block=block_queue)
 
-	def _update_inboxes(self, remaining: Sequence[ray.ObjectRef]) -> NoReturn:
+	def _update_inboxes(
+			self,
+			remaining: Optional[Sequence[ray.ObjectRef]] = None) -> NoReturn:
+		remaining = [] if remaining is None else remaining
 		while len(remaining) or self._queue.size():
-			_, remaining = ray.wait(remaining)
+			if not self._local_mode:
+				_, remaining = ray.wait(remaining)
 			msg = self._queue.get()
-			inbox = self._vertex_store.get(key=msg.receiver, attribute='inbox')
-			inbox[msg.sender] = msg.content
+			attributes = self._vertex_store.get(key=msg.receiver)
+			attributes['inbox'][msg.sender] = msg.content
 			self._vertex_store.put(
-				keys=[msg.receiver], attributes={msg.receiver: inbox})
+				keys=[msg.receiver], attributes={msg.receiver: attributes})
 
-	def _send_to_variables(self) -> Sequence[ray.ObjectRef]:
-		ranges = _get_index_ranges(ray.get(self._factors))
-		return [
-			self._to_variables.remote(
+	def _send_to_variables(self) -> Optional[Sequence[ray.ObjectRef]]:
+		if self._local_mode:
+			self._to_variables(
 				graph=self._graph,
 				vertex_store=self._vertex_store,
 				factors=self._factors,
 				msg_queue=self._queue,
 				block_queue=self.max_messages is None,
-				indices=indices,
+				indices=np.arange(len(self._factors)),
 				transmission_rate=self.transmission_rate)
-			for indices in ranges]
+		else:
+			ranges = _get_index_ranges(ray.get(self._factors))
+			return [
+				ray.remote(self._to_variables).remote(
+					graph=self._graph,
+					vertex_store=self._vertex_store,
+					factors=self._factors,
+					msg_queue=self._queue,
+					block_queue=self.max_messages is None,
+					indices=indices,
+					transmission_rate=self.transmission_rate)
+				for indices in ranges]
 
 	@staticmethod
 	def _compute_message(
@@ -313,13 +355,15 @@ class BeliefPropagation:
 		occurs = vertex_store.get(key=factor, attribute='occurrences')
 		occurs = np.array([o.as_array() for o in occurs]).flatten()
 		messages = np.array([m.as_array() for m in messages]).flatten()
-		m = np.where(messages <= np.max(occurs['timestamp']) - _TWO_DAYS)
+		m = np.where(
+			messages['timestamp'] <= np.max(occurs['timestamp']) - _2_DAYS)
 		# Order messages in ascending order
 		old_enough = np.sort(messages[m], order=['timestamp', 'value', 'name'])
 		if not len(old_enough):
 			msg = _DEFAULT_MESSAGE
 		else:
-			diff = np.timedelta64(old_enough['timestamp'] - _NOW, 'D')
+			diff = old_enough['timestamp'] - _NOW
+			diff = np.array(diff, dtype='timedelta64[D]')
 			# Newer messages are weighted more with a smaller decay weight
 			weight = np.exp(np.int16(diff))
 			# Newer messages account for the weight of older messages
@@ -333,18 +377,17 @@ class BeliefPropagation:
 		return msg
 
 	@staticmethod
-	@ray.remote
 	def _to_variables(
 			graph: graphs.FactorGraph,
 			factors: np.ndarray,
 			vertex_store: graphs.VertexStore,
 			msg_queue: queue.Queue,
 			block_queue: bool,
-			indices: Iterable[np.ndarray],
+			indices: np.ndarray,
 			transmission_rate: float):
 		for f in factors[indices]:
-			neighbors = np.array(list(graph.get_neighbors(f)))
-			for i, v in enumerate(neighbors):
+			neighbors = tuple(graph.get_neighbors(f))
+			for i, v in enumerate(graph.get_neighbors(f)):
 				# Assumes factor vertex has a degree of 2
 				neighbor = neighbors[not i]
 				local = vertex_store.get(key=neighbor, attribute='local')
@@ -360,13 +403,35 @@ class BeliefPropagation:
 
 	def _update_maxes(self) -> np.ndarray:
 		updated = []
-		for v in ray.get(self._variables):
-			inbox = self._vertex_store.get(key=v, attribute='inbox').values()
-			mx = self._vertex_store.get(key=v, attribute='max')
+		for v in self._get_variables():
+			attributes = self._vertex_store.get(key=v)
+			inbox = attributes['inbox'].values()
+			mx = attributes['max']
 			mx = max(itertools.chain(inbox, [mx]))
-			self._vertex_store.put(keys=[v], attributes={v: {'max': mx}})
+			attributes['max'] = mx
+			self._vertex_store.put(keys=[v], attributes={v: attributes})
 			updated.append(mx.value)
 		return np.array(updated)
+
+	def _clear_inboxes(self) -> NoReturn:
+		def clear(vertices: np.ndarray):
+			for v in vertices:
+				attributes = self._vertex_store.get(key=v)
+				attributes['inbox'] = {}
+				self._vertex_store.put(keys=[v], attributes={v: attributes})
+
+		clear(self._get_variables())
+		clear(self._get_factors())
+
+	def _get_variables(self) -> np.ndarray:
+		return self._get_vertices(variables=True)
+
+	def _get_factors(self) -> np.ndarray:
+		return self._get_vertices(variables=False)
+
+	def _get_vertices(self, variables: bool = True) -> np.ndarray:
+		vertices = self._variables if variables else self._factors
+		return vertices if self._local_mode else ray.get(vertices)
 
 
 def _get_index_ranges(vertices: Sized) -> Iterable[np.ndarray]:
