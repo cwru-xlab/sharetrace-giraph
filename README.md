@@ -1,5 +1,8 @@
 # ShareTrace API
 
+## Announcments
+Please refer to sharetrace-python for the most up to date API. All other packages will eventually be refactored to use Jython.
+
 ## Building
 Note that the following instructions assumes IntelliJ is being used for the developer's IDE. This
  project is built with Gradle.
