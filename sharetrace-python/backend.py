@@ -6,6 +6,7 @@ import ray
 
 NUM_CPUS = psutil.cpu_count(logical=False)
 LOGGER: Callable = print
+LOCAL_MODE = False
 
 
 @contextlib.contextmanager
