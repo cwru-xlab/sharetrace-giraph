@@ -9,6 +9,11 @@ LOGGER: Callable = print
 LOCAL_MODE = False
 
 
+def set_local_mode(value: bool):
+	global LOCAL_MODE
+	LOCAL_MODE = value
+
+
 @contextlib.contextmanager
 def ray_context(*args, **kwargs):
 	try:

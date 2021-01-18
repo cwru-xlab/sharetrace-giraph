@@ -1,4 +1,3 @@
-import asyncio
 import datetime
 import random
 
@@ -38,46 +37,42 @@ def setup(
 	return factors, variables
 
 
-async def simulate(
+def simulate(
 		*,
 		factors,
 		variables,
 		transmission_rate: float = 0.8,
 		iterations: int = 4,
 		tolerance: float = 1e-5,
-		impl=graphs.IGRAPH,
-		local_mode=True):
+		impl=graphs.IGRAPH):
 	transmission_rate = max((min((1, transmission_rate)), 0))
 	iterations = max((1, iterations))
 	tolerance = max(1e-16, tolerance)
-	backend.LOCAL_MODE = local_mode
 	bp = algorithm.BeliefPropagation(
 		iterations=iterations,
 		transmission_rate=transmission_rate,
 		tolerance=tolerance,
-		backend=impl,
-		local_mode=local_mode)
-	return await bp(factors=factors, variables=variables)
+		backend=impl)
+	return bp(factors=factors, variables=variables)
 
 
 if __name__ == '__main__':
 	local_mode = True
 	impl = graphs.IGRAPH
-	users = 50
+	users = 1000
+	backend.set_local_mode(local_mode)
 	if local_mode:
 		factors, variables = setup(users=users)
-		factors = contactmatching.compute(factors)
-		risks = asyncio.run(simulate(
+		factors = contactmatching.compute(factors, as_iterator=False)
+		risks = simulate(
 			factors=factors,
 			variables=variables,
-			impl=impl,
-			local_mode=local_mode))
+			impl=impl)
 	else:
 		with backend.ray_context(num_cpus=backend.NUM_CPUS):
 			factors, variables = setup(users=users)
 			factors = contactmatching.compute(factors)
-			risks = asyncio.run(simulate(
+			risks = simulate(
 				factors=factors,
 				variables=variables,
-				impl=impl,
-				local_mode=local_mode))
+				impl=impl)

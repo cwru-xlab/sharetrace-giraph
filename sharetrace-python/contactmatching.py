@@ -30,8 +30,9 @@ def compute(
 
 def _compute(
 		locations: Iterable[model.LocationHistory],
-		local_mode: bool = False,
+		local_mode: bool = None,
 		as_iterator: bool = True) -> Iterable[model.Contact]:
+	local_mode = backend.LOCAL_MODE if local_mode is None else local_mode
 	with ct.Timer(text='Creating unique pairs: {:0.6f} s', logger=log):
 		pairs = itertools.combinations(locations, 2)
 	with ct.Timer(text='Finding contacts: {:0.6f} s', logger=log):
