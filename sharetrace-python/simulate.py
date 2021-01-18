@@ -1,3 +1,4 @@
+import asyncio
 import datetime
 import random
 
@@ -9,6 +10,7 @@ import model
 
 
 def setup(
+		*,
 		users: int = 100,
 		scores: int = 28,
 		locations: int = 5,
@@ -36,32 +38,34 @@ def setup(
 	return factors, variables
 
 
-def simulate(
+async def simulate(
+		*,
 		factors,
 		variables,
 		transmission_rate: float = 0.8,
 		iterations: int = 4,
 		tolerance: float = 1e-5,
-		backend=graphs.IGRAPH,
+		impl=graphs.IGRAPH,
 		local_mode=True):
 	transmission_rate = max((min((1, transmission_rate)), 0))
 	iterations = max((1, iterations))
 	tolerance = max(1e-16, tolerance)
+	backend.LOCAL_MODE = local_mode
 	bp = algorithm.BeliefPropagation(
 		iterations=iterations,
 		transmission_rate=transmission_rate,
 		tolerance=tolerance,
-		backend=backend,
+		backend=impl,
 		local_mode=local_mode)
-	return bp(factors=factors, variables=variables)
+	return await bp(factors=factors, variables=variables)
 
 
 if __name__ == '__main__':
 	with backend.ray_context(num_cpus=backend.NUM_CPUS):
-		factors, variables = setup(users=50)
+		factors, variables = setup(users=1000)
 		factors = contactmatching.compute(factors)
-		risks = simulate(
-			factors,
-			variables,
-			backend=graphs.NETWORKX,
-			local_mode=True)
+		risks = asyncio.run(simulate(
+			factors=factors,
+			variables=variables,
+			impl=graphs.IGRAPH,
+			local_mode=True))
