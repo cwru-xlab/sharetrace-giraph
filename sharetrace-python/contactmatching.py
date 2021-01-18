@@ -40,7 +40,7 @@ def _compute(
 
 def _find_contact(
 		h1: model.LocationHistory, h2: model.LocationHistory) -> model.Contact:
-	users = {h1.id, h2.id}
+	users = {h1.name, h2.name}
 	occurrences = _find_occurrences(h1, h2)
 	return model.Contact(users=users, occurrences=occurrences)
 
@@ -49,7 +49,7 @@ def _find_occurrences(
 		h1: model.LocationHistory,
 		h2: model.LocationHistory) -> Iterable[model.Occurrence]:
 	occurrences = set()
-	if len(h1.history) == 0 and len(h2.history) == 0 or h1.id == h2.id:
+	if len(h1.history) == 0 and len(h2.history) == 0 or h1.name == h2.name:
 		return occurrences
 	iter1 = iter(sorted(h1.history))
 	iter2 = iter(sorted(h2.history))

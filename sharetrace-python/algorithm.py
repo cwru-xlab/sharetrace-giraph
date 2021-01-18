@@ -2,19 +2,17 @@ import datetime
 import functools
 import itertools
 import random
-from typing import Hashable, Iterable, NoReturn, Optional, Sequence, Sized, \
-	Tuple, Union
+from typing import Any, Hashable, Iterable, NoReturn, Optional, Sequence, \
+	Sized, Tuple, Union
 
-import attr
 import codetiming
 import numpy as np
 import ray
-from ray.util import queue
+from ray.util import iter as it, queue
 
 import backend
 import graphs
 import model
-from graphs import FactorGraph, Vertex
 
 """
 Optimizations:
@@ -30,161 +28,170 @@ Optimizations:
 _TWO_DAYS = np.timedelta64(datetime.timedelta(days=2))
 _NOW = np.datetime64(datetime.datetime.utcnow())
 _DEFAULT_MESSAGE = model.RiskScore(
-	id='DEFAULT_ID', timestamp=datetime.datetime.utcnow(), value=0)
+	name='DEFAULT_ID', timestamp=datetime.datetime.utcnow(), value=0)
 _RiskScores = Iterable[model.RiskScore]
 _GroupedRiskScores = Iterable[Tuple[Hashable, _RiskScores]]
 _Contacts = Iterable[model.Contact]
 log = backend.LOGGER
 
 
-def _get_index_ranges(vertices: Sized) -> Iterable[np.ndarray]:
-	num_vertices = len(vertices)
-	num_cpus = backend.NUM_CPUS
-	step = np.ceil(num_vertices / num_cpus)
-	stop = functools.partial(min, num_vertices)
-	return [
-		np.arange(i * step, stop(step * (i + 1)) - 1, dtype=np.int64)
-		for i in range(num_cpus)]
-
-
-@attr.s(slots=True)
 class BeliefPropagation:
 	"""A factor graph that performs a variation of belief propagation to
 	compute the propagated risk of exposure to a condition among a
-	population. Factor nodes represent contacts between pairs of people,
-	with node data containing all occurrences (time-duration pairs) in the
+	population. Factor vertices represent contacts between pairs of people,
+	with vertex data containing all occurrences (time-duration pairs) in the
 	recent past that two individuals came into sufficiently long contact.
-	Variable nodes represent individuals, with node data containing the max
-	risk score as well as all risk scores sent from neighboring factor
-	nodes.
+	Variable vertices represent individuals, with vertex data containing the
+	max risk score as well as all risk scores sent from neighboring factor
+	vertices.
 
 	Following the core msg-passing principle of belief propagation,
 	the algorithm performs iterative computation between the factor and
-	variable node sets. The algorithm begins with all variable nodes
+	variable vertex sets. The algorithm begins with all variable vertices
 	selecting their maximum local score and sending it to all of their
-	neighboring factor nodes. Once this is done, all factor nodes filter the
-	risk scores, based on when the individuals came into contact, and relays
-	all risk scores sent from one individual to the other individual
+	neighboring factor vertices. Once this is done, all factor vertices filter
+	the risk scores, based on when the individuals came into contact,
+	and relays all risk scores sent from one individual to the other individual
 	involved in the contact. This completes one iteration of the algorithm
 	and is repeated until either a certain number of iterations has passed or
 	the summed difference in variable risk scores from the previous iteration
 	drops below a set tolerance, whichever condition is satisfied first.
 
-	Variable node id:
+	Variable vertex name:
 		- HAT name
 
-	Variable node values:
+	Variable vertex values:
 		- local risk scores
 		- max risk score
-		- risk scores received from neighboring factor nodes
+		- risk scores received from neighboring factor vertices
 
-	Factor node id:
+	Factor vertex name:
 		- HAT names of the contact
 
-	Factor node values:
+	Factor vertex values:
 		- occurrences (time-duration pairs)
 
 	Edge data:
-		- msg between factor and variable nodes
+		- msg between factor and variable vertices
 	"""
-	transmission_rate = attr.ib(type=float, default=0.8, converter=float)
-	tolerance = attr.ib(type=float, default=1e-5, converter=float)
-	iterations = attr.ib(type=int, default=4, converter=int)
-	max_messages = attr.ib(type=Optional[int], default=None)
-	backend = attr.ib(type=str, default=graphs.DEFAULT)
-	_graph = attr.ib(
-		type=Union[FactorGraph, ray.ObjectRef], init=False, repr=False)
-	_factors = attr.ib(
-		type=Union[Iterable[Vertex], ray.ObjectRef], init=False, repr=False)
-	_variables = attr.ib(
-		type=Union[Iterable[Vertex], ray.ObjectRef], init=False, repr=False)
-	_vertex_store = attr.ib(
-		type=graphs.VertexStore, init=False, repr=False)
-	_queue = attr.ib(type=queue.Queue, init=False, repr=False)
-	_seed = attr.ib(default=None, repr=False)
+	__slots__ = [
+		'transmission_rate',
+		'tolerance',
+		'iterations',
+		'max_messages',
+		'backend',
+		'seed',
+		'_graph',
+		'_factors',
+		'_variables',
+		'_vertex_store',
+		'_queue']
 
-	def __attrs_post_init__(self):
-		max_messages = 0 if self.max_messages is None else self.max_messages
-		self._queue = queue.Queue(maxsize=max_messages)
-		if self._seed is not None:
-			random.seed(self._seed)
-			np.random.seed(self._seed)
+	def __init__(
+			self,
+			transmission_rate: float = 0.8,
+			tolerance: float = 1e-5,
+			iterations: int = 4,
+			max_messages: Optional[int] = None,
+			backend: str = graphs.DEFAULT,
+			seed: Any = None):
+		self.transmission_rate = self._check_transmission_rate(
+			transmission_rate)
+		self.tolerance = self._check_tolerance(tolerance)
+		self.iterations = self._check_iterations(iterations)
+		self.max_messages = self._check_max_messages(max_messages)
+		if self.max_messages is None:
+			self._queue = queue.Queue()
+		else:
+			self._queue = queue.Queue(maxsize=self.max_messages)
+		self.backend = backend
+		self.seed = seed
+		if seed is not None:
+			random.seed(seed)
+			np.random.seed(seed)
 
-	@transmission_rate.validator
-	def _check_transmission_rate(self, attribute, value):
+	@staticmethod
+	def _check_transmission_rate(value):
 		if value < 0 or value > 1:
 			raise ValueError(
 				"'transmission_rate' must be between 0 and 1, inclusive")
+		return float(value)
 
-	@tolerance.validator
-	def _check_tolerance(self, attribute, value):
+	@staticmethod
+	def _check_tolerance(value):
 		if value <= 0:
 			raise ValueError("'tolerance' must be greater than 0")
+		return float(value)
 
-	@iterations.validator
-	def _check_iterations(self, attribute, value):
+	@staticmethod
+	def _check_iterations(value):
 		if value < 1:
 			raise ValueError("'iterations' must be at least 1")
+		return int(value)
 
-	@max_messages.validator
-	def _check_max_messages(self, attribute, value):
+	@staticmethod
+	def _check_max_messages(value):
 		if value is not None:
 			if not isinstance(value, int):
 				raise TypeError("'max_messages' must of type int or None")
 			if value < 0:
 				raise ValueError("'max_messages' must be least 1")
+		return None if value is None else int(value)
 
 	def __call__(
 			self,
 			factors: _Contacts,
 			variables: _GroupedRiskScores
-	) -> Iterable[Tuple[Vertex, model.RiskScore]]:
-		txt = 'BELIEF PROPAGATION: {:0.6f} s'
-		with codetiming.Timer(text=txt, logger=log):
-			return self._call(factors=factors, variables=variables)
-
-	def _call(
-			self,
-			factors: _Contacts,
-			variables: _GroupedRiskScores
-	) -> Iterable[Tuple[Vertex, model.RiskScore]]:
-		log('-----------Start of algorithm-----------')
-		with codetiming.Timer(text='Creating the graph: {:0.6f} s'):
-			self._create_graph(factors=factors, variables=variables)
-		maxes = self._get_maxes(only_value=True)
-		i, t = 0, np.inf
-		while i < self.iterations and t > self.tolerance:
-			log(f'-----------Iteration {i + 1}-----------')
-			with codetiming.Timer(text='To factors: {:0.6f} s', logger=log):
-				remaining = self._send_to_factors()
-				self._update_inboxes(remaining)
+	) -> Iterable[Tuple[graphs.Vertex, model.RiskScore]]:
+		with codetiming.Timer(
+				text='BELIEF PROPAGATION: {:0.6f} s', logger=log):
+			log('-----------Start of algorithm-----------')
+			with codetiming.Timer(text='Creating the graph: {:0.6f} s'):
+				self._create_graph(factors=factors, variables=variables)
 				exit()
-			with codetiming.Timer(text='To variables: {:0.6f} s', logger=log):
-				remaining = self._send_to_variables()
-				self._update_inboxes(remaining)
-			with codetiming.Timer(text='Updating: {:0.6f} s', logger=log):
-				iter_maxes = self._update_maxes()
-				t = np.sum(iter_maxes - maxes)
-				maxes = iter_maxes
-				i += 1
-			log(f'Tolerance: {np.round(t, 6)}')
-		log('-----------End of algorithm-----------')
-		variables = ray.get(self._variables)
-		maxes = self._get_maxes()
-		return zip(variables, maxes)
+			maxes = self._get_maxes(only_value=True)
+			print(maxes)
+			i, t = 0, np.inf
+			while i < self.iterations and t > self.tolerance:
+				log(f'-----------Iteration {i + 1}-----------')
+				with codetiming.Timer(text='To factor: {:0.6f} s', logger=log):
+					remaining = self._send_to_factors()
+					self._update_inboxes(remaining)
+				with codetiming.Timer(
+						text='To variable: {:0.6f} s', logger=log):
+					remaining = self._send_to_variables()
+					self._update_inboxes(remaining)
+				with codetiming.Timer(text='Updating: {:0.6f} s', logger=log):
+					iter_maxes = self._update_maxes()
+					t = np.sum(iter_maxes - maxes)
+					maxes = iter_maxes
+					i += 1
+				log(f'Tolerance: {np.round(t, 6)}')
+			log('-----------End of algorithm-----------')
+			variables = ray.get(self._variables)
+			maxes = self._get_maxes()
+			return zip(variables, maxes)
 
 	def _create_graph(
 			self,
 			factors: _Contacts,
 			variables: _GroupedRiskScores) -> NoReturn:
+		num_cpus = backend.NUM_CPUS
 		builder = graphs.FactorGraphBuilder(
-			use_vertex_store=True, backend=self.backend)
-		# Must create variables first before creating edges
-		num_tasks = max(1, int(backend.NUM_CPUS / 2))
-		for _ in range(num_tasks):
-			self._add_variables.remote(builder, variables)
-		for _ in range(num_tasks):
-			self._add_factors_and_edges.remote(builder, factors)
+			as_actor=False,
+			backend=self.backend,
+			share_graph=True,
+			graph_as_actor=False,
+			use_vertex_store=True,
+			vertex_store_as_actor=True)
+		it.from_iterators([variables]).for_each(
+			lambda v: self._add_variable(builder, v),
+			max_concurrency=num_cpus).gather_sync()
+		it.from_iterators([factors]).for_each(
+			lambda f: self._add_factor_and_edges(builder, f),
+			max_concurrency=num_cpus).gather_sync()
+		# TODO Issues with igraph and missing vertices
+		# TODO Pursue reverting back to remote functions
 		graph, factors, variables, vertex_store = builder.build()
 		self._graph = graph
 		self._vertex_store = vertex_store
@@ -192,44 +199,37 @@ class BeliefPropagation:
 		self._variables = variables
 
 	@staticmethod
-	@ray.remote
-	def _add_variables(
-			builder: graphs.FactorGraphBuilder, variables: _GroupedRiskScores):
-		keys = []
-		attrs = {}
-		for k, v in ((str(k), values) for k, values in variables):
-			v1, v2 = itertools.tee(v)
-			keys.append(k)
-			attrs.update({
-				k: {'local': frozenset(v1), 'max': max(v2), 'inbox': {}}})
-		builder.add_variables(keys, attrs)
+	def _add_variable(
+			builder: graphs.FactorGraphBuilder,
+			variable: Tuple[Hashable, _RiskScores]) -> NoReturn:
+		k, v = variable
+		k = str(k)
+		v1, v2 = itertools.tee(v)
+		attrs = {k: {'local': frozenset(v1), 'max': max(v2), 'inbox': {}}}
+		builder.add_variables([k], attrs)
+		return k
 
 	@staticmethod
-	@ray.remote
-	def _add_factors_and_edges(
-			builder: graphs.FactorGraphBuilder, factors: _Contacts):
-		def make_key(factor: model.Contact):
-			parts = [str(u) for u in sorted(factor.users)]
+	def _add_factor_and_edges(
+			builder: graphs.FactorGraphBuilder,
+			factor: model.Contact) -> NoReturn:
+		def make_key(f):
+			parts = tuple(str(u) for u in sorted(f.users))
 			key = '_'.join(parts)
 			return key, parts
 
-		vertices, edges = [], []
-		attrs = {}
-		for f in factors:
-			k, (v1, v2) = make_key(f)
-			vertices.append(k)
-			attrs.update({k: {'occurrences': f.occurrences, 'inbox': {}}})
-			e1, e2 = (k, v1), (k, v2)
-			edges.extend((e1, e2))
-		builder.add_factors(vertices, attrs)
-		builder.add_edges(edges)
+		k, (v1, v2) = make_key(factor)
+		attrs = {k: {'occurrences': factor.occurrences, 'inbox': {}}}
+		builder.add_factors([k], attrs)
+		builder.add_edges(((k, v1), (k, v2)))
+		return k
 
 	def _get_maxes(
 			self,
 			only_value: bool = False) -> Union[_RiskScores, Iterable[float]]:
+		variables = ray.get(self._variables)
 		maxes = (
-			self._vertex_store.get(key=v, attribute='max')
-			for v in ray.get(self._variables))
+			self._vertex_store.get(key=v, attribute='max') for v in variables)
 		if only_value:
 			maxes = np.array([m.value for m in maxes])
 		else:
@@ -251,7 +251,7 @@ class BeliefPropagation:
 	@staticmethod
 	@ray.remote
 	def _to_factors(
-			graph: FactorGraph,
+			graph: graphs.FactorGraph,
 			vertex_store: graphs.VertexStore,
 			variables: np.ndarray,
 			msg_queue: queue.Queue,
@@ -291,7 +291,7 @@ class BeliefPropagation:
 	@staticmethod
 	def _compute_message(
 			vertex_store: graphs.VertexStore,
-			factor: Vertex,
+			factor: graphs.Vertex,
 			messages: Iterable[model.RiskScore],
 			transmission_rate: float) -> model.RiskScore:
 		"""Computes the message to send from a factor to a variable.
@@ -304,7 +304,7 @@ class BeliefPropagation:
 		Otherwise, the maximum weighted message is sent.
 
 		Args:
-			factor: Factor node sending the messages.
+			factor: Factor vertex sending the messages.
 			messages: Messages in consideration.
 
 		Returns:
@@ -315,8 +315,8 @@ class BeliefPropagation:
 		messages = np.array([m.as_array() for m in messages]).flatten()
 		m = np.where(messages <= np.max(occurs['timestamp']) - _TWO_DAYS)
 		# Order messages in ascending order
-		old_enough = np.sort(messages[m], order=['timestamp', 'value', 'id'])
-		if len(old_enough) == 0:
+		old_enough = np.sort(messages[m], order=['timestamp', 'value', 'name'])
+		if not len(old_enough):
 			msg = _DEFAULT_MESSAGE
 		else:
 			diff = np.timedelta64(old_enough['timestamp'] - _NOW, 'D')
@@ -327,13 +327,15 @@ class BeliefPropagation:
 			weighted = np.cumsum(old_enough['value'] * weight)
 			weighted *= transmission_rate / norm
 			# Select the message with the maximum weighted average
-			msg = model.RiskScore.from_array(old_enough[np.argmax(weighted)])
+			ind = np.argmax(weighted)
+			old_enough[ind]['value'] = weighted[ind]
+			msg = model.RiskScore.from_array(old_enough[ind])
 		return msg
 
 	@staticmethod
 	@ray.remote
 	def _to_variables(
-			graph: FactorGraph,
+			graph: graphs.FactorGraph,
 			factors: np.ndarray,
 			vertex_store: graphs.VertexStore,
 			msg_queue: queue.Queue,
@@ -365,3 +367,13 @@ class BeliefPropagation:
 			self._vertex_store.put(keys=[v], attributes={v: {'max': mx}})
 			updated.append(mx.value)
 		return np.array(updated)
+
+
+def _get_index_ranges(vertices: Sized) -> Iterable[np.ndarray]:
+	num_vertices = len(vertices)
+	num_cpus = backend.NUM_CPUS
+	step = np.ceil(num_vertices / num_cpus)
+	stop = functools.partial(min, num_vertices)
+	return [
+		np.arange(i * step, stop(step * (i + 1)) - 1, dtype=np.int64)
+		for i in range(num_cpus)]

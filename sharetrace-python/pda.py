@@ -82,7 +82,7 @@ class PdaContext:
 		values = (s['data'] for s in data)
 		values = ((s['score'], _to_timestamp(s['timestamp'])) for s in values)
 		scores = (
-			model.RiskScore(id=hat, value=v, timestamp=t)
+			model.RiskScore(name=hat, value=v, timestamp=t)
 			for t, v in values if t >= since)
 		return hat, scores
 
@@ -112,7 +112,7 @@ class PdaContext:
 		locs = (
 			model.TemporalLocation(timestamp=t, location=h)
 			for t, h in locs if t >= since)
-		return model.LocationHistory(id=hat, history=locs)
+		return model.LocationHistory(name=hat, history=locs)
 
 	async def _get_data(
 			self, token: str, hat: str, namespace: str) -> Mapping[str, Any]:

@@ -13,14 +13,14 @@ class RiskScore:
 	timestamp = attr.ib(
 		type=datetime.datetime,
 		validator=attr.validators.instance_of(datetime.datetime))
-	id = attr.ib(type=Hashable, default='')
+	name = attr.ib(type=Hashable, default='')
 
 	def as_array(self):
 		dt = np.dtype([
 			('id', 'U128'),
 			('timestamp', 'datetime64[s]'),
 			('value', 'float64')])
-		return np.array([(self.id, self.timestamp, self.value)], dtype=dt)
+		return np.array([(self.name, self.timestamp, self.value)], dtype=dt)
 
 	@classmethod
 	def from_array(cls, a: np.ndarray) -> 'RiskScore':
@@ -40,7 +40,7 @@ class TemporalLocation:
 
 @attr.s(slots=True, frozen=True)
 class LocationHistory:
-	id = attr.ib(type=Hashable)
+	name = attr.ib(type=Hashable)
 	history = attr.ib(type=Iterable[TemporalLocation], converter=frozenset)
 
 

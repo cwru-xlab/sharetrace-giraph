@@ -22,7 +22,7 @@ def setup(
 	for u in range(users):
 		risks = [
 			model.RiskScore(
-				id=str(u),
+				name=str(u),
 				timestamp=start + datetime.timedelta(random.randint(0, days)),
 				value=random.random())
 			for _ in range(scores)]
@@ -32,7 +32,7 @@ def setup(
 				timestamp=start + datetime.timedelta(random.randint(0, days)),
 				location=random.randint(0, locations))
 			for _ in range(locations))
-		factors.append(model.LocationHistory(id=u, history=history))
+		factors.append(model.LocationHistory(name=u, history=history))
 	return factors, variables
 
 
@@ -58,4 +58,4 @@ if __name__ == '__main__':
 	with backend.ray_context(num_cpus=backend.NUM_CPUS):
 		factors, variables = setup(users=100)
 		factors = contactmatching.compute(factors)
-		risks = simulate(factors, variables, impl=graphs.IGRAPH)
+		risks = simulate(factors, variables, impl=graphs.NETWORKX)
