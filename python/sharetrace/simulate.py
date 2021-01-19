@@ -57,9 +57,9 @@ def simulate(
 
 
 if __name__ == '__main__':
-	local_mode = True
+	local_mode = False
 	impl = graphs.IGRAPH
-	users = 1000
+	users = 100
 	backend.set_local_mode(local_mode)
 	if local_mode:
 		factors, variables = setup(users=users)

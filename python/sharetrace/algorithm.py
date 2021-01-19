@@ -10,7 +10,6 @@ import attr
 import codetiming
 import numpy as np
 import ray
-
 import backend
 import graphs
 import model
@@ -287,7 +286,9 @@ class BeliefPropagation:
 			local = attributes['local']
 			for f in graph.get_neighbors(v):
 				from_others = (msg for o, msg in inbox.items() if o != f)
+				# TODO Test speed vs custom serialization for itertools
 				content = itertools.chain(local, from_others)
+				content = np.array([m for m in content])
 				msg = model.Message(sender=v, receiver=f, content=content)
 				msg_queue.put(msg, block=block_queue)
 
@@ -297,7 +298,7 @@ class BeliefPropagation:
 		while len(remaining) or self._queue.qsize():
 			if not self.local_mode:
 				_, remaining = ray.wait(remaining)
-			msg = self._queue.get(block=self.max_size is not None)
+			msg = self._queue.get(block=True)
 			attributes = {msg.receiver: {'inbox': {msg.sender: msg.content}}}
 			self._vertex_store.put(keys=[msg.receiver], attributes=attributes)
 
