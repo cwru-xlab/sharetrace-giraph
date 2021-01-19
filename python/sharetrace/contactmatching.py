@@ -53,7 +53,6 @@ def compute(
 	apply the algorithm to each partition and collect all of the resulting
 	Contact instances.
 	"""
-	local_mode = backend.LOCAL_MODE if local_mode is None else local_mode
 	log('-----------START CONTACT MATCHING-----------')
 	with ct.Timer(text='Total duration: {:0.6f} s'):
 		result = _compute(
@@ -81,11 +80,11 @@ def _compute(
 			pairs = it.from_iterators([pairs])
 			contacts = pairs.for_each(
 				lambda p: _find_contact(p[0], p[1], min_duration),
-				max_concurrency=backend.NUM_CPUS)
+				max_concurrency=1)
 			contacts = contacts.filter(lambda c: len(c.occurrences) > 0)
 	with ct.Timer(text='Outputting contacts: {:0.6f} s', logger=log):
 		if not local_mode:
-			contacts = contacts.gather_sync()
+			contacts = contacts.gather_async(batch_ms=250, num_async=25)
 		if not as_iterator:
 			contacts = np.array(list(contacts))
 		return contacts

@@ -2,7 +2,7 @@ import asyncio
 from typing import Any, Hashable, Iterable, Mapping, NoReturn, Optional
 
 import ray
-
+from ray.util import queue
 import backend
 
 
@@ -194,7 +194,7 @@ class VertexStore:
 		local_mode = backend.LOCAL_MODE if local_mode is None else local_mode
 		self.local_mode = bool(local_mode)
 		self.detached = bool(detached)
-		if local_mode:
+		if self.local_mode:
 			self._actor = _VertexStore()
 		else:
 			if self.detached:

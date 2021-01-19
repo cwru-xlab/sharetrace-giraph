@@ -34,7 +34,6 @@ GroupedRiskScores = Iterable[Tuple[Hashable, RiskScores]]
 Contacts = Iterable[model.Contact]
 Vertices = Union[np.ndarray, ray.ObjectRef]
 OptionalObjectRefs = Optional[Sequence[ray.ObjectRef]]
-Queue = Union[asyncio.Queue, stores.Queue]
 log = backend.LOGGER
 
 
@@ -71,7 +70,7 @@ class BeliefPropagation:
 	backend = attr.ib(type=str, default=graphs.DEFAULT)
 	seed = attr.ib(type=Any, default=None)
 	local_mode = attr.ib(type=bool, default=None)
-	_queue = attr.ib(type=Queue, init=False, repr=False)
+	_queue = attr.ib(type=stores.Queue, init=False, repr=False)
 	_graph = attr.ib(type=graphs.FactorGraph, init=False, repr=False)
 	_factors = attr.ib(type=Iterable[graphs.Vertex], init=False, repr=False)
 	_variables = attr.ib(type=Iterable[graphs.Vertex], init=False, repr=False)
@@ -139,17 +138,15 @@ class BeliefPropagation:
 					self._update_inboxes(remaining)
 				with codetiming.Timer(text='Updating: {:0.6f} s', logger=log):
 					iter_maxes = self._update_maxes()
-					t = np.sum(iter_maxes - maxes)
+					# TODO Keep random noise?
+					t = np.sum(iter_maxes - maxes) + random.random()
 					maxes = iter_maxes
 					self._clear_inboxes()
 					i += 1
 				log(f'Tolerance: {np.round(t, 6)}')
 			variables = self._get_variables()
 			maxes = self._get_maxes()
-			if not self.local_mode:
-				self._vertex_store.kill()
-				self._queue.kill()
-				ray.kill(self._graph)
+			self._shutdown()
 		log('-----------END BELIEF PROPAGATION-----------')
 		return zip(variables, maxes)
 
@@ -163,7 +160,7 @@ class BeliefPropagation:
 				backend=self.backend,
 				share_graph=False,  # No ray shared object memory store
 				graph_as_actor=False,  # Single-process
-				use_vertex_store=True,  # Only vertex ids, no attributes
+				use_vertex_store=True,  # Stores vertex attributes
 				vertex_store_as_actor=False)  # Single-process
 			self._add_variables(builder, variables)
 			self._add_factors_and_edges(builder, factors)
@@ -176,23 +173,22 @@ class BeliefPropagation:
 			self._graph = graph
 		else:
 			builder = graphs.FactorGraphBuilder(
-				as_actor=True,  # Must be True to use remote functions
+				as_actor=False,  # True results in ObjectLossError
 				backend=self.backend,
 				share_graph=True,  # Graph structure is static
 				graph_as_actor=False,  # Would incur unnecessary overhead
-				use_vertex_store=True,  # Only vertex ids, no attributes
+				use_vertex_store=True,  # Stores vertex attributes
 				vertex_store_as_actor=True,  # For later remote functions
 				detached=True)  # To prevent actors from being killed
-			add_variables = ray.remote(self._add_variables)
-			ray.get(add_variables.remote(builder, variables))
-			add_factors_and_edges = ray.remote(self._add_factors_and_edges)
-			ray.get(add_factors_and_edges.remote(builder, factors))
+			# Must be non-remote since builder is non-remote
+			self._add_variables(builder, variables)
+			self._add_factors_and_edges(builder, factors)
 			graph, factors, variables, vertex_store = builder.build()
-			builder.kill()
 			self._graph = graph
 			self._vertex_store = vertex_store
 			self._factors = factors
 			self._variables = variables
+			builder.kill()
 
 	@staticmethod
 	def _add_variables(
@@ -239,23 +235,22 @@ class BeliefPropagation:
 
 	def _send_to_factors(self) -> OptionalObjectRefs:
 		kwargs = {
-			'graph': self._graph,
+			'graph': self._graph,  # TODO Depends on builder
 			'vertex_store': self._vertex_store,
 			'msg_queue': self._queue,
-			'block_queue': self.max_size is not None}
+			'block_queue': self._block_queue()}
 		if self.local_mode:
 			variables = self._get_variables()
-			self._to_factors(
-				variables=variables,
-				indices=np.arange(len(variables)),
-				**kwargs)
+			indices = np.arange(len(variables))
+			self._to_factors(variables=variables, indices=indices, **kwargs)
 		else:
-			ranges = self._get_index_ranges(self._get_variables())
+			variables = self._get_variables()
+			ranges = self._get_index_ranges(variables)
+			variables = self._get_variables(as_ref=True)
+			to_factors = ray.remote(self._to_factors)
 			return [
-				ray.remote(self._to_factors).remote(
-					variables=self._get_variables(as_ref=True),
-					indices=indices,
-					**kwargs)
+				to_factors.remote(
+					variables=variables, indices=indices, **kwargs)
 				for indices in ranges]
 
 	@staticmethod
@@ -263,7 +258,7 @@ class BeliefPropagation:
 			graph: graphs.FactorGraph,
 			vertex_store: stores.VertexStore,
 			variables: np.ndarray,
-			msg_queue: Queue,
+			msg_queue: stores.Queue,
 			block_queue: bool,
 			indices: np.ndarray):
 		for v in variables[indices]:
@@ -272,7 +267,6 @@ class BeliefPropagation:
 			local = attributes['local']
 			for f in graph.get_neighbors(v):
 				from_others = (msg for o, msg in inbox.items() if o != f)
-				# TODO Test speed vs custom serialization for itertools
 				content = itertools.chain(local, from_others)
 				content = np.array([m for m in content])
 				msg = model.Message(sender=v, receiver=f, content=content)
@@ -280,11 +274,10 @@ class BeliefPropagation:
 
 	def _update_inboxes(
 			self, remaining: OptionalObjectRefs = None) -> NoReturn:
-		remaining = () if remaining is None else remaining
-		while len(remaining) or self._queue.qsize():
+		while remaining or self._queue.qsize():
 			if not self.local_mode:
 				_, remaining = ray.wait(remaining)
-			msg = self._queue.get(block=True)
+			msg = self._queue.get(block=self._block_queue())
 			attributes = {msg.receiver: {'inbox': {msg.sender: msg.content}}}
 			self._vertex_store.put(keys=[msg.receiver], attributes=attributes)
 
@@ -293,18 +286,18 @@ class BeliefPropagation:
 			'graph': self._graph,
 			'vertex_store': self._vertex_store,
 			'msg_queue': self._queue,
-			'block_queue': self.max_size is not None,
+			'block_queue': self._block_queue(),
 			'transmission_rate': self.transmission_rate}
+		factors = self._get_factors()
 		if self.local_mode:
-			factors = self._get_factors(as_ref=False)
-			self._to_variables(
-				factors=factors, indices=np.arange(len(factors)), **kwargs)
+			indices = np.arange(len(factors))
+			self._to_variables(factors=factors, indices=indices, **kwargs)
 		else:
-			ranges = self._get_index_ranges(self._get_factors())
+			ranges = self._get_index_ranges(factors)
 			factors = self._get_factors(as_ref=True)
+			to_variables = ray.remote(self._to_variables)
 			return [
-				ray.remote(self._to_variables).remote(
-					factors=factors, indices=indices, **kwargs)
+				to_variables.remote(factors=factors, indices=indices, **kwargs)
 				for indices in ranges]
 
 	@staticmethod
@@ -312,7 +305,7 @@ class BeliefPropagation:
 			graph: graphs.FactorGraph,
 			factors: np.ndarray,
 			vertex_store: stores.VertexStore,
-			msg_queue: Queue,
+			msg_queue: stores.Queue,
 			block_queue: bool,
 			indices: np.ndarray,
 			transmission_rate: float) -> NoReturn:
@@ -410,10 +403,25 @@ class BeliefPropagation:
 		vertices = self._variables if variables else self._factors
 		return vertices if self.local_mode or as_ref else ray.get(vertices)
 
+	def _block_queue(self):
+		# Blocking in local mode exposes missing await exception
+		return self.max_size
+
+	def _shutdown(self):
+		if not self.local_mode:
+			self._vertex_store.kill()
+			self._queue.kill()
+			if isinstance(self._graph, graphs.FactorGraph):
+				self._graph.kill()
+
 	@staticmethod
-	def _get_index_ranges(vertices: Sized) -> Iterable[np.ndarray]:
+	def _get_index_ranges(
+			vertices: Sized, num_cpus: int = None) -> Iterable[np.ndarray]:
 		num_vertices = len(vertices)
-		num_cpus = backend.NUM_CPUS
+		if not num_cpus:
+			num_cpus = backend.NUM_CPUS
+		else:
+			num_cpus = int(max(backend.NUM_CPUS, num_cpus))
 		step = np.ceil(num_vertices / num_cpus)
 		stop = functools.partial(min, num_vertices)
 		return [

@@ -57,13 +57,13 @@ def simulate(
 
 
 if __name__ == '__main__':
-	local_mode = False
-	impl = graphs.IGRAPH
-	users = 100
+	local_mode = True
+	impl = graphs.NUMPY
+	users = 10000
 	backend.set_local_mode(local_mode)
 	if local_mode:
 		factors, variables = setup(users=users)
-		factors = contactmatching.compute(factors, as_iterator=False)
+		factors = contactmatching.compute(factors)
 		risks = simulate(
 			factors=factors,
 			variables=variables,
