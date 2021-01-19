@@ -144,10 +144,11 @@ class BeliefPropagation:
 					self._clear_inboxes()
 					i += 1
 				log(f'Tolerance: {np.round(t, 6)}')
+				log(f'---------------------------------')
 			variables = self._get_variables()
 			maxes = self._get_maxes()
 			self._shutdown()
-		log('-----------END BELIEF PROPAGATION-----------')
+		log('------------END BELIEF PROPAGATION------------')
 		return zip(variables, maxes)
 
 	def _create_graph(

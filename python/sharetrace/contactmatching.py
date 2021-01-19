@@ -53,14 +53,14 @@ def compute(
 	apply the algorithm to each partition and collect all of the resulting
 	Contact instances.
 	"""
-	log('-----------START CONTACT MATCHING-----------')
+	log('------------START CONTACT MATCHING------------')
 	with ct.Timer(text='Total duration: {:0.6f} s'):
 		result = _compute(
 			locations,
 			local_mode=local_mode,
 			as_iterator=as_iterator,
 			min_duration=min_duration)
-	log('-----------END CONTACT MATCHING-----------')
+	log('-------------END CONTACT MATCHING-------------')
 	return result
 
 

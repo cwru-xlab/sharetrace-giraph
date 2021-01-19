@@ -19,6 +19,7 @@ NUMPY = 'numpy'
 OPTIONS = (NETWORKX, IGRAPH, NUMPY)
 DEFAULT = NUMPY
 _EDGE_ATTRIBUTE_EXCEPTION = '{} does not support edge attributes'
+_VERTEX_ATTRIBUTE_EXCEPTION = '{} does not support vertex attributes'
 _KILL_EXCEPTION = '{} does not support kill() as it is not a Ray Actor'
 _BACKEND_EXCEPTION = f'Backend must be one of the following: {OPTIONS}'
 
@@ -238,12 +239,11 @@ class NetworkXFactorGraph(FactorGraph):
 
 
 class NumpyFactorGraph(FactorGraph):
-	__slots__ = ['_graph', '_vertex_store', '_variables', '_factors']
+	__slots__ = ['_graph', '_variables', '_factors']
 
 	def __init__(self):
 		super(NumpyFactorGraph, self).__init__()
 		self._graph = collections.defaultdict(lambda: np.array([]))
-		self._vertex_store = VertexStore(local_mode=True)
 		self._factors = set()
 		self._variables = set()
 
@@ -263,11 +263,12 @@ class NumpyFactorGraph(FactorGraph):
 		return self._graph[vertex]
 
 	def get_vertex_attr(self, vertex, key):
-		return self._vertex_store.get(key=vertex, attribute=key)
+		cls = self.__class__.__name__
+		raise NotImplementedError(_VERTEX_ATTRIBUTE_EXCEPTION.format(cls))
 
 	def set_vertex_attr(self, vertex, key, value):
-		attributes = {vertex: {key: value}}
-		return self._vertex_store.put(keys=[vertex], attributes=attributes)
+		cls = self.__class__.__name__
+		raise NotImplementedError(_VERTEX_ATTRIBUTE_EXCEPTION.format(cls))
 
 	def get_edge_attr(self, edge, key):
 		cls = self.__class__.__name__
@@ -284,9 +285,14 @@ class NumpyFactorGraph(FactorGraph):
 		self._add_vertices(vertices, attributes, variables=False)
 
 	def _add_vertices(self, vertices, attributes=None, variables=True):
-		self._factors.update(vertices)
+		if attributes is not None:
+			cls = self.__class__.__name__
+			raise NotImplementedError(_VERTEX_ATTRIBUTE_EXCEPTION.format(cls))
+		if variables:
+			self._variables.update(vertices)
+		else:
+			self._factors.update(vertices)
 		self._graph.fromkeys(vertices, np.array([]))
-		self._vertex_store.put(keys=vertices, attributes=attributes)
 
 	def add_edges(self, edges, attributes=None):
 		if attributes is not None:

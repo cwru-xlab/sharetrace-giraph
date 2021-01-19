@@ -59,7 +59,7 @@ def simulate(
 if __name__ == '__main__':
 	local_mode = True
 	impl = graphs.NUMPY
-	users = 10000
+	users = 100
 	backend.set_local_mode(local_mode)
 	if local_mode:
 		factors, variables = setup(users=users)
