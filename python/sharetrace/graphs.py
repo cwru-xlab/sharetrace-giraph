@@ -80,6 +80,8 @@ class FactorGraph(abc.ABC):
 class IGraphFactorGraph(FactorGraph):
 	__slots__ = ['_graph', '_factors', '_variables']
 
+	NAME = 'name'
+
 	def __init__(self):
 		super(IGraphFactorGraph, self).__init__()
 		self._graph = igraph.Graph()
@@ -101,9 +103,8 @@ class IGraphFactorGraph(FactorGraph):
 	def get_neighbors(
 			self, vertex: Vertex) -> Union[Iterable[str], Iterable[int]]:
 		neighbors = self._graph.neighbors(vertex)
-		key = 'name'
-		if key in self._graph.vs.attribute_names():
-			neighbors = (self._graph.vs[n][key] for n in neighbors)
+		if self.NAME in self._graph.vs.attribute_names():
+			neighbors = (self._graph.vs[n][self.NAME] for n in neighbors)
 		return neighbors
 
 	def get_vertex_attr(self, vertex: Vertex, key: Hashable) -> Any:
@@ -311,7 +312,7 @@ class _FactorGraphBuilder:
 			vertex_store_as_actor: bool = True,
 			detached: bool = True):
 		self._graph = factor_graph_factory(
-			backend=backend, as_actor=graph_as_actor)
+			backend=backend, as_actor=graph_as_actor, detached=detached)
 		self.backend = backend
 		self.graph_as_actor = bool(graph_as_actor)
 		self.share_graph = bool(share_graph)
@@ -458,18 +459,20 @@ class FactorGraphBuilder:
 			value = None
 		return value
 
-	def build(self, kill: bool = True) -> Union[
+	def build(self) -> Union[
 		Tuple[FactorGraph, Iterable[Vertex], Iterable[Vertex], VertexStore],
 		Tuple[FactorGraph, Iterable[Vertex], Iterable[Vertex]],
 		Tuple[FactorGraph, VertexStore],
 		FactorGraph]:
 		if self.as_actor:
 			value = ray.get(self._actor.build.remote())
-			if kill:
-				ray.kill(self._actor)
 		else:
 			value = self._actor.build()
 		return value
+
+	def kill(self):
+		if self.as_actor:
+			ray.kill(self._actor)
 
 
 def _factor_graph_factory(

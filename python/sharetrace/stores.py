@@ -17,7 +17,7 @@ class Full(Exception):
 class Queue:
 	"""Extension of Queue implementation on Ray.
 
-	Allows for a non-actor _queue using asyncio.Queue.
+	Allows for a non-actor queue using asyncio.Queue.
 	"""
 
 	__slots__ = ['local_mode', 'detached', 'max_size', '_actor']

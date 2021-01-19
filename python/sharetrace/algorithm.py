@@ -10,6 +10,7 @@ import attr
 import codetiming
 import numpy as np
 import ray
+
 import backend
 import graphs
 import model
@@ -24,18 +25,16 @@ Optimizations:
 	- Only make copies of mutable collections if modifying them
 """
 
-# TODO Update all docstrings
-
 _2_DAYS = np.timedelta64(datetime.timedelta(days=2))
 _NOW = np.datetime64(datetime.datetime.utcnow(), 's')
 _DEFAULT_MESSAGE = model.RiskScore(
 	name='DEFAULT_ID', timestamp=datetime.datetime.utcnow(), value=0)
-_RiskScores = Iterable[model.RiskScore]
-_GroupedRiskScores = Iterable[Tuple[Hashable, _RiskScores]]
-_Contacts = Iterable[model.Contact]
-_Vertices = Union[np.ndarray, ray.ObjectRef]
-_OptionalObjectRefs = Optional[Sequence[ray.ObjectRef]]
-_Queue = Union[asyncio.Queue, stores.Queue]
+RiskScores = Iterable[model.RiskScore]
+GroupedRiskScores = Iterable[Tuple[Hashable, RiskScores]]
+Contacts = Iterable[model.Contact]
+Vertices = Union[np.ndarray, ray.ObjectRef]
+OptionalObjectRefs = Optional[Sequence[ray.ObjectRef]]
+Queue = Union[asyncio.Queue, stores.Queue]
 log = backend.LOGGER
 
 
@@ -47,37 +46,23 @@ class BeliefPropagation:
 	with vertex data containing all occurrences (time-duration pairs) in the
 	recent past that two individuals came into sufficiently long contact.
 	Variable vertices represent individuals, with vertex data containing the
-	max risk score as well as all risk scores sent from neighboring factor
-	vertices.
+	local risk scores, the maximum of these scores, and all risk scores sent
+	from neighboring factor vertices.
 
-	Following the core msg-passing principle of belief propagation,
+	Following the core message-passing principle of belief propagation,
 	the algorithm performs iterative computation between the factor and
 	variable vertex sets. The algorithm begins with all variable vertices
 	selecting their maximum local score and sending it to all of their
 	neighboring factor vertices. Once this is done, all factor vertices filter
-	the risk scores, based on when the individuals came into contact,
-	and relays all risk scores sent from one individual to the other individual
-	involved in the contact. This completes one iteration of the algorithm
-	and is repeated until either a certain number of iterations has passed or
-	the summed difference in variable risk scores from the previous iteration
-	drops below a set tolerance, whichever condition is satisfied first.
-
-	Variable vertex name:
-		- HAT name
-
-	Variable vertex values:
-		- local risk scores
-		- max risk score
-		- risk scores received from neighboring factor vertices
-
-	Factor vertex name:
-		- HAT names of the contact
-
-	Factor vertex values:
-		- occurrences (time-duration pairs)
-
-	Edge data:
-		- msg between factor and variable vertices
+	the risk scores, based on when the individuals came into contact. A
+	weighted transformation that accounts for the amount of time passed from
+	when the risk score was recorded and the time of running the algorithm is
+	applied to all risk scores from a variable vertex. The maximum of these
+	is sent to the other variable vertex connected to the factor vertex.
+	This completes one iteration of the algorithm and is repeated until
+	either a certain number of iterations has passed or the summed difference
+	in variable risk scores from the previous iteration drops below a set
+	tolerance, whichever condition is satisfied first.
 	"""
 	transmission_rate = attr.ib(type=float, default=0.8, converter=float)
 	tolerance = attr.ib(type=float, default=1e-5, converter=float)
@@ -86,7 +71,7 @@ class BeliefPropagation:
 	backend = attr.ib(type=str, default=graphs.DEFAULT)
 	seed = attr.ib(type=Any, default=None)
 	local_mode = attr.ib(type=bool, default=None)
-	_queue = attr.ib(type=_Queue, init=False, repr=False)
+	_queue = attr.ib(type=Queue, init=False, repr=False)
 	_graph = attr.ib(type=graphs.FactorGraph, init=False, repr=False)
 	_factors = attr.ib(type=Iterable[graphs.Vertex], init=False, repr=False)
 	_variables = attr.ib(type=Iterable[graphs.Vertex], init=False, repr=False)
@@ -134,8 +119,8 @@ class BeliefPropagation:
 	def __call__(
 			self,
 			*,
-			factors: _Contacts,
-			variables: _GroupedRiskScores
+			factors: Contacts,
+			variables: GroupedRiskScores
 	) -> Iterable[Tuple[graphs.Vertex, model.RiskScore]]:
 		log('-----------START BELIEF PROPAGATION-----------')
 		with codetiming.Timer(text='Total duration: {:0.6f} s', logger=log):
@@ -170,8 +155,8 @@ class BeliefPropagation:
 
 	def _create_graph(
 			self,
-			factors: _Contacts,
-			variables: _GroupedRiskScores) -> NoReturn:
+			factors: Contacts,
+			variables: GroupedRiskScores) -> NoReturn:
 		if self.local_mode:
 			builder = graphs.FactorGraphBuilder(
 				as_actor=False,  # Single-process
@@ -202,7 +187,8 @@ class BeliefPropagation:
 			ray.get(add_variables.remote(builder, variables))
 			add_factors_and_edges = ray.remote(self._add_factors_and_edges)
 			ray.get(add_factors_and_edges.remote(builder, factors))
-			graph, factors, variables, vertex_store = builder.build(kill=True)
+			graph, factors, variables, vertex_store = builder.build()
+			builder.kill()
 			self._graph = graph
 			self._vertex_store = vertex_store
 			self._factors = factors
@@ -211,7 +197,7 @@ class BeliefPropagation:
 	@staticmethod
 	def _add_variables(
 			builder: graphs.FactorGraphBuilder,
-			variables: _GroupedRiskScores) -> NoReturn:
+			variables: GroupedRiskScores) -> NoReturn:
 		vertices = []
 		attrs = {}
 		for k, v in ((str(k), v) for k, v in variables):
@@ -224,7 +210,7 @@ class BeliefPropagation:
 	@staticmethod
 	def _add_factors_and_edges(
 			builder: graphs.FactorGraphBuilder,
-			factors: _Contacts) -> NoReturn:
+			factors: Contacts) -> NoReturn:
 		def make_key(factor: model.Contact):
 			parts = tuple(str(u) for u in sorted(factor.users))
 			key = '_'.join(parts)
@@ -242,7 +228,7 @@ class BeliefPropagation:
 
 	def _get_maxes(
 			self,
-			only_value: bool = False) -> Union[_RiskScores, Iterable[float]]:
+			only_value: bool = False) -> Union[RiskScores, Iterable[float]]:
 		get_max = functools.partial(self._vertex_store.get, attribute='max')
 		maxes = (get_max(key=v) for v in self._get_variables())
 		if only_value:
@@ -251,7 +237,7 @@ class BeliefPropagation:
 			maxes = np.array(list(maxes))
 		return maxes
 
-	def _send_to_factors(self) -> _OptionalObjectRefs:
+	def _send_to_factors(self) -> OptionalObjectRefs:
 		kwargs = {
 			'graph': self._graph,
 			'vertex_store': self._vertex_store,
@@ -277,7 +263,7 @@ class BeliefPropagation:
 			graph: graphs.FactorGraph,
 			vertex_store: stores.VertexStore,
 			variables: np.ndarray,
-			msg_queue: _Queue,
+			msg_queue: Queue,
 			block_queue: bool,
 			indices: np.ndarray):
 		for v in variables[indices]:
@@ -293,7 +279,7 @@ class BeliefPropagation:
 				msg_queue.put(msg, block=block_queue)
 
 	def _update_inboxes(
-			self, remaining: _OptionalObjectRefs = None) -> NoReturn:
+			self, remaining: OptionalObjectRefs = None) -> NoReturn:
 		remaining = () if remaining is None else remaining
 		while len(remaining) or self._queue.qsize():
 			if not self.local_mode:
@@ -302,7 +288,7 @@ class BeliefPropagation:
 			attributes = {msg.receiver: {'inbox': {msg.sender: msg.content}}}
 			self._vertex_store.put(keys=[msg.receiver], attributes=attributes)
 
-	def _send_to_variables(self) -> _OptionalObjectRefs:
+	def _send_to_variables(self) -> OptionalObjectRefs:
 		kwargs = {
 			'graph': self._graph,
 			'vertex_store': self._vertex_store,
@@ -326,7 +312,7 @@ class BeliefPropagation:
 			graph: graphs.FactorGraph,
 			factors: np.ndarray,
 			vertex_store: stores.VertexStore,
-			msg_queue: _Queue,
+			msg_queue: Queue,
 			block_queue: bool,
 			indices: np.ndarray,
 			transmission_rate: float) -> NoReturn:
@@ -413,14 +399,14 @@ class BeliefPropagation:
 		clear(self._get_variables())
 		clear(self._get_factors())
 
-	def _get_variables(self, as_ref: bool = False) -> _Vertices:
+	def _get_variables(self, as_ref: bool = False) -> Vertices:
 		return self._get_vertices(variables=True, as_ref=as_ref)
 
-	def _get_factors(self, as_ref: bool = False) -> _Vertices:
+	def _get_factors(self, as_ref: bool = False) -> Vertices:
 		return self._get_vertices(variables=False, as_ref=as_ref)
 
 	def _get_vertices(
-			self, variables: bool = True, as_ref: bool = False) -> _Vertices:
+			self, variables: bool = True, as_ref: bool = False) -> Vertices:
 		vertices = self._variables if variables else self._factors
 		return vertices if self.local_mode or as_ref else ray.get(vertices)
 

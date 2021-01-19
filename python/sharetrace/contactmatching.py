@@ -18,31 +18,70 @@ def compute(
 		locations: Iterable[model.LocationHistory],
 		*,
 		as_iterator: bool = True,
-		local_mode: bool = None) -> Iterable[model.Contact]:
+		local_mode: bool = None,
+		min_duration: datetime.timedelta = _MIN_DURATION
+) -> Iterable[model.Contact]:
+	"""
+	Given two LocationHistory instances, this algorithm finds a contact if one
+	exists. Two users must be in the same location for a sufficiently long
+	period of time for them to be considered in contact.
+
+	The algorithm takes as input an iterable of LocationHistory instances,
+	each belonging to a distinct user. Since a Contact is symmetric, only the
+	unique pairs are considered to prevent redundant computation.
+
+	This algorithm iterates through both histories to find all occurrences
+	For any given entry, if both LocationHistory instances have the same
+	location and the occurrence has not begun, the start of the occurrence is
+	the later of the two instances. It is assumed that the user is in the same
+	location until the next location is recorded. Once the occurrence has
+	begun, both LocationHistory instances are iterated until the locations
+	differ; this marks the end of the occurrence. The earlier of the two
+	LocationHistory instances is used to indicate the end of the occurrence.
+	If this interval is long enough, the interval is recorded as an official
+	occurrence. This is repeated for all uniques pairs supplied as input to
+	the algorithm. In the case that the end of either LocationHistory
+	is reached and the occurrence has begun, the same check is made to verify
+	if the occurrence is long enough.
+
+	Given a collection of LocationHistory instances of size N, the iteration
+	over all unique pairs takes O(N(N - 1) / 2) = O(N^2). Given two
+	LocationHistory instances of size H1 and H2, the time to find all
+	occurrences is O(max(H1, H2)). The overall running time is
+	O(max(H1, H2) + N^2). Given that the iterable of LocationHistory
+	instances can be partitioned, the map-reduce paradigm can be applied to
+	apply the algorithm to each partition and collect all of the resulting
+	Contact instances.
+	"""
 	local_mode = backend.LOCAL_MODE if local_mode is None else local_mode
 	log('-----------START CONTACT MATCHING-----------')
 	with ct.Timer(text='Total duration: {:0.6f} s'):
 		result = _compute(
-			locations, local_mode=local_mode, as_iterator=as_iterator)
+			locations,
+			local_mode=local_mode,
+			as_iterator=as_iterator,
+			min_duration=min_duration)
 	log('-----------END CONTACT MATCHING-----------')
 	return result
 
 
 def _compute(
 		locations: Iterable[model.LocationHistory],
-		local_mode: bool = None,
-		as_iterator: bool = True) -> Iterable[model.Contact]:
+		local_mode: bool,
+		as_iterator: bool,
+		min_duration: datetime.timedelta) -> Iterable[model.Contact]:
 	local_mode = backend.LOCAL_MODE if local_mode is None else local_mode
 	with ct.Timer(text='Creating unique pairs: {:0.6f} s', logger=log):
 		pairs = itertools.combinations(locations, 2)
 	with ct.Timer(text='Finding contacts: {:0.6f} s', logger=log):
 		if local_mode:
-			contacts = (_find_contact(*p) for p in pairs)
+			contacts = (_find_contact(p[0], p[1], min_duration) for p in pairs)
 			contacts = (c for c in contacts if len(c.occurrences) > 0)
 		else:
 			pairs = it.from_iterators([pairs])
 			contacts = pairs.for_each(
-				lambda p: _find_contact(*p), max_concurrency=backend.NUM_CPUS)
+				lambda p: _find_contact(p[0], p[1], min_duration),
+				max_concurrency=backend.NUM_CPUS)
 			contacts = contacts.filter(lambda c: len(c.occurrences) > 0)
 	with ct.Timer(text='Outputting contacts: {:0.6f} s', logger=log):
 		if not local_mode:
@@ -53,15 +92,18 @@ def _compute(
 
 
 def _find_contact(
-		h1: model.LocationHistory, h2: model.LocationHistory) -> model.Contact:
+		h1: model.LocationHistory,
+		h2: model.LocationHistory,
+		min_duration: datetime.timedelta) -> model.Contact:
 	users = {h1.name, h2.name}
-	occurrences = _find_occurrences(h1, h2)
+	occurrences = _find_occurrences(h1, h2, min_duration)
 	return model.Contact(users=users, occurrences=occurrences)
 
 
 def _find_occurrences(
 		h1: model.LocationHistory,
-		h2: model.LocationHistory) -> Iterable[model.Occurrence]:
+		h2: model.LocationHistory,
+		min_duration: datetime.timedelta) -> Iterable[model.Occurrence]:
 	occurrences = set()
 	if len(h1.history) == 0 and len(h2.history) == 0 or h1.name == h2.name:
 		return occurrences
@@ -86,9 +128,9 @@ def _find_occurrences(
 		else:
 			if started:
 				started = False
-				occurrence = _create_occurrence(start, loc1, loc2)
-				if occurrence is not None:
-					occurrences.add(occurrence)
+				occur = _create_occurrence(start, loc1, loc2, min_duration)
+				if occur is not None:
+					occurrences.add(occur)
 			else:
 				if loc1.timestamp < loc2.timestamp:
 					loc1 = next1
@@ -104,19 +146,20 @@ def _find_occurrences(
 						loc2 = next2
 						next2 = next(iter2, None)
 	if started:
-		occurrence = _create_occurrence(start, loc1, loc2)
-		if occurrence is not None:
-			occurrences.add(occurrence)
+		occur = _create_occurrence(start, loc1, loc2, min_duration)
+		if occur is not None:
+			occurrences.add(occur)
 	return occurrences
 
 
 def _create_occurrence(
 		start: model.TemporalLocation,
 		loc1: model.TemporalLocation,
-		loc2: model.TemporalLocation) -> Optional[model.Occurrence]:
+		loc2: model.TemporalLocation,
+		min_duration: datetime.timedelta) -> Optional[model.Occurrence]:
 	end = _get_earlier(loc1, loc2)
 	duration = end.timestamp - start.timestamp
-	if duration >= _MIN_DURATION:
+	if duration >= min_duration:
 		occurrence = model.Occurrence(
 			timestamp=start.timestamp, duration=duration)
 	else:
