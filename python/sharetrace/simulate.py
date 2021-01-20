@@ -25,7 +25,8 @@ def setup(
 			model.RiskScore(
 				name=str(u),
 				timestamp=start + datetime.timedelta(random.randint(0, days)),
-				value=random.random())
+				# Skewed toward lower scores
+				value=random.betavariate(alpha=2, beta=10))
 			for _ in range(scores)]
 		variables.append((u, risks))
 		history = (
@@ -57,12 +58,12 @@ def simulate(
 
 
 if __name__ == '__main__':
-	local_mode = True
+	local_mode = False
 	impl = graphs.NUMPY
-	users = 100
+	setup_kwargs = {'users': 1000, 'scores': 14, 'days': 14}
 	backend.set_local_mode(local_mode)
 	if local_mode:
-		factors, variables = setup(users=users)
+		factors, variables = setup(**setup_kwargs)
 		factors = contactmatching.compute(factors)
 		risks = simulate(
 			factors=factors,
@@ -70,7 +71,7 @@ if __name__ == '__main__':
 			impl=impl)
 	else:
 		with backend.ray_context(num_cpus=backend.NUM_CPUS):
-			factors, variables = setup(users=users)
+			factors, variables = setup(**setup_kwargs)
 			factors = contactmatching.compute(factors)
 			risks = simulate(
 				factors=factors,
