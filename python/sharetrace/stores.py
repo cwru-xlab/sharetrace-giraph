@@ -2,7 +2,7 @@ import asyncio
 from typing import Any, Hashable, Iterable, Mapping, NoReturn, Optional
 
 import ray
-from ray.util import queue
+
 import backend
 
 
@@ -50,27 +50,18 @@ class Queue:
 
 	def qsize(self):
 		"""The size of the queue."""
-		if self.local_mode:
-			value = self._actor.qsize()
-		else:
-			value = ray.get(self._actor.qsize.remote())
-		return value
+		qsize = self._actor.qsize
+		return qsize() if self.local_mode else ray.get(qsize.remote())
 
 	def empty(self):
 		"""Whether the queue is empty."""
-		if self.local_mode:
-			value = self._actor.empty()
-		else:
-			value = ray.get(self._actor.empty.remote())
-		return value
+		empty = self._actor.empty
+		return empty() if self.local_mode else ray.get(empty.remote())
 
 	def full(self):
 		"""Whether the queue is full."""
-		if self.local_mode:
-			value = self._actor.full()
-		else:
-			value = ray.get(self._actor.full.remote())
-		return value
+		full = self._actor.full
+		return full() if self.local_mode else ray.get(full.remote())
 
 	def put(self, item, block=True, timeout=None):
 		"""Adds an item to the queue.
@@ -85,20 +76,19 @@ class Queue:
 		"""
 		if not block:
 			try:
-				if self.local_mode:
-					self._actor.put_nowait(item)
-				else:
-					ray.get(self._actor.put_nowait.remote(item))
+				put = self._actor.put_nowait
+				put(item) if self.local_mode else put.remote(item)
 			except asyncio.QueueFull:
 				raise Full
 		else:
 			if timeout is not None and timeout < 0:
 				raise ValueError("'timeout' must be a non-negative number")
 			else:
+				put = self._actor.put
 				if self.local_mode:
-					self._actor.put(item, timeout)
+					put(item, timeout)
 				else:
-					ray.get(self._actor.put.remote(item, timeout))
+					put.remote(item, timeout)
 
 	def get(self, block=True, timeout=None):
 		"""Gets an item from the _queue.
@@ -114,22 +104,22 @@ class Queue:
 			Empty if the _queue is empty, blocking is True, and it timed out.
 			ValueError if timeout is negative.
 		"""
-		if not block:
-			try:
-				if self.local_mode:
-					value = self._actor.get_nowait()
-				else:
-					value = ray.get(self._actor.get_nowait.remote())
-			except asyncio.QueueEmpty:
-				raise Empty
-		else:
+		if block:
 			if timeout is not None and timeout < 0:
 				raise ValueError("'timeout' must be a non-negative number")
 			else:
+				get = self._actor.get
 				if self.local_mode:
-					value = self._actor.get(timeout)
+					value = get(timeout)
 				else:
-					value = ray.get(self._actor.get.remote(timeout))
+					value = ray.get(get.remote(timeout))
+		else:
+			try:
+				get = self._actor.get_nowait
+				value = get() if self.local_mode else ray.get(get.remote())
+			except asyncio.QueueEmpty:
+				raise Empty
+
 		return value
 
 	def put_nowait(self, item):
@@ -206,26 +196,27 @@ class VertexStore:
 
 	def get(
 			self,
+			*,
 			key: Hashable,
 			attribute: Any = None,
 			as_ref: bool = False) -> Any:
+		get = self._actor.get
 		if self.local_mode:
-			value = self._actor.get(key, attribute)
+			value = get(key, attribute)
 		else:
-			value = self._actor.get.remote(key, attribute)
+			value = get.remote(key, attribute)
 		return value if as_ref or self.local_mode else ray.get(value)
 
 	def put(
 			self,
+			*,
 			keys: Iterable[Hashable],
-			attributes: Mapping[Hashable, Any] = None,
-			as_ref: bool = False) -> Optional[ray.ObjectRef]:
+			attributes: Mapping[Hashable, Any] = None) -> NoReturn:
+		put = self._actor.put
 		if self.local_mode:
-			self._actor.put(keys, attributes)
-			value = None
+			put(keys, attributes)
 		else:
-			value = self._actor.put.remote(keys, attributes)
-		return value if as_ref or self.local_mode else ray.get(value)
+			put.remote(keys, attributes)
 
 	def kill(self) -> NoReturn:
 		if not self.local_mode:
