@@ -26,7 +26,7 @@ async def main():
 
 def _compute(
 		locations: Iterable[model.LocationHistory],
-		variables: algorithm.GroupedRiskScores
+		variables: algorithm.AllRiskScores
 ) -> Iterable[Tuple[Hashable, model.RiskScore]]:
 	factors = contactmatching.compute(locations)
 	bp = algorithm.BeliefPropagation()
