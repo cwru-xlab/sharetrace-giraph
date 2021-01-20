@@ -5,7 +5,6 @@ from typing import Iterable, Optional
 
 import codetiming as ct
 import numpy as np
-from ray.util import iter as it
 
 import backend
 import model
@@ -18,7 +17,6 @@ def compute(
 		locations: Iterable[model.LocationHistory],
 		*,
 		as_iterator: bool = True,
-		local_mode: bool = None,
 		min_duration: datetime.timedelta = _MIN_DURATION
 ) -> Iterable[model.Contact]:
 	"""
@@ -57,7 +55,6 @@ def compute(
 	with ct.Timer(text='Total duration: {:0.6f} s'):
 		result = _compute(
 			locations,
-			local_mode=local_mode,
 			as_iterator=as_iterator,
 			min_duration=min_duration)
 	log('-------------END CONTACT MATCHING-------------')
@@ -66,25 +63,14 @@ def compute(
 
 def _compute(
 		locations: Iterable[model.LocationHistory],
-		local_mode: bool,
 		as_iterator: bool,
 		min_duration: datetime.timedelta) -> Iterable[model.Contact]:
-	local_mode = backend.LOCAL_MODE if local_mode is None else local_mode
 	with ct.Timer(text='Creating unique pairs: {:0.6f} s', logger=log):
 		pairs = itertools.combinations(locations, 2)
 	with ct.Timer(text='Finding contacts: {:0.6f} s', logger=log):
-		if local_mode:
-			contacts = (_find_contact(p[0], p[1], min_duration) for p in pairs)
-			contacts = (c for c in contacts if len(c.occurrences) > 0)
-		else:
-			pairs = it.from_iterators([pairs])
-			contacts = pairs.for_each(
-				lambda p: _find_contact(p[0], p[1], min_duration),
-				max_concurrency=1)
-			contacts = contacts.filter(lambda c: len(c.occurrences) > 0)
+		contacts = (_find_contact(p[0], p[1], min_duration) for p in pairs)
+		contacts = (c for c in contacts if len(c.occurrences) > 0)
 	with ct.Timer(text='Outputting contacts: {:0.6f} s', logger=log):
-		if not local_mode:
-			contacts = contacts.gather_async(batch_ms=250, num_async=25)
 		if not as_iterator:
 			contacts = np.array(list(contacts))
 		return contacts
