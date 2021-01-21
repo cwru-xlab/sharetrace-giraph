@@ -1,4 +1,5 @@
 import contextlib
+import datetime
 import time
 from typing import Callable
 
@@ -7,12 +8,27 @@ import ray
 
 NUM_CPUS = psutil.cpu_count(logical=False)
 LOGGER: Callable = print
-LOCAL_MODE = False
+LOCAL_MODE = True
+TIME = datetime.datetime.utcnow()
+
+
+def set_logger(value: Callable):
+	global LOGGER
+	if not isinstance(value, Callable):
+		raise TypeError("'value must be of type Callable")
+	LOGGER = value
 
 
 def set_local_mode(value: bool):
 	global LOCAL_MODE
-	LOCAL_MODE = value
+	LOCAL_MODE = bool(value)
+
+
+def set_time(value: datetime.datetime):
+	global TIME
+	if not isinstance(value, datetime.datetime):
+		raise TypeError("'value' must be of type datetime")
+	TIME = value
 
 
 @contextlib.contextmanager
@@ -34,7 +50,3 @@ def get_per_task_overhead():
 		[ray.get(no_work.remote(x)) for x in range(num_calls)]
 		overhead = (time.time() - start) * 1000 / num_calls
 		print("per task overhead (ms) =", overhead)
-
-
-if __name__ == '__main__':
-	get_per_task_overhead()
