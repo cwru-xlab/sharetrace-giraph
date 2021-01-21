@@ -58,8 +58,8 @@ class BeliefPropagation:
 	in variable risk scores from the previous iteration drops below a set
 	tolerance, whichever condition is satisfied first.
 	"""
-	transmission_rate = attr.ib(type=float, default=0.8, converter=float)
-	tolerance = attr.ib(type=float, default=1e-5, converter=float)
+	transmission_rate = attr.ib(type=float, default=1, converter=float)
+	tolerance = attr.ib(type=float, default=1e-10, converter=float)
 	iterations = attr.ib(type=int, default=4, converter=int)
 	max_size = attr.ib(type=Optional[int], default=None)
 	backend = attr.ib(type=str, default=graphs.DEFAULT)
@@ -314,6 +314,10 @@ class BeliefPropagation:
 		Returns:
 			Message to send.
 		"""
+
+		def sec_to_day(a: np.ndarray):
+			return np.float64(a) / 86400
+
 		occurs = vertex_store.get(key=factor, attribute='occurrences')
 		occurs = np.array([o.as_array() for o in occurs]).flatten()
 		messages = np.array([m.as_array() for m in messages]).flatten()
@@ -325,9 +329,9 @@ class BeliefPropagation:
 			msg = _DEFAULT_MESSAGE
 		else:
 			diff = old_enough['timestamp'] - _NOW
-			diff = np.array(diff, dtype='timedelta64[D]')
+			diff = sec_to_day(np.array(diff, dtype='timedelta64[h]'))
 			# Newer messages are weighted more with a smaller decay weight
-			weight = np.exp(np.int16(diff))
+			weight = np.exp(diff)
 			# Newer messages account for the weight of older messages
 			norm = np.cumsum(weight)
 			weighted = np.cumsum(old_enough['value'] * weight)
