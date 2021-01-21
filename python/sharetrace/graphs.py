@@ -3,6 +3,7 @@ import collections
 from typing import Any, Collection, Hashable, Iterable, Mapping, NoReturn, \
 	Optional, Tuple, Union
 
+import attr
 import igraph
 import networkx
 import numpy as np
@@ -367,111 +368,29 @@ class RayFactorGraph(FactorGraph):
 		pass
 
 
-class FactorGraphBuilder:
-	__slots__ = [
-		'backend',
-		'as_actor',
-		'share_graph',
-		'graph_as_actor',
-		'use_vertex_store',
-		'vertex_store_as_actor',
-		'detached',
-		'_actor']
-
-	def __init__(
-			self,
-			backend: str = DEFAULT,
-			as_actor: bool = True,
-			share_graph: bool = True,
-			graph_as_actor: bool = False,
-			use_vertex_store: bool = True,
-			vertex_store_as_actor: bool = True,
-			detached: bool = True):
-		kwargs = {
-			'backend': backend,
-			'share_graph': share_graph,
-			'graph_as_actor': graph_as_actor,
-			'use_vertex_store': use_vertex_store,
-			'vertex_store_as_actor': vertex_store_as_actor,
-			'detached': detached}
-		if as_actor:
-			self._actor = ray.remote(_FactorGraphBuilder).remote(**kwargs)
-		else:
-			self._actor = _FactorGraphBuilder(**kwargs)
-		self.backend = backend
-		self.as_actor = bool(as_actor)
-		self.share_graph = bool(share_graph)
-		self.graph_as_actor = bool(graph_as_actor)
-		self.use_vertex_store = bool(use_vertex_store)
-		self.vertex_store_as_actor = bool(vertex_store_as_actor)
-		self.detached = bool(detached)
-
-	def add_variables(self, vertices, attributes=None) -> Optional[Any]:
-		if self.as_actor:
-			value = self._actor.add_variables.remote(vertices, attributes)
-			return ray.get(value)
-		else:
-			self._actor.add_variables(vertices, attributes)
-
-	def add_factors(self, vertices, attributes=None) -> Optional[Any]:
-		if self.as_actor:
-			value = self._actor.add_factors.remote(vertices, attributes)
-			return ray.get(value)
-		else:
-			self._actor.add_factors(vertices, attributes)
-
-	def add_edges(self, edges, attributes=None) -> Optional[Any]:
-		if self.as_actor:
-			value = self._actor.add_edges.remote(edges, attributes)
-			return ray.get(value)
-		else:
-			self._actor.add_edges(edges, attributes)
-
-	def build(self) -> Union[
-		Tuple[FactorGraph, Iterable[Vertex], Iterable[Vertex], VertexStore],
-		Tuple[FactorGraph, Iterable[Vertex], Iterable[Vertex]],
-		Tuple[FactorGraph, VertexStore],
-		FactorGraph]:
-		build = self._actor.build
-		return ray.get(build.remote()) if self.as_actor else build()
-
-	def kill(self):
-		if self.as_actor:
-			ray.kill(self._actor)
-
-
+@attr.s(slots=True)
 class _FactorGraphBuilder:
-	__slots__ = [
-		'backend',
-		'share_graph',
-		'graph_as_actor',
-		'use_vertex_store',
-		'vertex_store_as_actor',
-		'detached',
-		'_graph',
-		'_factors',
-		'_variables',
-		'_vertex_store']
+	backend = attr.ib(type=str, default=DEFAULT)
+	as_actor = attr.ib(type=bool, default=True, converter=bool)
+	share_graph = attr.ib(type=bool, default=True, converter=bool)
+	graph_as_actor = attr.ib(type=bool, default=False, converter=bool)
+	use_vertex_store = attr.ib(type=bool, default=True, converter=bool)
+	vertex_store_as_actor = attr.ib(type=bool, default=True, converter=bool)
+	detached = attr.ib(type=bool, default=True, converter=bool)
+	_graph = attr.ib(type=FactorGraph, init=False, repr=False)
+	_factors = attr.ib(type=Iterable[Vertex], init=False, repr=False)
+	_variables = attr.ib(type=Iterable[Vertex], init=False, repr=False)
+	_vertex_store = attr.ib(type=FactorGraph, init=False, repr=False)
 
-	def __init__(
-			self,
-			backend: str = DEFAULT,
-			share_graph: bool = True,
-			graph_as_actor: bool = False,
-			use_vertex_store: bool = True,
-			vertex_store_as_actor: bool = True,
-			detached: bool = True):
+	def __attrs_post_init__(self):
 		self._graph = factor_graph_factory(
-			backend=backend, as_actor=graph_as_actor, detached=detached)
-		self.backend = backend
-		self.graph_as_actor = bool(graph_as_actor)
-		self.share_graph = bool(share_graph)
-		self.use_vertex_store = bool(use_vertex_store)
-		self.detached = bool(detached)
-		self.vertex_store_as_actor = bool(vertex_store_as_actor)
-		if use_vertex_store:
+			backend=self.backend,
+			as_actor=self.graph_as_actor,
+			detached=self.detached)
+		if self.use_vertex_store:
 			self._vertex_store = VertexStore(
-				local_mode=not self.vertex_store_as_actor, detached=detached)
+				local_mode=not self.vertex_store_as_actor,
+				detached=self.detached)
 		else:
 			self._vertex_store = None
 		self._factors = set()
@@ -536,6 +455,64 @@ class _FactorGraphBuilder:
 				else:
 					handles = self._graph
 		return handles
+
+
+@attr.s(slots=True)
+class FactorGraphBuilder:
+	backend = attr.ib(type=str, default=DEFAULT)
+	as_actor = attr.ib(type=bool, default=True, converter=bool)
+	share_graph = attr.ib(type=bool, default=True, converter=bool)
+	graph_as_actor = attr.ib(type=bool, default=False, converter=bool)
+	use_vertex_store = attr.ib(type=bool, default=True, converter=bool)
+	vertex_store_as_actor = attr.ib(type=bool, default=True, converter=bool)
+	detached = attr.ib(type=bool, default=True, converter=bool)
+	_actor = attr.ib(type=_FactorGraphBuilder, init=False, repr=False)
+
+	def __attrs_post_init__(self):
+		kwargs = {
+			'backend': self.backend,
+			'share_graph': self.share_graph,
+			'graph_as_actor': self.graph_as_actor,
+			'use_vertex_store': self.use_vertex_store,
+			'vertex_store_as_actor': self.vertex_store_as_actor,
+			'detached': self.detached}
+		if self.as_actor:
+			self._actor = ray.remote(_FactorGraphBuilder).remote(**kwargs)
+		else:
+			self._actor = _FactorGraphBuilder(**kwargs)
+
+	def add_variables(self, vertices, attributes=None) -> Optional[Any]:
+		if self.as_actor:
+			value = self._actor.add_variables.remote(vertices, attributes)
+			return ray.get(value)
+		else:
+			self._actor.add_variables(vertices, attributes)
+
+	def add_factors(self, vertices, attributes=None) -> Optional[Any]:
+		if self.as_actor:
+			value = self._actor.add_factors.remote(vertices, attributes)
+			return ray.get(value)
+		else:
+			self._actor.add_factors(vertices, attributes)
+
+	def add_edges(self, edges, attributes=None) -> Optional[Any]:
+		if self.as_actor:
+			value = self._actor.add_edges.remote(edges, attributes)
+			return ray.get(value)
+		else:
+			self._actor.add_edges(edges, attributes)
+
+	def build(self) -> Union[
+		Tuple[FactorGraph, Iterable[Vertex], Iterable[Vertex], VertexStore],
+		Tuple[FactorGraph, Iterable[Vertex], Iterable[Vertex]],
+		Tuple[FactorGraph, VertexStore],
+		FactorGraph]:
+		build = self._actor.build
+		return ray.get(build.remote()) if self.as_actor else build()
+
+	def kill(self):
+		if self.as_actor:
+			ray.kill(self._actor)
 
 
 def _factor_graph_factory(
