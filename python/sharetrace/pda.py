@@ -3,51 +3,48 @@ import datetime
 import functools
 import json
 import time
-from typing import Any, Iterable, Mapping, NoReturn, Optional, Tuple
+from typing import Any, Iterable, Mapping, NoReturn, Optional, Tuple, Union
 
 import aiohttp
 import attr
+import codetiming
 import numpy as np
 
+import backend
 import model
 
 """
 Assumed HAT API data schema (for a single HAT):
 	scores = [{data: {score: <score>, timestamp: <timestamp>}} ...]
-	locations = [{data: {hash: <hash>, timestamp: <timestamp>}} ...]
+	histories = [{data: {hash: <hash>, timestamp: <timestamp>}} ...]
 """
 
-CLIENT_NAMESPACE = '/emitto'
-READ_SCORE_NAMESPACE = '/healthsurveyscores'
-CREATE_SCORE_NAMESPACE = '/exposurescore'
-LOCATION_NAMESPACE = '/locationvectors'
-CONTRACT_ID = '744c7472-3fe5-4492-8eda-5d387d6686d9'
 CONTENT_TYPE_HEADER = {'Content-Type': 'application/json'}
-AUTH = (
-	'Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJBcHBsaWNhdGlvbkRl'
-	'dmVsb3BlciIsCiAgImNvbnRyYWN0SWQiIDogIjc0NGM3NDcyLTNmZTUtNDQ5Mi04ZWRhLTVk'
-	'Mzg3ZDY2ODZkOSIsCiAgImRldmVsb3BlcklkIiA6ICJ1ay0yMDI3MzItZ3IiCn0.yLr-oJFq'
-	'Ew7byMQpeT2wTU5olE1-8H5wOlZek4JXFmo ')
-AUTH_HEADER = {'Authorization': AUTH}
-KEYRING_URL = 'https://contracts.dataswift.io/v1/contracts/keyring'
-READ_URL = 'https://{}.hubofallthings.net/api/v2.6/contract-data/read'
-CREATE_URL = 'https://{}.hubofallthings.net/api/v2.6/contract-data/create'
 SUCCESS_CODE = 200
-ORDER_BY = 'timestamp'
-ORDERING = 'descending'
+HTTPS = 'https://'
 BASE_READ_BODY = {
-	'contractId': CONTRACT_ID,
-	'orderBy': ORDER_BY,
-	'ordering': ORDERING,
+	'orderBy': 'timestamp',
+	'ordering': 'descending',
 	'skip': 0,
 	'take': 100}
 TWO_WEEKS_AGO = datetime.datetime.utcnow() - datetime.timedelta(days=14)
-Response = Mapping[str, Any]
+Response = Union[Mapping[str, Any], Iterable[Mapping[str, Any]]]
+logger = backend.LOGGER
+READ_HATS_MSG = 'Reading tokens and hats: {:0.6f} s'
+READ_SCORES_MSG = 'Reading scores: {:0.6f} s'
+READ_LOCATIONS_MSG = 'Reading location histories: {:0.6f} s'
+WRITE_SCORES_MSG = 'Writing scores: {:0.6f} s'
 
 
 @attr.s(slots=True)
 class PdaContext:
 	_session = attr.ib(type=aiohttp.ClientSession, init=False)
+	client_namespace = attr.ib(type=str, default=None)
+	contract_id = attr.ib(type=str, default=None)
+	keyring_url = attr.ib(type=str, default=None)
+	read_url = attr.ib(type=str, default=None)
+	write_url = attr.ib(type=str, default=None)
+	long_lived_token = attr.ib(type=str, default=None)
 
 	async def __aenter__(self):
 		self._session = aiohttp.ClientSession()
@@ -56,20 +53,25 @@ class PdaContext:
 	async def __aexit__(self, exc_type, exc_val, exc_tb):
 		await self._session.close()
 
+	@codetiming.Timer(text=READ_HATS_MSG, logger=logger)
 	async def get_token_and_hats(self) -> Tuple[str, Iterable[str]]:
-		async with self._session.get(
-				KEYRING_URL, headers=AUTH_HEADER) as r:
+		headers = {'Authorization': f'Bearer {self.long_lived_token}'}
+		async with self._session.get(self.keyring_url, headers=headers) as r:
 			text = await self._handle_response(r)
-			return text['token'], np.array(text['associatedHats'])
+		hats = np.array(text['associatedHats'])
+		logger(f'Number of hats retrieved: {len(hats)}')
+		return text['token'], hats
 
+	@codetiming.Timer(text=READ_SCORES_MSG, logger=logger)
 	async def get_scores(
 			self,
-			*,
 			token: str,
+			*,
 			hats: Iterable[str],
+			score_namespace: str,
 			since: datetime.datetime = TWO_WEEKS_AGO
 	) -> Iterable[model.RiskScore]:
-		namespace = ''.join((CLIENT_NAMESPACE, READ_SCORE_NAMESPACE))
+		namespace = '/'.join((self.client_namespace, score_namespace))
 		data = await asyncio.gather(*[
 			self._get_data(token=token, namespace=namespace, hat=h)
 			for h in hats])
@@ -89,14 +91,16 @@ class PdaContext:
 			for t, v in values if t >= since)
 		return hat, scores
 
+	@codetiming.Timer(text=READ_LOCATIONS_MSG, logger=logger)
 	async def get_locations(
 			self,
-			*,
 			token: str,
+			*,
 			hats: Iterable[str],
+			location_namespace: str,
 			since: datetime.datetime = TWO_WEEKS_AGO,
 			obfuscation: int = 3) -> Iterable[model.LocationHistory]:
-		namespace = ''.join((CLIENT_NAMESPACE, LOCATION_NAMESPACE))
+		namespace = '/'.join((self.client_namespace, location_namespace))
 		get_data = functools.partial(
 			self._get_data, namespace=namespace, token=token)
 		return await asyncio.gather(*[
@@ -107,8 +111,8 @@ class PdaContext:
 	async def _to_locations(
 			hat: str,
 			data: Iterable[Mapping[str, Any]],
-			since: datetime.datetime = TWO_WEEKS_AGO,
-			obfuscation: int = 3) -> model.LocationHistory:
+			since: datetime.datetime,
+			obfuscation: int) -> model.LocationHistory:
 		locs = (loc['data'] for loc in data)
 		locs = (
 			(_to_timestamp(loc['timestamp']), loc['hash'][:-obfuscation])
@@ -121,27 +125,31 @@ class PdaContext:
 	async def _get_data(
 			self, token: str, hat: str, namespace: str) -> Response:
 		body = BASE_READ_BODY.copy()
-		body.update({'token': token, 'hatName': hat, 'skip': 0})
-		url = ''.join((READ_URL.format(hat), namespace))
+		body.update({
+			'token': token, 'hatName': hat, 'contractId': self.contract_id})
+		url = _format_url(self.read_url, hat, namespace)
 		async with self._session.post(
 				url, json=body, headers=CONTENT_TYPE_HEADER) as r:
 			return await self._handle_response(r, hat=hat, send=False)
 
+	@codetiming.Timer(text=WRITE_SCORES_MSG, logger=logger)
 	async def post_scores(
 			self,
 			token: str,
-			scores: Iterable[Tuple[str, model.RiskScore]]) -> NoReturn:
-		namespace = ''.join((CLIENT_NAMESPACE, CREATE_SCORE_NAMESPACE))
+			*,
+			scores: Iterable[Tuple[str, model.RiskScore]],
+			namespace: str) -> NoReturn:
+		namespace = '/'.join((self.client_namespace, namespace))
 		timestamp = time.time() * 1e3
 
 		async def post(hat: str, score: model.RiskScore):
 			value = round(score.value, 2)
 			body = {
 				'token': token,
-				'contractId': CONTRACT_ID,
+				'contractId': self.contract_id,
 				'hatName': hat,
 				'body': {'score': value, 'timestamp': timestamp}}
-			url = ''.join((CREATE_URL.format(hat), namespace))
+			url = _format_url(self.write_url, hat, namespace)
 			async with self._session.post(
 					url, json=body, headers=CONTENT_TYPE_HEADER) as r:
 				await self._handle_response(r, hat=hat)
@@ -172,6 +180,11 @@ class PdaContext:
 				msg = f'{status}: failed to authorize keyring\n{text}'
 			raise IOError(msg)
 		return text
+
+
+def _format_url(base_url: str, hat: str, namespace: str):
+	with_hat = ''.join((HTTPS, f'{hat}.', base_url.split(HTTPS)[-1]))
+	return '/'.join((with_hat, namespace))
 
 
 def _to_timestamp(ms_timestamp: float):
