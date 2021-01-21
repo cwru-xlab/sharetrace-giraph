@@ -3,7 +3,7 @@ import datetime
 import functools
 import json
 import time
-from typing import Any, Iterable, Mapping, NoReturn, Optional, Tuple, Union
+from typing import Any, Iterable, Mapping, NoReturn, Optional, Tuple
 
 import aiohttp
 import attr
@@ -34,14 +34,15 @@ READ_URL = 'https://{}.hubofallthings.net/api/v2.6/contract-data/read'
 CREATE_URL = 'https://{}.hubofallthings.net/api/v2.6/contract-data/create'
 SUCCESS_CODE = 200
 ORDER_BY = 'timestamp'
-ORDERING = 'ascending'
+ORDERING = 'descending'
 BASE_READ_BODY = {
 	'contractId': CONTRACT_ID,
 	'orderBy': ORDER_BY,
 	'ordering': ORDERING,
-	'skip': 0}
+	'skip': 0,
+	'take': 100}
 TWO_WEEKS_AGO = datetime.datetime.utcnow() - datetime.timedelta(days=14)
-Response = Union[Iterable[Mapping[str, Any], Mapping[str, Any]]]
+Response = Mapping[str, Any]
 
 
 @attr.s(slots=True)
