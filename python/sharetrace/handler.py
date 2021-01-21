@@ -2,34 +2,50 @@ import asyncio
 import datetime
 import logging
 import os
+from base64 import b64decode
 
 import boto3
 import codetiming
 import jsonpickle
+from aws_xray_sdk.core import patch_all
 
 import backend
 import pda
 import propagation
 import search
 
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+patch_all()
+backend.set_stdout(logger.info)
+backend.set_stderr(logger.error)
+stdout = backend.STDOUT
+stderr = backend.STDERR
+
 backend.set_local_mode(True)
 backend.set_time(datetime.datetime.utcnow())
 
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
-backend.set_logger(logger.info)
-logger = backend.LOGGER
+lambda_client = boto3.client('lambda')
+lambda_client.get_account_settings()
+kms_client = boto3.client('kms')
 
-client = boto3.client('lambda')
-client.get_account_settings()
+
+def _decrypt(value):
+	context = {'LambdaFunctionName': os.environ['AWS_LAMBDA_FUNCTION_NAME']}
+	decrypted = kms_client.decrypt(
+		CiphertextBlob=b64decode(value), EncryptionContext=context)
+	return decrypted('Plaintext').decode('utf-8')
+
 
 # PDA environment variables
-CONTRACT_ID = os.environ['CONTRACT_ID']
-LONG_LIVED_TOKEN = os.environ['LONG_LIVED_TOKEN']
-CLIENT_NAMESPACE = os.environ['CLIENT_NAMESPACE']
-READ_SCORE_NAMESPACE = os.environ['READ_SCORE_NAMESPACE']
-WRITE_SCORE_NAMESPACE = os.environ['WRITE_SCORE_NAMESPACE']
-LOCATION_NAMESPACE = os.environ['READ_LOCATION_NAMESPACE']
+CONTRACT_ID = _decrypt(os.environ['CONTRACT_ID'])
+LONG_LIVED_TOKEN = _decrypt(os.environ['LONG_LIVED_TOKEN'])
+CLIENT_NAMESPACE = _decrypt(os.environ['CLIENT_NAMESPACE'])
+READ_SCORE_NAMESPACE = _decrypt(os.environ['READ_SCORE_NAMESPACE'])
+WRITE_SCORE_NAMESPACE = _decrypt(os.environ['WRITE_SCORE_NAMESPACE'])
+LOCATION_NAMESPACE = _decrypt(os.environ['READ_LOCATION_NAMESPACE'])
+TAKE_SCORES = int(os.environ['TAKE_SCORES'])
+TAKE_LOCATIONS = int(os.environ['TAKE_LOCATIONS'])
 KEYRING_URL = os.environ['KEYRING_URL']
 READ_URL = os.environ['READ_URL']
 WRITE_URL = os.environ['WRITE_URL']
@@ -52,15 +68,15 @@ SCORE_TIMESTAMP_BUFFER = datetime.timedelta(
 
 def handle(event, context):
 	environment = jsonpickle.encode(dict(**os.environ))
-	logger(f'## ENVIRONMENT VARIABLES\r{environment}')
-	logger(f'## EVENT\r{jsonpickle.encode(event)}')
-	logger(f'## CONTEXT\r{jsonpickle.encode(context)}')
-	logger('------------------START TASK------------------')
+	stdout(f'## ENVIRONMENT VARIABLES\n{environment}')
+	stdout(f'## EVENT\n{jsonpickle.encode(event)}')
+	stdout(f'## CONTEXT\n{jsonpickle.encode(context)}')
+	stdout('------------------START TASK------------------')
 	asyncio.get_event_loop().run_until_complete(_ahandle(event, context))
-	logger('-------------------END TASK-------------------')
+	stdout('-------------------END TASK-------------------')
 
 
-@codetiming.Timer(text='Total task duration: {:0.6f} s', logger=logger)
+@codetiming.Timer(text='Total task duration: {:0.6f} s', logger=stdout)
 async def _ahandle(event, context):
 	def compute(locs, users):
 		contact_search = search.ContactSearch(min_duration=MIN_DURATION)
@@ -75,8 +91,16 @@ async def _ahandle(event, context):
 	async with pda.PdaContext(**KWARGS) as p:
 		token, hats = await p.get_token_and_hats()
 		variables, locations = await asyncio.gather(
-			p.get_scores(token, hats=hats, namespace=READ_SCORE_NAMESPACE),
-			p.get_locations(token, hats=hats, namespace=LOCATION_NAMESPACE))
+			p.get_scores(
+				token,
+				hats=hats,
+				namespace=READ_SCORE_NAMESPACE,
+				take=TAKE_SCORES),
+			p.get_locations(
+				token,
+				hats=hats,
+				namespace=LOCATION_NAMESPACE,
+				take=TAKE_LOCATIONS))
 	if backend.LOCAL_MODE:
 		updated_scores = compute(locations, variables)
 	else:
