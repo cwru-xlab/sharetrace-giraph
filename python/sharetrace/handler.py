@@ -3,6 +3,7 @@ import datetime
 import logging
 import os
 from base64 import b64decode
+from typing import Any, Mapping
 
 import boto3
 import codetiming
@@ -30,7 +31,8 @@ lambda_client.get_account_settings()
 kms_client = boto3.client('kms')
 
 
-def _decrypt(value):
+def _decrypt(value: str) -> str:
+	"""Decrypts an encrypted environment variable"""
 	context = {'LambdaFunctionName': os.environ['AWS_LAMBDA_FUNCTION_NAME']}
 	decrypted = kms_client.decrypt(
 		CiphertextBlob=b64decode(value), EncryptionContext=context)
@@ -66,7 +68,31 @@ SCORE_TIMESTAMP_BUFFER = datetime.timedelta(
 	seconds=float(os.environ['SCORE_TIMESTAMP_BUFFER']))
 
 
-def handle(event, context):
+def handle(event: Mapping[str, Any], context: Mapping[str, Any]):
+	"""Communicates with user PDAs to compute exposure scores.
+
+	Args:
+		event: AWS scheduled CloudWatch Event. Format:
+			{
+				"account": "123456789012",
+				"region": "us-east-2",
+				"detail": {},
+				"detail-type": "Scheduled Event",
+				"source": "aws.events",
+				"time": "2019-03-01T01:23:45Z",
+				"id": "cdc73f9d-aea9-11e3-9d5a-835b769c0d9c",
+				"resources": [
+					"arn:aws:events:us-east-1:123456789012:rule/my-schedule"
+				]
+			}
+		context: Contains various AWS Lambda runtime variables.
+
+	Returns: Mapping that contains the status code of the execution.
+
+	References:
+		https://docs.aws.amazon.com/lambda/latest/dg/services-cloudwatchevents.html
+		https://docs.aws.amazon.com/lambda/latest/dg/python-context.html
+	"""
 	environment = jsonpickle.encode(dict(**os.environ))
 	stdout(f'## ENVIRONMENT VARIABLES\n{environment}')
 	stdout(f'## EVENT\n{jsonpickle.encode(event)}')
@@ -74,6 +100,7 @@ def handle(event, context):
 	stdout('------------------START TASK------------------')
 	asyncio.get_event_loop().run_until_complete(_ahandle(event, context))
 	stdout('-------------------END TASK-------------------')
+	return {'status_code': 200}
 
 
 @codetiming.Timer(text='Total task duration: {:0.6f} s', logger=stdout)
