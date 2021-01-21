@@ -10,7 +10,8 @@ import numpy as np
 import backend
 import model
 
-logger = backend.LOGGER
+stdout = backend.STDOUT
+stderr = backend.STDERR
 _MIN_DURATION = datetime.timedelta(minutes=15)
 Histories = Iterable[model.LocationHistory]
 Contacts = Iterable[model.Contact]
@@ -62,12 +63,12 @@ class ContactSearch:
 			histories: Histories,
 			*,
 			as_iterator: bool = True) -> Contacts:
-		logger('------------START CONTACT MATCHING------------')
+		stdout('------------START CONTACT MATCHING------------')
 		result = self._call(histories, as_iterator)
-		logger('-------------END CONTACT MATCHING-------------')
+		stdout('-------------END CONTACT MATCHING-------------')
 		return result
 
-	@codetiming.Timer('Total duration: {:0.6f} s', logger=logger)
+	@codetiming.Timer('Total duration: {:0.6f} s', logger=stdout)
 	def _call(self, histories: Histories, as_iterator: bool) -> Contacts:
 		pairs = itertools.combinations(histories, 2)
 		contacts = (self._find_contact(*p) for p in pairs)

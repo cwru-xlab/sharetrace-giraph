@@ -29,7 +29,8 @@ Contacts = Iterable[model.Contact]
 Vertices = Union[np.ndarray, ray.ObjectRef]
 OptionalObjectRefs = Optional[Sequence[ray.ObjectRef]]
 Result = Iterable[Tuple[graphs.Vertex, model.RiskScore]]
-logger = backend.LOGGER
+stdout = backend.STDOUT
+stderr = backend.STDERR
 
 
 @attr.s(slots=True)
@@ -117,28 +118,28 @@ class BeliefPropagation:
 
 	def __call__(
 			self, *, factors: Contacts, variables: AllRiskScores) -> Result:
-		logger('-----------START BELIEF PROPAGATION-----------')
+		stdout('-----------START BELIEF PROPAGATION-----------')
 		result = self._call(factors=factors, variables=variables)
-		logger('------------END BELIEF PROPAGATION------------')
+		stdout('------------END BELIEF PROPAGATION------------')
 		return result
 
-	@codetiming.Timer(text='Total duration: {:0.6f} s', logger=logger)
+	@codetiming.Timer(text='Total duration: {:0.6f} s', logger=stdout)
 	def _call(self, *, factors: Contacts, variables: AllRiskScores) -> Result:
 		self._create_graph(factors=factors, variables=variables)
 		maxes = self._get_maxes(only_value=True)
 		i, t = 0, np.inf
 		while i < self.iterations and t > self.tolerance:
-			logger(f'-----------Iteration {i + 1}-----------')
+			stdout(f'-----------Iteration {i + 1}-----------')
 			self._send_to_factors()
 			self._send_to_variables()
 			i, t, maxes = self._update(iteration=i, maxes=maxes)
-			logger(f'---------------------------------')
+			stdout(f'---------------------------------')
 		variables = self._get_variables(as_ref=False)
 		maxes = self._get_maxes()
 		self._shutdown()
 		return zip(variables, maxes)
 
-	@codetiming.Timer(text='Creating graph: {:0.6f} s', logger=logger)
+	@codetiming.Timer(text='Creating graph: {:0.6f} s', logger=stdout)
 	def _create_graph(
 			self,
 			factors: Contacts,
@@ -215,12 +216,12 @@ class BeliefPropagation:
 		if not self.local_mode and not isinstance(graph, ray.ObjectRef):
 			raise TypeError(_NON_REF_GRAPH_OBJECT_MSG)
 
-	@codetiming.Timer(text='Sending to factors: {:0.6f} s', logger=logger)
+	@codetiming.Timer(text='Sending to factors: {:0.6f} s', logger=stdout)
 	def _send_to_factors(self) -> NoReturn:
 		remaining = self._send_to(variables=False)
 		self._update_inboxes(variables=False, remaining=remaining)
 
-	@codetiming.Timer(text='Sending to variables: {:0.6f} s', logger=logger)
+	@codetiming.Timer(text='Sending to variables: {:0.6f} s', logger=stdout)
 	def _send_to_variables(self) -> NoReturn:
 		remaining = self._send_to(variables=True)
 		self._update_inboxes(variables=True, remaining=remaining)
@@ -369,7 +370,7 @@ class BeliefPropagation:
 			maxes = np.array(list(maxes))
 		return maxes
 
-	@codetiming.Timer(text='Updating: {:0.6f} s', logger=logger)
+	@codetiming.Timer(text='Updating: {:0.6f} s', logger=stdout)
 	def _update(
 			self,
 			iteration: int,
@@ -379,7 +380,7 @@ class BeliefPropagation:
 		maxes = iter_maxes
 		self._clear_inboxes()
 		iteration += 1
-		logger(f'Tolerance: {np.round(tolerance, 10)}')
+		stdout(f'Tolerance: {np.round(tolerance, 10)}')
 		return iteration, tolerance, maxes
 
 	def _update_maxes(self) -> np.ndarray:
