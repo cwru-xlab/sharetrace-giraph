@@ -15,10 +15,10 @@ import graphs
 import model
 import stores
 
-_2_DAYS = np.timedelta64(datetime.timedelta(days=2))
-_NOW = np.datetime64(datetime.datetime.utcnow(), 's')
+_TWO_DAYS = np.timedelta64(datetime.timedelta(days=2))
+_NOW = np.datetime64(backend.TIME, 's')
 _DEFAULT_MESSAGE = model.RiskScore(
-	name='DEFAULT_ID', timestamp=datetime.datetime.utcnow(), value=0)
+	name='DEFAULT_ID', timestamp=backend.TIME, value=0)
 _REF_GRAPH_OBJECT_MSG = (
 	'Factor graph must be a FactorGraph instances to run in local mode')
 _NON_REF_GRAPH_OBJECT_MSG = (
@@ -29,7 +29,7 @@ Contacts = Iterable[model.Contact]
 Vertices = Union[np.ndarray, ray.ObjectRef]
 OptionalObjectRefs = Optional[Sequence[ray.ObjectRef]]
 Result = Iterable[Tuple[graphs.Vertex, model.RiskScore]]
-log = backend.LOGGER
+logger = backend.LOGGER
 
 
 @attr.s(slots=True)
@@ -61,7 +61,9 @@ class BeliefPropagation:
 	transmission_rate = attr.ib(type=float, default=1, converter=float)
 	tolerance = attr.ib(type=float, default=1e-10, converter=float)
 	iterations = attr.ib(type=int, default=4, converter=int)
-	max_size = attr.ib(type=Optional[int], default=None)
+	timestamp_buffer = attr.ib(
+		type=datetime.datetime, default=_TWO_DAYS, converter=np.timedelta64)
+	queue_max_size = attr.ib(type=Optional[int], default=None)
 	backend = attr.ib(type=str, default=graphs.DEFAULT)
 	seed = attr.ib(type=Any, default=None)
 	local_mode = attr.ib(type=bool, default=None)
@@ -77,7 +79,9 @@ class BeliefPropagation:
 		if self.local_mode is None:
 			self.local_mode = backend.LOCAL_MODE
 		self._queue = stores.Queue(
-			local_mode=self.local_mode, max_size=self.max_size, detached=True)
+			local_mode=self.local_mode,
+			max_size=self.queue_max_size,
+			detached=True)
 		if self.seed is not None:
 			random.seed(self.seed)
 			np.random.seed(self.seed)
@@ -98,13 +102,13 @@ class BeliefPropagation:
 		if value < 1:
 			raise ValueError("'iterations' must be at least 1")
 
-	@max_size.validator
+	@queue_max_size.validator
 	def _check_max_size(self, attribute, value):
 		if value is not None:
 			if not isinstance(value, int):
-				raise TypeError("'max_size' must of type int or None")
+				raise TypeError("'queue_max_size' must of type int or None")
 			if value < 0:
-				raise ValueError("'max_size' must be least 1")
+				raise ValueError("'queue_max_size' must be least 1")
 
 	@backend.validator
 	def _check_backend(self, attribute, value):
@@ -113,38 +117,28 @@ class BeliefPropagation:
 
 	def __call__(
 			self, *, factors: Contacts, variables: AllRiskScores) -> Result:
-		log('-----------START BELIEF PROPAGATION-----------')
-		with codetiming.Timer(text='Total duration: {:0.6f} s', logger=log):
-			result = self._call(factors=factors, variables=variables)
-		log('------------END BELIEF PROPAGATION------------')
+		logger('-----------START BELIEF PROPAGATION-----------')
+		result = self._call(factors=factors, variables=variables)
+		logger('------------END BELIEF PROPAGATION------------')
 		return result
 
+	@codetiming.Timer(text='Total duration: {:0.6f} s', logger=logger)
 	def _call(self, *, factors: Contacts, variables: AllRiskScores) -> Result:
-		with codetiming.Timer(text='Creating graph: {:0.6f} s', logger=log):
-			self._create_graph(factors=factors, variables=variables)
+		self._create_graph(factors=factors, variables=variables)
 		maxes = self._get_maxes(only_value=True)
 		i, t = 0, np.inf
 		while i < self.iterations and t > self.tolerance:
-			log(f'-----------Iteration {i + 1}-----------')
-			with codetiming.Timer(text='To factors: {:0.6f} s', logger=log):
-				remaining = self._send_to(variables=False)
-				self._update_inboxes(variables=False, remaining=remaining)
-			with codetiming.Timer(text='To variables: {:0.6f} s', logger=log):
-				remaining = self._send_to(variables=True)
-				self._update_inboxes(variables=True, remaining=remaining)
-			with codetiming.Timer(text='Updating: {:0.6f} s', logger=log):
-				iter_maxes = self._update_maxes()
-				t = np.sum(iter_maxes - maxes)
-				maxes = iter_maxes
-				self._clear_inboxes()
-				i += 1
-			log(f'Tolerance: {np.round(t, 6)}')
-			log(f'---------------------------------')
+			logger(f'-----------Iteration {i + 1}-----------')
+			self._send_to_factors()
+			self._send_to_variables()
+			i, t, maxes = self._update(iteration=i, maxes=maxes)
+			logger(f'---------------------------------')
 		variables = self._get_variables(as_ref=False)
 		maxes = self._get_maxes()
 		self._shutdown()
 		return zip(variables, maxes)
 
+	@codetiming.Timer(text='Creating graph: {:0.6f} s', logger=logger)
 	def _create_graph(
 			self,
 			factors: Contacts,
@@ -221,6 +215,16 @@ class BeliefPropagation:
 		if not self.local_mode and not isinstance(graph, ray.ObjectRef):
 			raise TypeError(_NON_REF_GRAPH_OBJECT_MSG)
 
+	@codetiming.Timer(text='Sending to factors: {:0.6f} s', logger=logger)
+	def _send_to_factors(self) -> NoReturn:
+		remaining = self._send_to(variables=False)
+		self._update_inboxes(variables=False, remaining=remaining)
+
+	@codetiming.Timer(text='Sending to variables: {:0.6f} s', logger=logger)
+	def _send_to_variables(self) -> NoReturn:
+		remaining = self._send_to(variables=True)
+		self._update_inboxes(variables=True, remaining=remaining)
+
 	def _send_to(self, *, variables: bool) -> OptionalObjectRefs:
 		kwargs = {
 			'graph': self._graph,
@@ -228,6 +232,7 @@ class BeliefPropagation:
 			'msg_queue': self._queue,
 			'block_queue': self._block_queue(),
 			'transmission_rate': self.transmission_rate,
+			'buffer': self.timestamp_buffer,
 			'local_mode': self.local_mode}
 		num_vertices = self._num_factors if variables else self._num_variables
 		num_cpus = self._get_num_cpus(variables=not variables)
@@ -275,6 +280,7 @@ class BeliefPropagation:
 			block_queue: bool,
 			indices: np.ndarray,
 			transmission_rate: float,
+			buffer: np.datetime64,
 			**kwargs) -> NoReturn:
 		for f in vertices[indices]:
 			neighbors = tuple(graph.get_neighbors(f))
@@ -288,7 +294,8 @@ class BeliefPropagation:
 					vertex_store=vertex_store,
 					factor=f,
 					messages=itertools.chain(local, inbox),
-					transmission_rate=transmission_rate)
+					transmission_rate=transmission_rate,
+					buffer=buffer)
 				msg = model.Message(sender=f, receiver=v, content=content)
 				msg_queue.put(msg, block=block_queue)
 
@@ -297,7 +304,8 @@ class BeliefPropagation:
 			vertex_store: stores.VertexStore,
 			factor: graphs.Vertex,
 			messages: Iterable[model.RiskScore],
-			transmission_rate: float) -> model.RiskScore:
+			transmission_rate: float,
+			buffer: np.datetime64) -> model.RiskScore:
 		"""Computes the message to send from a factor to a variable.
 
 		Only messages that occurred sufficiently before at least one factor
@@ -306,13 +314,6 @@ class BeliefPropagation:
 		most recent message's timestamp and transmission rate. If no
 		messages satisfy the initial condition, a defaults message is sent.
 		Otherwise, the maximum weighted message is sent.
-
-		Args:
-			factor: Factor vertex sending the messages.
-			messages: Messages from the neighbors of the factor vertex.
-
-		Returns:
-			Message to send.
 		"""
 
 		def sec_to_day(a: np.ndarray):
@@ -322,7 +323,7 @@ class BeliefPropagation:
 		occurs = np.array([o.as_array() for o in occurs]).flatten()
 		messages = np.array([m.as_array() for m in messages]).flatten()
 		m = np.where(
-			messages['timestamp'] <= np.max(occurs['timestamp']) - _2_DAYS)
+			messages['timestamp'] <= np.max(occurs['timestamp']) - buffer)
 		# Order messages in ascending order
 		old_enough = np.sort(messages[m], order=['timestamp', 'value', 'name'])
 		if not len(old_enough):
@@ -367,6 +368,19 @@ class BeliefPropagation:
 		else:
 			maxes = np.array(list(maxes))
 		return maxes
+
+	@codetiming.Timer(text='Updating: {:0.6f} s', logger=logger)
+	def _update(
+			self,
+			iteration: int,
+			maxes: np.ndarray) -> Tuple[int, float, np.ndarray]:
+		iter_maxes = self._update_maxes()
+		tolerance = np.float64(np.sum(iter_maxes - maxes))
+		maxes = iter_maxes
+		self._clear_inboxes()
+		iteration += 1
+		logger(f'Tolerance: {np.round(tolerance, 10)}')
+		return iteration, tolerance, maxes
 
 	def _update_maxes(self) -> np.ndarray:
 		updated = []
@@ -443,7 +457,7 @@ class BeliefPropagation:
 
 	def _block_queue(self) -> bool:
 		# Blocking in local mode exposes missing await exception
-		return bool(self.max_size)
+		return bool(self.queue_max_size)
 
 	def _shutdown(self) -> NoReturn:
 		if not self.local_mode:
