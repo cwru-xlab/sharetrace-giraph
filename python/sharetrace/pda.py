@@ -22,18 +22,15 @@ Assumed HAT API data schema (for a single HAT):
 CONTENT_TYPE_HEADER = {'Content-Type': 'application/json'}
 SUCCESS_CODE = 200
 HTTPS = 'https://'
-BASE_READ_BODY = {
-	'orderBy': 'timestamp',
-	'ordering': 'descending',
-	'skip': 0,
-	'take': 100}
+BASE_READ_BODY = {'orderBy': 'timestamp', 'ordering': 'descending', 'skip': 0}
 TWO_WEEKS_AGO = datetime.datetime.utcnow() - datetime.timedelta(days=14)
 Response = Union[Mapping[str, Any], Iterable[Mapping[str, Any]]]
-logger = backend.LOGGER
 READ_HATS_MSG = 'Reading tokens and hats: {:0.6f} s'
 READ_SCORES_MSG = 'Reading scores: {:0.6f} s'
 READ_LOCATIONS_MSG = 'Reading location histories: {:0.6f} s'
 WRITE_SCORES_MSG = 'Writing scores: {:0.6f} s'
+stdout = backend.STDOUT
+stderr = backend.STDERR
 
 
 @attr.s(slots=True)
@@ -53,27 +50,28 @@ class PdaContext:
 	async def __aexit__(self, exc_type, exc_val, exc_tb):
 		await self._session.close()
 
-	@codetiming.Timer(text=READ_HATS_MSG, logger=logger)
+	@codetiming.Timer(text=READ_HATS_MSG, logger=stdout)
 	async def get_token_and_hats(self) -> Tuple[str, Iterable[str]]:
 		headers = {'Authorization': f'Bearer {self.long_lived_token}'}
 		async with self._session.get(self.keyring_url, headers=headers) as r:
 			text = await self._handle_response(r)
 		hats = np.array(text['associatedHats'])
-		logger(f'Number of hats retrieved: {len(hats)}')
+		stdout(f'Number of hats retrieved: {len(hats)}')
 		return text['token'], hats
 
-	@codetiming.Timer(text=READ_SCORES_MSG, logger=logger)
+	@codetiming.Timer(text=READ_SCORES_MSG, logger=stdout)
 	async def get_scores(
 			self,
 			token: str,
 			*,
 			hats: Iterable[str],
 			score_namespace: str,
+			take: int = None,
 			since: datetime.datetime = TWO_WEEKS_AGO
 	) -> Iterable[model.RiskScore]:
 		namespace = '/'.join((self.client_namespace, score_namespace))
 		data = await asyncio.gather(*[
-			self._get_data(token=token, namespace=namespace, hat=h)
+			self._get_data(token=token, namespace=namespace, hat=h, take=take)
 			for h in hats])
 		return await asyncio.gather(*[
 			self._to_scores(h, d, since) for h, d in zip(hats, data)])
@@ -98,11 +96,12 @@ class PdaContext:
 			*,
 			hats: Iterable[str],
 			location_namespace: str,
+			take: int = None,
 			since: datetime.datetime = TWO_WEEKS_AGO,
 			obfuscation: int = 3) -> Iterable[model.LocationHistory]:
 		namespace = '/'.join((self.client_namespace, location_namespace))
 		get_data = functools.partial(
-			self._get_data, namespace=namespace, token=token)
+			self._get_data, namespace=namespace, token=token, take=take)
 		return await asyncio.gather(*[
 			self._to_locations(h, await get_data(hat=h), since, obfuscation)
 			for h in hats])
@@ -123,16 +122,24 @@ class PdaContext:
 		return model.LocationHistory(name=hat, history=locs)
 
 	async def _get_data(
-			self, token: str, hat: str, namespace: str) -> Response:
+			self,
+			token: str,
+			hat: str,
+			namespace: str,
+			take: int) -> Response:
 		body = BASE_READ_BODY.copy()
 		body.update({
-			'token': token, 'hatName': hat, 'contractId': self.contract_id})
+			'token': token,
+			'hatName': hat,
+			'contractId': self.contract_id})
+		if take:
+			body['take'] = take
 		url = _format_url(self.read_url, hat, namespace)
 		async with self._session.post(
 				url, json=body, headers=CONTENT_TYPE_HEADER) as r:
 			return await self._handle_response(r, hat=hat, send=False)
 
-	@codetiming.Timer(text=WRITE_SCORES_MSG, logger=logger)
+	@codetiming.Timer(text=WRITE_SCORES_MSG, logger=stdout)
 	async def post_scores(
 			self,
 			token: str,
@@ -178,7 +185,7 @@ class PdaContext:
 				msg = f'{status}: failed to get data from {hat}\n{text}'
 			else:
 				msg = f'{status}: failed to authorize keyring\n{text}'
-			raise IOError(msg)
+			stderr(msg)
 		return text
 
 
