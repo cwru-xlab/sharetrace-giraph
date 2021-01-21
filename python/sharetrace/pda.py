@@ -38,13 +38,13 @@ WRITE_SCORES_MSG = 'Writing scores: {:0.6f} s'
 
 @attr.s(slots=True)
 class PdaContext:
-	_session = attr.ib(type=aiohttp.ClientSession, init=False)
 	client_namespace = attr.ib(type=str, default=None)
 	contract_id = attr.ib(type=str, default=None)
 	keyring_url = attr.ib(type=str, default=None)
 	read_url = attr.ib(type=str, default=None)
 	write_url = attr.ib(type=str, default=None)
 	long_lived_token = attr.ib(type=str, default=None)
+	_session = attr.ib(type=aiohttp.ClientSession, init=False, repr=False)
 
 	async def __aenter__(self):
 		self._session = aiohttp.ClientSession()
