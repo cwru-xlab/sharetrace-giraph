@@ -1,9 +1,9 @@
 import datetime
 import random
 
-import algorithm
+import propagation
 import backend
-import contactmatching
+import search
 import graphs
 import model
 
@@ -49,7 +49,7 @@ def simulate(
 	transmission_rate = max((min((1, transmission_rate)), 0))
 	iterations = max((1, iterations))
 	tolerance = max(1e-16, tolerance)
-	bp = algorithm.BeliefPropagation(
+	bp = propagation.BeliefPropagation(
 		iterations=iterations,
 		transmission_rate=transmission_rate,
 		tolerance=tolerance,
@@ -60,11 +60,12 @@ def simulate(
 if __name__ == '__main__':
 	local_mode = False
 	impl = graphs.NUMPY
-	setup_kwargs = {'users': 1000, 'scores': 14, 'days': 14}
+	setup_kwargs = {'users': 100, 'scores': 100, 'days': 100}
 	backend.set_local_mode(local_mode)
+	contact_search = search.ContactSearch()
 	if local_mode:
 		factors, variables = setup(**setup_kwargs)
-		factors = contactmatching.compute(factors)
+		factors = contact_search(factors)
 		risks = simulate(
 			factors=factors,
 			variables=variables,
@@ -72,7 +73,7 @@ if __name__ == '__main__':
 	else:
 		with backend.ray_context(num_cpus=backend.NUM_CPUS):
 			factors, variables = setup(**setup_kwargs)
-			factors = contactmatching.compute(factors)
+			factors = contact_search(factors)
 			risks = simulate(
 				factors=factors,
 				variables=variables,
