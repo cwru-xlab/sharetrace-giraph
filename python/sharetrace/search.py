@@ -8,14 +8,14 @@ import codetiming
 import numpy as np
 
 import backend
-import model
+import _model
 
 stdout = backend.STDOUT
 stderr = backend.STDERR
 _MIN_DURATION = datetime.timedelta(minutes=15)
-Histories = Iterable[model.LocationHistory]
-Contacts = Iterable[model.Contact]
-Occurrences = Iterable[model.Occurrence]
+Histories = Iterable[_model.LocationHistory]
+Contacts = Iterable[_model.Contact]
+Occurrences = Iterable[_model.Occurrence]
 
 
 @attr.s(slots=True, frozen=True)
@@ -79,16 +79,16 @@ class ContactSearch:
 
 	def _find_contact(
 			self,
-			h1: model.LocationHistory,
-			h2: model.LocationHistory) -> model.Contact:
+			h1: _model.LocationHistory,
+			h2: _model.LocationHistory) -> _model.Contact:
 		users = {h1.name, h2.name}
 		occurrences = self._find_occurrences(h1, h2)
-		return model.Contact(users=users, occurrences=occurrences)
+		return _model.Contact(users=users, occurrences=occurrences)
 
 	def _find_occurrences(
 			self,
-			h1: model.LocationHistory,
-			h2: model.LocationHistory) -> Occurrences:
+			h1: _model.LocationHistory,
+			h2: _model.LocationHistory) -> Occurrences:
 		occurrences = set()
 		if len(h1.history) == 0 and len(h2.history) == 0 or h1.name == h2.name:
 			return occurrences
@@ -138,23 +138,23 @@ class ContactSearch:
 
 	def _create_occurrence(
 			self,
-			start: model.TemporalLocation,
-			loc1: model.TemporalLocation,
-			loc2: model.TemporalLocation) -> Optional[model.Occurrence]:
+			start: _model.TemporalLocation,
+			loc1: _model.TemporalLocation,
+			loc2: _model.TemporalLocation) -> Optional[_model.Occurrence]:
 		end = ContactSearch._get_earlier(loc1, loc2)
 		duration = end.timestamp - start.timestamp
 		if duration >= self.min_duration:
-			occurrence = model.Occurrence(
+			occurrence = _model.Occurrence(
 				timestamp=start.timestamp, duration=duration)
 		else:
 			occurrence = None
 		return occurrence
 
 	@staticmethod
-	def _get_later(loc1: model.TemporalLocation, loc2: model.TemporalLocation):
+	def _get_later(loc1: _model.TemporalLocation, loc2: _model.TemporalLocation):
 		return loc1 if loc1.timestamp > loc2.timestamp else loc2
 
 	@staticmethod
 	def _get_earlier(
-			loc1: model.TemporalLocation, loc2: model.TemporalLocation):
+			loc1: _model.TemporalLocation, loc2: _model.TemporalLocation):
 		return loc1 if loc1.timestamp < loc2.timestamp else loc2

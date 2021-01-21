@@ -8,7 +8,7 @@ from typing import Any, Mapping
 import boto3
 import codetiming
 import jsonpickle
-from aws_xray_sdk.core import patch_all
+import aws_xray_sdk.core as xray
 
 import backend
 import pda
@@ -17,7 +17,7 @@ import search
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
-patch_all()
+xray.patch_all()
 backend.set_stdout(logger.info)
 backend.set_stderr(logger.error)
 stdout = backend.STDOUT
@@ -40,31 +40,31 @@ def _decrypt(value: str) -> str:
 
 
 # PDA environment variables
-CONTRACT_ID = _decrypt(os.environ['CONTRACT_ID'])
-LONG_LIVED_TOKEN = _decrypt(os.environ['LONG_LIVED_TOKEN'])
-CLIENT_NAMESPACE = _decrypt(os.environ['CLIENT_NAMESPACE'])
-READ_SCORE_NAMESPACE = _decrypt(os.environ['READ_SCORE_NAMESPACE'])
-WRITE_SCORE_NAMESPACE = _decrypt(os.environ['WRITE_SCORE_NAMESPACE'])
-LOCATION_NAMESPACE = _decrypt(os.environ['READ_LOCATION_NAMESPACE'])
-TAKE_SCORES = int(os.environ['TAKE_SCORES'])
-TAKE_LOCATIONS = int(os.environ['TAKE_LOCATIONS'])
-KEYRING_URL = os.environ['KEYRING_URL']
-READ_URL = os.environ['READ_URL']
-WRITE_URL = os.environ['WRITE_URL']
-KWARGS = {
-	'client_namespace': CLIENT_NAMESPACE,
-	'contract_id': CONTRACT_ID,
-	'keyring_url': KEYRING_URL,
-	'read_url': READ_URL,
-	'write_url': WRITE_URL,
-	'long_lived_token': LONG_LIVED_TOKEN}
+_CONTRACT_ID = _decrypt(os.environ['CONTRACT_ID'])
+_LONG_LIVED_TOKEN = _decrypt(os.environ['LONG_LIVED_TOKEN'])
+_CLIENT_NAMESPACE = _decrypt(os.environ['CLIENT_NAMESPACE'])
+_READ_SCORE_NAMESPACE = _decrypt(os.environ['READ_SCORE_NAMESPACE'])
+_WRITE_SCORE_NAMESPACE = _decrypt(os.environ['WRITE_SCORE_NAMESPACE'])
+_LOCATION_NAMESPACE = _decrypt(os.environ['READ_LOCATION_NAMESPACE'])
+_TAKE_SCORES = int(os.environ['TAKE_SCORES'])
+_TAKE_LOCATIONS = int(os.environ['TAKE_LOCATIONS'])
+_KEYRING_URL = os.environ['KEYRING_URL']
+_READ_URL = os.environ['READ_URL']
+_WRITE_URL = os.environ['WRITE_URL']
+_KWARGS = {
+	'client_namespace': _CLIENT_NAMESPACE,
+	'contract_id': _CONTRACT_ID,
+	'keyring_url': _KEYRING_URL,
+	'read_url': _READ_URL,
+	'write_url': _WRITE_URL,
+	'long_lived_token': _LONG_LIVED_TOKEN}
 # Contact search environment variables
-MIN_DURATION = datetime.timedelta(seconds=float(os.environ['MIN_DURATION']))
+_MIN_DURATION = datetime.timedelta(seconds=float(os.environ['MIN_DURATION']))
 # Propagation environment variables
-TRANSMISSION_RATE = float(os.environ['TRANSMISSION_RATE'])
-ITERATIONS = int(os.environ['ITERATIONS'])
-TOLERANCE = float(os.environ['TOLERANCE'])
-SCORE_TIMESTAMP_BUFFER = datetime.timedelta(
+_TRANSMISSION_RATE = float(os.environ['TRANSMISSION_RATE'])
+_ITERATIONS = int(os.environ['ITERATIONS'])
+_TOLERANCE = float(os.environ['TOLERANCE'])
+_SCORE_TIMESTAMP_BUFFER = datetime.timedelta(
 	seconds=float(os.environ['SCORE_TIMESTAMP_BUFFER']))
 
 
@@ -98,41 +98,41 @@ def handle(event: Mapping[str, Any], context: Mapping[str, Any]):
 	stdout(f'## EVENT\n{jsonpickle.encode(event)}')
 	stdout(f'## CONTEXT\n{jsonpickle.encode(context)}')
 	stdout('------------------START TASK------------------')
-	asyncio.get_event_loop().run_until_complete(_ahandle(event, context))
+	asyncio.get_event_loop().run_until_complete(_ahandle())
 	stdout('-------------------END TASK-------------------')
-	return {'status_code': 200}
+	return {'status_code': pda.SUCCESS_CODE}
 
 
 @codetiming.Timer(text='Total task duration: {:0.6f} s', logger=stdout)
-async def _ahandle(event, context):
+async def _ahandle():
 	def compute(locs, users):
-		contact_search = search.ContactSearch(min_duration=MIN_DURATION)
+		contact_search = search.ContactSearch(min_duration=_MIN_DURATION)
 		factors = contact_search(locs)
 		prop = propagation.BeliefPropagation(
-			transmission_rate=TRANSMISSION_RATE,
-			iterations=ITERATIONS,
-			tolerance=TOLERANCE,
-			timestamp_buffer=SCORE_TIMESTAMP_BUFFER)
+			transmission_rate=_TRANSMISSION_RATE,
+			iterations=_ITERATIONS,
+			tolerance=_TOLERANCE,
+			timestamp_buffer=_SCORE_TIMESTAMP_BUFFER)
 		return prop(factors=factors, variables=users)
 
-	async with pda.PdaContext(**KWARGS) as p:
+	async with pda.PdaContext(**_KWARGS) as p:
 		token, hats = await p.get_token_and_hats()
 		variables, locations = await asyncio.gather(
 			p.get_scores(
 				token,
 				hats=hats,
-				namespace=READ_SCORE_NAMESPACE,
-				take=TAKE_SCORES),
+				namespace=_READ_SCORE_NAMESPACE,
+				take=_TAKE_SCORES),
 			p.get_locations(
 				token,
 				hats=hats,
-				namespace=LOCATION_NAMESPACE,
-				take=TAKE_LOCATIONS))
+				namespace=_LOCATION_NAMESPACE,
+				take=_TAKE_LOCATIONS))
 	if backend.LOCAL_MODE:
 		updated_scores = compute(locations, variables)
 	else:
 		with backend.ray_context():
 			updated_scores = compute(locations, variables)
-	async with pda.PdaContext(**KWARGS) as p:
+	async with pda.PdaContext(**_KWARGS) as p:
 		await p.post_scores(
-			token, scores=updated_scores, namespace=WRITE_SCORE_NAMESPACE)
+			token, scores=updated_scores, namespace=_WRITE_SCORE_NAMESPACE)

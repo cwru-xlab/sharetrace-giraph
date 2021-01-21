@@ -9,7 +9,7 @@ import networkx
 import numpy as np
 import ray
 
-from stores import VertexStore
+from _stores import VertexStore
 
 Edge = Tuple[Hashable, Hashable]
 Attributes = Mapping[str, Any]
@@ -308,6 +308,7 @@ class NumpyFactorGraph(FactorGraph):
 		raise NotImplementedError(_KILL_EXCEPTION.format(cls))
 
 
+# noinspection PyUnresolvedReferences
 class RayFactorGraph(FactorGraph):
 	__slots__ = ['backend', '_graph']
 
