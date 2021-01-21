@@ -320,21 +320,22 @@ class BeliefPropagation:
 		def sec_to_day(a: np.ndarray):
 			return np.float64(a) / 86400
 
-		occurs = vertex_store.get(key=factor, attribute='occurrences')
-		occurs = np.array([o.as_array() for o in occurs]).flatten()
+		occurrences = vertex_store.get(key=factor, attribute='occurrences')
+		occurrences = np.array([o.as_array() for o in occurrences]).flatten()
 		messages = np.array([m.as_array() for m in messages]).flatten()
 		m = np.where(
-			messages['timestamp'] <= np.max(occurs['timestamp']) - buffer)
+			messages['timestamp'] <= np.max(occurrences['timestamp']) - buffer)
 		# Order messages in ascending order
 		old_enough = np.sort(messages[m], order=['timestamp', 'value', 'name'])
 		if not len(old_enough):
 			msg = _DEFAULT_MESSAGE
 		else:
 			diff = old_enough['timestamp'] - _NOW
+			# Formats each time delta as partial days
 			diff = sec_to_day(np.array(diff, dtype='timedelta64[h]'))
 			# Newer messages are weighted more with a smaller decay weight
 			weight = np.exp(diff)
-			# Newer messages account for the weight of older messages
+			# Newer messages account for the weight of older messages (causal)
 			norm = np.cumsum(weight)
 			weighted = np.cumsum(old_enough['value'] * weight)
 			weighted *= transmission_rate / norm
@@ -377,11 +378,9 @@ class BeliefPropagation:
 			maxes: np.ndarray) -> Tuple[int, float, np.ndarray]:
 		iter_maxes = self._update_maxes()
 		tolerance = np.float64(np.sum(iter_maxes - maxes))
-		maxes = iter_maxes
 		self._clear_inboxes()
-		iteration += 1
 		stdout(f'Tolerance: {np.round(tolerance, 10)}')
-		return iteration, tolerance, maxes
+		return iteration + 1, tolerance, iter_maxes
 
 	def _update_maxes(self) -> np.ndarray:
 		updated = []
