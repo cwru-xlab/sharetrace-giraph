@@ -7,16 +7,24 @@ import psutil
 import ray
 
 NUM_CPUS = psutil.cpu_count(logical=False)
-LOGGER: Callable = print
+STDOUT: Callable = print
+STDERR: Callable = print
 LOCAL_MODE = True
 TIME = datetime.datetime.utcnow()
 
 
-def set_logger(value: Callable):
-	global LOGGER
+def set_stdout(value: Callable):
+	global STDOUT
 	if not isinstance(value, Callable):
 		raise TypeError("'value must be of type Callable")
-	LOGGER = value
+	STDOUT = value
+
+
+def set_stderr(value: Callable):
+	global STDERR
+	if not isinstance(value, Callable):
+		raise TypeError("'value must be of type Callable")
+	STDERR = value
 
 
 def set_local_mode(value: bool):
