@@ -225,7 +225,10 @@ class BeliefPropagation:
 			vertices.append(k)
 			v1, v2 = itertools.tee(v)
 			attrs.update({
-				k: {'local': frozenset(v1), 'max': max(v2), 'inbox': {}}})
+				k: {
+					'local': frozenset(v1),
+					'max': max(v2, default=_DEFAULT_MESSAGE),
+					'inbox': {}}})
 		builder.add_variables(vertices, attrs)
 
 	@staticmethod
@@ -327,16 +330,13 @@ class BeliefPropagation:
 			**kwargs) -> NoReturn:
 		for f in vertices[indices]:
 			neighbors = tuple(graph.get_neighbors(f))
+			inbox = vertex_store.get(key=f, attribute='inbox')
 			for i, v in enumerate(neighbors):
 				# Assumes factor vertex has a degree of 2
-				neighbor = neighbors[not i]
-				attributes = vertex_store.get(key=neighbor)
-				local = attributes['local']
-				inbox = attributes['inbox'].values()
 				content = BeliefPropagation._compute_message(
 					vertex_store=vertex_store,
 					factor=f,
-					messages=itertools.chain(local, inbox),
+					messages=inbox[neighbors[not i]],
 					transmission_rate=transmission_rate,
 					buffer=buffer)
 				msg = _model.Message(sender=f, receiver=v, content=content)
@@ -391,7 +391,8 @@ class BeliefPropagation:
 		num_cpus = num_cpus if num_cpus else backend.NUM_CPUS
 		step = int(np.ceil(num_vertices / num_cpus))
 		return tuple(
-			np.arange(n * step, min(num_vertices, step * (n + 1)) - 1)
+			# Add -1 after min() if using range()
+			np.arange(n * step, min(num_vertices, step * (n + 1)))
 			for n in range(num_cpus))
 
 	def _get_maxes(
@@ -411,8 +412,7 @@ class BeliefPropagation:
 			iteration: int,
 			maxes: np.ndarray) -> Tuple[int, float, np.ndarray]:
 		iter_maxes = self._update_maxes()
-		# TODO Remove randomness
-		tolerance = np.float64(np.sum(iter_maxes - maxes)) + random.random()
+		tolerance = np.float64(np.sum(iter_maxes - maxes))
 		self._clear_inboxes()
 		stdout(f'Tolerance: {np.round(tolerance, 10)}')
 		return iteration + 1, tolerance, iter_maxes
@@ -461,17 +461,19 @@ class BeliefPropagation:
 			while len(msg_queue):
 				msg = msg_queue.get(block=block_queue)
 				attrs = {msg.receiver: {'inbox': {msg.sender: msg.content}}}
-				vertex_store.put(keys=[msg.receiver], attributes=attrs)
+				vertex_store.put(
+					keys=[msg.receiver], attributes=attrs, merge=True)
 			if local_mode:
 				remaining = False
 			else:
-				# Minimum timeout to avoid hanging
+				# Timeout avoids hanging; queue takes time to populate
 				_, remaining = ray.wait(remaining, timeout=0.01)
 
 	def _clear_inboxes(self) -> NoReturn:
 		def clear(vertices: np.ndarray):
 			attributes = dict.fromkeys(vertices, {'inbox': {}})
-			self._vertex_store.put(keys=vertices, attributes=attributes)
+			self._vertex_store.put(
+				keys=vertices, attributes=attributes, merge=False)
 
 		clear(self._get_variables(as_ref=False))
 		clear(self._get_factors(as_ref=False))
