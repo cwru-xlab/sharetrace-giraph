@@ -1,5 +1,4 @@
 import asyncio
-import copy
 from typing import Any, Hashable, Iterable, Mapping, NoReturn, Optional
 
 import ray
@@ -212,12 +211,13 @@ class VertexStore:
 			self,
 			*,
 			keys: Iterable[Hashable],
-			attributes: Mapping[Hashable, Any] = None) -> NoReturn:
+			attributes: Mapping[Hashable, Any] = None,
+			merge: bool = False) -> NoReturn:
 		put = self._actor.put
 		if self.local_mode:
-			put(keys, attributes)
+			put(keys, attributes, merge)
 		else:
-			put.remote(keys, attributes)
+			put.remote(keys, attributes, merge)
 
 	def kill(self) -> NoReturn:
 		if not self.local_mode:
@@ -246,16 +246,28 @@ class _VertexStore:
 			value = self._store[key][attribute]
 		return value
 
+	# TODO This is convoluted
 	def put(
 			self,
 			keys: Iterable[Hashable],
-			attributes: Optional[Any] = None) -> NoReturn:
+			attributes: Optional[Any] = None,
+			merge: bool = False) -> NoReturn:
 		if attributes is None:
 			self._store.update(dict.fromkeys(keys, None))
 		elif isinstance(attributes, Mapping):
 			for k in keys:
 				if k in self._store:
-					self._store[k].update(attributes[k])
+					if isinstance(attributes[k], Mapping):
+						if merge:
+							for a in attributes[k]:
+								previous = self._store[k][a]
+								current = {**previous, **attributes[k][a]}
+								self._store[k][a] = current
+						else:
+							for a in attributes[k]:
+								self._store[k][a] = attributes[k][a]
+					else:
+						self._store[k].update(attributes[k])
 				else:
 					self._store[k] = attributes[k]
 		else:
