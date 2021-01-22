@@ -1,4 +1,5 @@
 import asyncio
+import copy
 from typing import Any, Hashable, Iterable, Mapping, NoReturn, Optional
 
 import ray
@@ -91,17 +92,17 @@ class Queue:
 					put.remote(item, timeout)
 
 	def get(self, block=True, timeout=None):
-		"""Gets an item from the _queue.
+		"""Gets an item from the queue.
 
 		There is no guarantee of order if multiple consumers get from the
-		same empty _queue.
+		same empty queue.
 
 		Returns:
-			The next item in the _queue.
+			The next item in the queue.
 
 		Raises:
-			Empty if the _queue is empty and blocking is False.
-			Empty if the _queue is empty, blocking is True, and it timed out.
+			Empty if the queue is empty and blocking is False.
+			Empty if the queue is empty, blocking is True, and it timed out.
 			ValueError if timeout is negative.
 		"""
 		if block:
@@ -126,7 +127,7 @@ class Queue:
 		"""Equivalent to put(item, block=False).
 
 		Raises:
-			Full if the _queue is full.
+			Full if the queue is full.
 		"""
 		return self.put(item, block=False)
 
@@ -134,7 +135,7 @@ class Queue:
 		"""Equivalent to get(block=False).
 
 		Raises:
-			Empty if the _queue is empty.
+			Empty if the queue is empty.
 		"""
 		return self.get(block=False)
 
@@ -222,6 +223,14 @@ class VertexStore:
 		if not self.local_mode:
 			ray.kill(self._actor)
 
+	def __copy__(self):
+		store = VertexStore(local_mode=True)
+		if self.local_mode:
+			store._actor = self._actor
+		else:
+			store._actor = ray.get(self._actor.copy.remote())
+		return store
+
 
 class _VertexStore:
 	__slots__ = ['_store']
@@ -251,3 +260,8 @@ class _VertexStore:
 					self._store[k] = attributes[k]
 		else:
 			self._store.update(attributes)
+
+	def copy(self):
+		vertex_store = _VertexStore()
+		vertex_store._store = self._store.copy()
+		return vertex_store
