@@ -13,30 +13,9 @@ LOCAL_MODE = True
 TIME = datetime.datetime.utcnow()
 
 
-def set_stdout(value: Callable):
-	global STDOUT
-	if not isinstance(value, Callable):
-		raise TypeError("'value must be of type Callable")
-	STDOUT = value
-
-
-def set_stderr(value: Callable):
-	global STDERR
-	if not isinstance(value, Callable):
-		raise TypeError("'value must be of type Callable")
-	STDERR = value
-
-
 def set_local_mode(value: bool):
 	global LOCAL_MODE
 	LOCAL_MODE = bool(value)
-
-
-def set_time(value: datetime.datetime):
-	global TIME
-	if not isinstance(value, datetime.datetime):
-		raise TypeError("'value' must be of type datetime")
-	TIME = value
 
 
 @contextlib.contextmanager

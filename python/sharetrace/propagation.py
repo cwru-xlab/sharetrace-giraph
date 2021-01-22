@@ -10,10 +10,10 @@ import codetiming
 import numpy as np
 import ray
 
-import backend
 import _graphs
 import _model
 import _stores
+import backend
 
 _TWO_DAYS = np.timedelta64(datetime.timedelta(days=2))
 _NOW = np.datetime64(backend.TIME, 's')
@@ -358,6 +358,7 @@ class BeliefPropagation:
 		m = np.where(
 			messages['timestamp'] <= np.max(occurrences['timestamp']) - buffer)
 		# Order messages in ascending order
+
 		old_enough = np.sort(messages[m], order=['timestamp', 'value', 'name'])
 		if not len(old_enough):
 			msg = _DEFAULT_MESSAGE
@@ -410,7 +411,8 @@ class BeliefPropagation:
 			iteration: int,
 			maxes: np.ndarray) -> Tuple[int, float, np.ndarray]:
 		iter_maxes = self._update_maxes()
-		tolerance = np.float64(np.sum(iter_maxes - maxes))
+		# TODO Remove randomness
+		tolerance = np.float64(np.sum(iter_maxes - maxes)) + random.random()
 		self._clear_inboxes()
 		stdout(f'Tolerance: {np.round(tolerance, 10)}')
 		return iteration + 1, tolerance, iter_maxes

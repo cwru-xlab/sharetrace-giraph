@@ -68,7 +68,7 @@ class ContactSearch:
 		stdout('-------------END CONTACT MATCHING-------------')
 		return result
 
-	@codetiming.Timer('Total duration: {:0.6f} s', logger=stdout)
+	@codetiming.Timer(text='Total duration: {:0.6f} s', logger=stdout)
 	def _call(self, histories: Histories, as_iterator: bool) -> Contacts:
 		pairs = itertools.combinations(histories, 2)
 		contacts = (self._find_contact(*p) for p in pairs)

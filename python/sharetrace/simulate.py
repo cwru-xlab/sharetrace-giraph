@@ -1,11 +1,14 @@
 import datetime
 import random
 
-import propagation
-import backend
-import search
+import codetiming
+import numpy as np
+
 import _graphs
 import _model
+import backend
+import propagation
+import search
 
 
 def setup(
@@ -57,24 +60,30 @@ def simulate(
 	return bp(factors=factors, variables=variables)
 
 
-if __name__ == '__main__':
-	local_mode = False
+def main():
+	random.seed(12345)
+	np.random.seed(12345)
+	local_mode = True
 	impl = _graphs.NUMPY
-	setup_kwargs = {'users': 100, 'scores': 100, 'days': 100}
+	setup_kwargs = {'users': 200, 'scores': 60, 'days': 30}
 	backend.set_local_mode(local_mode)
 	contact_search = search.ContactSearch()
 	if local_mode:
 		factors, variables = setup(**setup_kwargs)
 		factors = contact_search(factors)
-		risks = simulate(
-			factors=factors,
-			variables=variables,
-			impl=impl)
+		simulate(factors=factors, variables=variables, impl=impl)
 	else:
 		with backend.ray_context(num_cpus=backend.NUM_CPUS):
 			factors, variables = setup(**setup_kwargs)
 			factors = contact_search(factors)
-			risks = simulate(
-				factors=factors,
-				variables=variables,
-				impl=impl)
+			simulate(factors=factors, variables=variables, impl=impl)
+
+
+if __name__ == '__main__':
+	for i in range(1, 6):
+		with codetiming.Timer(name='main'):
+			main()
+	print(f"mean:{codetiming.Timer.timers.mean('main')}")
+	print(f"stdev:{codetiming.Timer.timers.stdev('main')}")
+	print(f"max:{codetiming.Timer.timers.max('main')}")
+	print(f"min:{codetiming.Timer.timers.min('main')}")
