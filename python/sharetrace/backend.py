@@ -1,5 +1,6 @@
 import contextlib
 import datetime
+import logging
 import time
 from typing import Callable
 
@@ -7,8 +8,12 @@ import psutil
 import ray
 
 NUM_CPUS = psutil.cpu_count(logical=False)
+
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
 STDOUT: Callable = print
 STDERR: Callable = print
+
 LOCAL_MODE = True
 TIME = datetime.datetime.utcnow()
 
@@ -27,6 +32,7 @@ def ray_context(*args, **kwargs):
 
 
 def get_per_task_overhead():
+	"""Prints the time overhead for a single Ray task."""
 	@ray.remote
 	def no_work(x):
 		return x
