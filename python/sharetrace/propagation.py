@@ -19,11 +19,11 @@ _TWO_DAYS = np.timedelta64(datetime.timedelta(days=2))
 _NOW = np.datetime64(backend.TIME, 's')
 _DEFAULT_MESSAGE = model.RiskScore(
 	name='DEFAULT_ID', timestamp=backend.TIME, value=0)
-_RiskScores = Iterable[model.RiskScore]
-AllRiskScores = Iterable[Tuple[Hashable, _RiskScores]]
+RiskScores = Iterable[model.RiskScore]
+AllRiskScores = Iterable[Tuple[Hashable, RiskScores]]
 Contacts = Iterable[model.Contact]
-_Vertices = Union[np.ndarray, ray.ObjectRef]
-_OptionalObjectRefs = Optional[Sequence[ray.ObjectRef]]
+Vertices = Union[np.ndarray, ray.ObjectRef]
+OptionalObjectRefs = Optional[Sequence[ray.ObjectRef]]
 Result = Iterable[Tuple[graphs.Vertex, model.RiskScore]]
 stdout = backend.STDOUT
 stderr = backend.STDERR
