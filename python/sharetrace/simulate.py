@@ -4,9 +4,9 @@ import random
 import codetiming
 import numpy as np
 
+import backend
 import graphs
 import model
-import backend
 import propagation
 import search
 
@@ -27,18 +27,25 @@ def setup(
 		risks = [
 			model.RiskScore(
 				name=str(u),
-				timestamp=start + datetime.timedelta(random.randint(0, days)),
+				timestamp=start - datetime.timedelta(random.randint(0, days)),
 				# Skewed toward lower scores
-				value=random.betavariate(alpha=2, beta=5))
+				value=generate_bimodal_score())
 			for _ in range(scores)]
 		variables.append((u, risks))
 		history = (
 			model.TemporalLocation(
-				timestamp=start + datetime.timedelta(random.randint(0, days)),
+				timestamp=start - datetime.timedelta(random.randint(0, days)),
 				location=random.randint(0, locations))
 			for _ in range(locations))
 		factors.append(model.LocationHistory(name=u, history=history))
 	return factors, variables
+
+
+def generate_bimodal_score(mean1=0.2, var1=0.01, mean2=0.8, var2=0.01):
+	x1 = random.normalvariate(mean1, np.sqrt(var1))
+	x2 = random.normalvariate(mean2, np.sqrt(var2))
+	score = random.sample([x1, x2], 1)[0]
+	return np.clip(score, 0, 1)
 
 
 def simulate(
@@ -63,9 +70,9 @@ def simulate(
 def main():
 	random.seed(12345)
 	np.random.seed(12345)
-	local_mode = False
+	local_mode = True
 	impl = graphs.NUMPY
-	setup_kwargs = {'users': 200, 'scores': 60, 'days': 30}
+	setup_kwargs = {'users': 25, 'scores': 60, 'days': 30}
 	backend.set_local_mode(local_mode)
 	contact_search = search.ContactSearch()
 	if local_mode:
