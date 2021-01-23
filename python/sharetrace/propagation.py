@@ -540,9 +540,10 @@ class BeliefPropagation:
 	def _shutdown(self):
 		if not self.local_mode:
 			self._queue.kill()
-			self._graph.kill()
 			for a in self._actors:
 				a.kill()
+			if isinstance(self._graph, graphs.FactorGraph):
+				self._graph.kill()
 
 	def _get_num_cpus(self) -> int:
 		return 1 if self.local_mode else backend.NUM_CPUS
