@@ -15,7 +15,7 @@ import graphs
 import model
 import stores
 
-_TWO_DAYS = np.timedelta64(datetime.timedelta(days=2))
+_TWO_DAYS = np.timedelta64(datetime.timedelta(days=2), 's')
 _NOW = np.datetime64(backend.TIME, 's')
 _DEFAULT_MESSAGE = model.RiskScore(
 	name='DEFAULT_ID', timestamp=backend.TIME, value=0)
@@ -35,8 +35,8 @@ class FactorGraphPartition:
 	def __init__(
 			self,
 			*,
-			variables: Iterable[graphs.Vertex],
-			factors: Iterable[graphs.Vertex],
+			variables: Sequence[graphs.Vertex],
+			factors: Sequence[graphs.Vertex],
 			vertex_store: stores.VertexStore,
 			max_queue_size: int = 0,
 			local_mode: bool = True,
@@ -50,7 +50,7 @@ class FactorGraphPartition:
 			'local_mode': local_mode,
 			'default_msg': default_msg,
 			'current_time': current_time}
-		self.local_mode = local_mode
+		self.local_mode = bool(local_mode)
 		if local_mode:
 			self._actor = _FactorGraphPartition(**kwargs)
 		else:
@@ -126,15 +126,15 @@ class _FactorGraphPartition:
 	def __init__(
 			self,
 			*,
-			variables: Iterable[graphs.Vertex],
-			factors: Iterable[graphs.Vertex],
+			variables: Sequence[graphs.Vertex],
+			factors: Sequence[graphs.Vertex],
 			vertex_store: stores.VertexStore,
 			max_queue_size: int = 0,
 			local_mode: bool = True,
 			default_msg: model.RiskScore = _DEFAULT_MESSAGE,
 			current_time: datetime.datetime = _NOW):
-		self._variables = np.unique(list(variables))
-		self._factors = np.unique(list(factors))
+		self._variables = np.unique(variables)
+		self._factors = np.unique(factors)
 		self._vertex_store = vertex_store
 		self._max_queue_size = int(max_queue_size)
 		self._queue = stores.Queue(local_mode=True, max_size=max_queue_size)
@@ -147,17 +147,25 @@ class _FactorGraphPartition:
 			*,
 			graph: graphs.FactorGraph,
 			queue: stores.Queue) -> bool:
-		def update_max(vertex, vertex_inbox, max_attr):
-			updated = max(itertools.chain(vertex_inbox.values(), [max_attr]))
+		def update_max(vertex, mx, incoming):
+			if vertex in incoming:  # First iteration only
+				incoming = incoming[vertex]
+			else:
+				incoming = incoming.values()
+			updated = max(itertools.chain(incoming, [mx]))
 			updated = {vertex: {'max': updated}}
-			self._vertex_store.put(keys=[v], attributes=updated, merge=False)
+			self._vertex_store.put(
+				keys=[vertex], attributes=updated, merge=False)
 
-		def send(sender, sender_local, incoming):
+		def send(sender, sender_max, incoming):
 			for f in graph.get_neighbors(sender):
-				# Avoid self-bias by excluding the message sent from the
-				# receiving factor vertex
-				from_others = (msg for o, msg in incoming.items() if o != f)
-				msg = itertools.chain(sender_local, from_others)
+				if sender in incoming:  # First iteration only
+					others = incoming[sender]
+				else:
+					# Avoid self-bias by excluding the message sent from the
+					# receiving factor vertex
+					others = (msg for o, msg in incoming.items() if o != f)
+				msg = itertools.chain([sender_max], others)
 				if not self._local_mode:
 					msg = np.array(list(msg))
 				msg = model.Message(sender=sender, receiver=f, content=msg)
@@ -166,11 +174,10 @@ class _FactorGraphPartition:
 		self._update_inboxes()
 		for v in self._variables:
 			attributes = self._vertex_store.get(key=v)
-			local = attributes['local']
 			inbox = attributes['inbox']
 			curr_max = attributes['max']
-			update_max(v, inbox, curr_max)
-			send(v, local, inbox)
+			update_max(v, curr_max, inbox)
+			send(v, curr_max, inbox)
 		self._clear_inboxes(variables=True)
 		return True
 
@@ -216,9 +223,8 @@ class _FactorGraphPartition:
 		if not old_enough.size:
 			msg = self._default_msg
 		else:
-			diff = old_enough['timestamp'] - self._current_time
 			# Formats each time delta as partial days
-			diff = sec_to_day(np.array(diff, dtype='timedelta64[h]'))
+			diff = sec_to_day(old_enough['timestamp'] - self._current_time)
 			# Newer messages are weighted more with a smaller decay weight
 			weight = np.exp(diff)
 			# Newer messages account for the weight of older messages (causal)
@@ -389,7 +395,6 @@ class BeliefPropagation:
 		self._create_graph(factors=factors, variables=variables)
 		maxes = self._get_maxes(only_value=True)
 		i, t = 0, np.inf
-		# TODO Only getting 1 iteration
 		while i < self.iterations and t > self.tolerance:
 			stdout(f'-----------Iteration {i + 1}-----------')
 			remaining = self._send_to_factors()
@@ -400,6 +405,7 @@ class BeliefPropagation:
 			stdout(f'---------------------------------')
 		variables = self._get_variables()
 		maxes = self._get_maxes()
+		self._shutdown()
 		return zip(variables, maxes)
 
 	# noinspection PyTypeChecker
@@ -428,8 +434,8 @@ class BeliefPropagation:
 		self._graph = graph
 		self._actors = tuple(
 			FactorGraphPartition(
-				factors=(f_id for f_id, _ in f),
-				variables=(v_id for v_id, _ in v),
+				factors=tuple(f_id for f_id, _ in f),
+				variables=tuple(v_id for v_id, _ in v),
 				vertex_store=s,
 				max_queue_size=self.max_queue_size,
 				local_mode=self.local_mode,
@@ -448,9 +454,8 @@ class BeliefPropagation:
 			v1, v2 = itertools.tee(v)
 			attrs.update({
 				k: {
-					'local': frozenset(v1),
 					'max': max(v2, default=_DEFAULT_MESSAGE),
-					'inbox': {}}})
+					'inbox': {k: tuple(v1)}}})
 		builder.add_variables(vertices, attrs)
 
 	@staticmethod
@@ -497,7 +502,7 @@ class BeliefPropagation:
 			if self.local_mode:
 				remaining = False
 			else:
-				# Waiting for the queue to populate
+				# Wait for the queue to populate
 				_, remaining = ray.wait(remaining, timeout=0.001)
 
 	# noinspection PyTypeChecker
@@ -531,6 +536,13 @@ class BeliefPropagation:
 			result = itertools.chain.from_iterable(ray.get(refs))
 			result = np.array(list(result))
 		return result
+
+	def _shutdown(self):
+		if not self.local_mode:
+			self._queue.kill()
+			self._graph.kill()
+			for a in self._actors:
+				a.kill()
 
 	def _get_num_cpus(self) -> int:
 		return 1 if self.local_mode else backend.NUM_CPUS
