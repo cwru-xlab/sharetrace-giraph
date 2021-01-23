@@ -10,7 +10,7 @@ import attr
 import codetiming
 import numpy as np
 
-import _model
+import model
 import backend
 
 SUCCESS_CODE = 200
@@ -77,7 +77,7 @@ class PdaContext:
 			score_namespace: str,
 			take: int = None,
 			since: datetime.datetime = _TWO_WEEKS_AGO
-	) -> Iterable[Tuple[str, Iterable[_model.RiskScore]]]:
+	) -> Iterable[Tuple[str, Iterable[model.RiskScore]]]:
 		"""Retrieves the survey risk scores from the PDAs.
 
 		Each response record to is mapped to a collection of RiskScore objects.
@@ -95,11 +95,11 @@ class PdaContext:
 			hat: str,
 			data: Iterable[Mapping[str, Any]],
 			since: datetime.datetime = _TWO_WEEKS_AGO
-	) -> Tuple[str, Iterable[_model.RiskScore]]:
+	) -> Tuple[str, Iterable[model.RiskScore]]:
 		values = (s['data'] for s in data)
 		values = ((s['score'], _to_timestamp(s['timestamp'])) for s in values)
 		scores = (
-			_model.RiskScore(name=hat, value=v, timestamp=t)
+			model.RiskScore(name=hat, value=v, timestamp=t)
 			for t, v in values if t >= since)
 		return hat, scores
 
@@ -112,7 +112,7 @@ class PdaContext:
 			location_namespace: str,
 			take: int = None,
 			since: datetime.datetime = _TWO_WEEKS_AGO,
-			obfuscation: int = 3) -> Iterable[_model.LocationHistory]:
+			obfuscation: int = 3) -> Iterable[model.LocationHistory]:
 		"""Retrieves the location data from the PDAs.
 
 		Maps each response record to a LocationHistory object.
@@ -129,15 +129,15 @@ class PdaContext:
 			hat: str,
 			data: Iterable[Mapping[str, Any]],
 			since: datetime.datetime,
-			obfuscation: int) -> _model.LocationHistory:
+			obfuscation: int) -> model.LocationHistory:
 		locs = (loc['data'] for loc in data)
 		locs = (
 			(_to_timestamp(loc['timestamp']), loc['hash'][:-obfuscation])
 			for loc in locs)
 		locs = (
-			_model.TemporalLocation(timestamp=t, location=h)
+			model.TemporalLocation(timestamp=t, location=h)
 			for t, h in locs if t >= since)
-		return _model.LocationHistory(name=hat, history=locs)
+		return model.LocationHistory(name=hat, history=locs)
 
 	async def _get_data(
 			self,
@@ -163,13 +163,13 @@ class PdaContext:
 			self,
 			token: str,
 			*,
-			scores: Iterable[Tuple[str, _model.RiskScore]],
+			scores: Iterable[Tuple[str, model.RiskScore]],
 			namespace: str) -> NoReturn:
 		"""Sends computed exposure scores to all PDAs."""
 		namespace = '/'.join((self.client_namespace, namespace))
 		timestamp = time.time() * 1e3
 
-		async def post(hat: str, score: _model.RiskScore):
+		async def post(hat: str, score: model.RiskScore):
 			value = round(score.value, 2)
 			body = {
 				'token': token,
