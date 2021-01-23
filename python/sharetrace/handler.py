@@ -1,34 +1,18 @@
 import asyncio
 import datetime
-import logging
 import os
 from base64 import b64decode
 from typing import Any, Mapping
 
+import aws_xray_sdk.core as xray
 import boto3
 import codetiming
 import jsonpickle
-import aws_xray_sdk.core as xray
 
 import backend
 import pda
 import propagation
 import search
-
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
-xray.patch_all()
-backend.set_stdout(logger.info)
-backend.set_stderr(logger.error)
-stdout = backend.STDOUT
-stderr = backend.STDERR
-
-backend.set_local_mode(True)
-backend.set_time(datetime.datetime.utcnow())
-
-lambda_client = boto3.client('lambda')
-lambda_client.get_account_settings()
-kms_client = boto3.client('kms')
 
 
 def _decrypt(value: str) -> str:
@@ -66,6 +50,15 @@ _ITERATIONS = int(os.environ['ITERATIONS'])
 _TOLERANCE = float(os.environ['TOLERANCE'])
 _SCORE_TIMESTAMP_BUFFER = datetime.timedelta(
 	seconds=float(os.environ['SCORE_TIMESTAMP_BUFFER']))
+
+xray.patch_all()
+stdout = backend.STDOUT
+stderr = backend.STDERR
+backend.set_local_mode(True)
+
+lambda_client = boto3.client('lambda')
+lambda_client.get_account_settings()
+kms_client = boto3.client('kms')
 
 
 def handle(event: Mapping[str, Any], context: Mapping[str, Any]):
