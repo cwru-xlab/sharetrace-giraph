@@ -10,6 +10,14 @@ import numpy as np
 
 @attr.s(slots=True, frozen=True, order=True)
 class RiskScore:
+	"""An identifiable temporal score of risk.
+
+	Notes:
+		Order is determined in the following order:
+			(1) value
+			(2) timestamp
+			(3) name
+	"""
 	value = attr.ib(type=float, converter=float, kw_only=True)
 	timestamp = attr.ib(
 		type=datetime.datetime,
@@ -34,6 +42,13 @@ class RiskScore:
 
 @attr.s(slots=True, frozen=True, order=True)
 class TemporalLocation:
+	"""A time-location pair.
+
+	Notes:
+		Order is determined in the following order:
+		 (1) timestamp
+		 (2) location
+	"""
 	timestamp = attr.ib(
 		type=datetime.datetime,
 		validator=attr.validators.instance_of(datetime.datetime),
@@ -43,6 +58,7 @@ class TemporalLocation:
 
 @attr.s(slots=True, frozen=True)
 class LocationHistory:
+	"""An identifiable set of time-location pairs."""
 	name = attr.ib(type=Hashable, kw_only=True)
 	history = attr.ib(
 		type=Iterable[TemporalLocation], converter=frozenset, kw_only=True)
@@ -50,6 +66,13 @@ class LocationHistory:
 
 @attr.s(slots=True, frozen=True, order=True)
 class Occurrence:
+	"""A time-duration pair.
+
+	Notes:
+		Order is first determined in the following order:
+			(1) timestamp
+			(2) duration
+	"""
 	timestamp = attr.ib(
 		type=datetime.datetime,
 		validator=attr.validators.instance_of(datetime.datetime),
@@ -73,6 +96,14 @@ class Occurrence:
 
 @attr.s(slots=True, frozen=True)
 class Contact:
+	"""A set of zero or more occurrences between two users.
+
+	Attributes:
+		users: The names of the two individuals. To allow the users to be
+			used in a Mapping, the user type must be hashable.
+		occurrences: A set of zero or more time-duration pairs that define
+			the details of the contact.
+	"""
 	users = attr.ib(
 		type=Iterable[Hashable], converter=frozenset, kw_only=True)
 	occurrences = attr.ib(
@@ -95,6 +126,13 @@ class Contact:
 
 @attr.s(slots=True, frozen=True)
 class Message:
+	"""A message with knowledge of the sender and receiver.
+
+	Attributes:
+		sender: The one sending the message.
+		receiver: The one receiving the message.
+		content: The information being sent.
+	"""
 	sender = attr.ib(type=Hashable, kw_only=True)
 	receiver = attr.ib(type=Hashable, kw_only=True)
 	content = attr.ib(type=Any, kw_only=True)
