@@ -27,16 +27,11 @@ class Queue:
 			*,
 			local_mode: bool = None,
 			detached: bool = True,
-			max_size: int = None):
+			max_size: int = 0):
 		local_mode = backend.LOCAL_MODE if local_mode is None else local_mode
 		self.local_mode = bool(local_mode)
 		self.detached = bool(detached)
-		if max_size is None:
-			self.max_size = max_size
-			max_size = 0
-		else:
-			max_size = int(max_size)
-			self.max_size = max_size
+		self.max_size = int(max_size)
 		if self.local_mode:
 			self._actor = _Queue(max_size=max_size)
 		else:
@@ -44,9 +39,6 @@ class Queue:
 			if self.detached:
 				self._actor.options(lifetime='detached')
 			self._actor = self._actor.remote(max_size)
-
-	def __len__(self):
-		return self.qsize()
 
 	def qsize(self):
 		"""The size of the queue."""
@@ -194,6 +186,14 @@ class VertexStore:
 				self._actor = ray.remote(_VertexStore)
 			self._actor = self._actor.remote()
 
+	def __copy__(self):
+		store = VertexStore(local_mode=True)
+		if self.local_mode:
+			store._actor = self._actor
+		else:
+			store._actor = ray.get(self._actor.copy.remote())
+		return store
+
 	def get(
 			self,
 			*,
@@ -223,14 +223,6 @@ class VertexStore:
 		if not self.local_mode:
 			ray.kill(self._actor)
 
-	def __copy__(self):
-		store = VertexStore(local_mode=True)
-		if self.local_mode:
-			store._actor = self._actor
-		else:
-			store._actor = ray.get(self._actor.copy.remote())
-		return store
-
 
 class _VertexStore:
 	__slots__ = ['_store']
@@ -246,7 +238,6 @@ class _VertexStore:
 			value = self._store[key][attribute]
 		return value
 
-	# TODO This is convoluted
 	def put(
 			self,
 			keys: Iterable[Hashable],
