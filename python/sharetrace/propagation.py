@@ -86,8 +86,13 @@ class FactorGraphPartition:
 			result = self._actor.send_to_variables.remote(**kwargs)
 		return result
 
-	def get_maxes(self, *, only_value: bool = False) -> np.ndarray:
-		kwargs = {'only_value': only_value}
+	def get_maxes(
+			self,
+			*,
+			only_value: bool = False,
+			with_variable: bool = False
+	) -> Union[np.ndarray, Iterable[Tuple[graphs.Vertex, model.RiskScore]]]:
+		kwargs = {'only_value': only_value, 'with_variable': with_variable}
 		if self.local_mode:
 			result = self._actor.get_maxes(**kwargs)
 		else:
@@ -148,14 +153,12 @@ class _FactorGraphPartition:
 			graph: graphs.FactorGraph,
 			queue: stores.Queue) -> bool:
 		def update_max(vertex, mx, incoming):
-			if vertex in incoming:  # First iteration only
-				incoming = incoming[vertex]
-			else:
-				incoming = incoming.values()
-			updated = max(itertools.chain(incoming, [mx]))
-			updated = {vertex: {'max': updated}}
-			self._vertex_store.put(
-				keys=[vertex], attributes=updated, merge=False)
+			# 'max' is already set when creating graph
+			if vertex not in incoming:
+				updated = max(itertools.chain(incoming.values(), [mx]))
+				updated = {vertex: {'max': updated}}
+				self._vertex_store.put(
+					keys=[vertex], attributes=updated, merge=False)
 
 		def send(sender, sender_max, incoming):
 			for f in graph.get_neighbors(sender):
@@ -211,20 +214,24 @@ class _FactorGraphPartition:
 			msgs: Iterable[model.RiskScore],
 			transmission_rate: float,
 			buffer: np.datetime64) -> Optional[model.RiskScore]:
-		def sec_to_day(a: np.ndarray):
-			return np.float64(a) / 86400
+		def sec_to_day(a: np.ndarray) -> np.ndarray:
+			return np.array(a, dtype=np.float64, copy=False) / 86400
 
 		occurs = self._vertex_store.get(key=factor, attribute='occurrences')
 		occurs = np.array([o.as_array() for o in occurs]).flatten()
 		msgs = np.array([m.as_array() for m in msgs]).flatten()
-		m = np.where(msgs['timestamp'] <= np.max(occurs['timestamp']) - buffer)
+		m = np.where(msgs['timestamp'] <= np.max(occurs['timestamp']) + buffer)
 		# Order messages in ascending order
 		old_enough = np.sort(msgs[m], order=['timestamp', 'value', 'name'])
 		if not old_enough.size:
 			msg = self._default_msg
 		else:
 			# Formats each time delta as partial days
+			# TODO Should this be current time or msg timestamp?
 			diff = sec_to_day(old_enough['timestamp'] - self._current_time)
+			# TODO Only necessary if using msg timestamp; current time
+			#  ensures all diffs are less than 0
+			np.clip(diff, -np.inf, 0, out=diff)
 			# Newer messages are weighted more with a smaller decay weight
 			weight = np.exp(diff)
 			# Newer messages account for the weight of older messages (causal)
@@ -237,13 +244,24 @@ class _FactorGraphPartition:
 			msg = model.RiskScore.from_array(old_enough[ind])
 		return msg
 
-	def get_maxes(self, *, only_value: bool = False) -> np.ndarray:
+	def get_maxes(
+			self,
+			*,
+			only_value: bool = False,
+			with_variable: bool = False
+	) -> Union[np.ndarray, Iterable[Tuple[graphs.Vertex, model.RiskScore]]]:
 		get_max = functools.partial(self._vertex_store.get, attribute='max')
-		maxes = (get_max(key=v) for v in self._variables)
+		maxes = ((v, get_max(key=v)) for v in self._variables)
 		if only_value:
-			maxes = np.array([m.value for m in maxes])
+			if with_variable:
+				maxes = tuple((v, m.value) for v, m in maxes)
+			else:
+				maxes = np.array([m.value for _, m in maxes])
 		else:
-			maxes = np.array(list(maxes))
+			if with_variable:
+				maxes = tuple(maxes)
+			else:
+				maxes = np.array([m for _, m in maxes])
 		return maxes
 
 	def _update_inboxes(self) -> NoReturn:
@@ -403,10 +421,9 @@ class BeliefPropagation:
 			self._route_messages(remaining)
 			i, t, maxes = self._update(iteration=i, maxes=maxes)
 			stdout(f'---------------------------------')
-		variables = self._get_variables()
-		maxes = self._get_maxes()
+		maxes = self._get_maxes(with_variable=True)
 		self._shutdown()
-		return zip(variables, maxes)
+		return maxes
 
 	# noinspection PyTypeChecker
 	@codetiming.Timer(text='Creating graph: {:0.6f} s', logger=stdout)
@@ -477,8 +494,14 @@ class BeliefPropagation:
 		builder.add_factors(vertices, attrs)
 		builder.add_edges(edges)
 
-	def _get_maxes(self, *, only_value: bool = False) -> np.ndarray:
-		maxes = [a.get_maxes(only_value=only_value) for a in self._actors]
+	def _get_maxes(
+			self,
+			*,
+			only_value: bool = False,
+			with_variable: bool = False
+	) -> Union[np.ndarray, Iterable[Tuple[graphs.Vertex, model.RiskScore]]]:
+		kwargs = {'only_value': only_value, 'with_variable': with_variable}
+		maxes = [a.get_maxes(**kwargs) for a in self._actors]
 		return self._collect_results(maxes)
 
 	# noinspection PyTypeChecker
@@ -524,10 +547,6 @@ class BeliefPropagation:
 		tolerance = np.float64(np.sum(iter_maxes - maxes))
 		stdout(f'Tolerance: {np.round(tolerance, 10)}')
 		return iteration + 1, tolerance, iter_maxes
-
-	def _get_variables(self) -> np.ndarray:
-		variables = [a.get_variables() for a in self._actors]
-		return self._collect_results(variables)
 
 	def _collect_results(self, refs: Sequence) -> np.ndarray:
 		if self.local_mode:
