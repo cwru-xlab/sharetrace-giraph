@@ -99,13 +99,6 @@ class FactorGraphPartition:
 			result = self._actor.get_maxes.remote(**kwargs)
 		return result
 
-	def get_variables(self) -> np.ndarray:
-		if self.local_mode:
-			result = self._actor.get_variables()
-		else:
-			result = self._actor.get_variables.remote()
-		return result
-
 	def enqueue(self, message: model.Message) -> NoReturn:
 		if self.local_mode:
 			self._actor.enqueue(message)
@@ -119,14 +112,14 @@ class FactorGraphPartition:
 
 class _FactorGraphPartition:
 	__slots__ = [
-		'_variables',
-		'_factors',
-		'_vertex_store',
-		'_queue',
-		'_max_queue_size',
-		'_local_mode',
-		'_default_msg',
-		'_current_time']
+		'variables',
+		'factors',
+		'vertex_store',
+		'queue',
+		'max_queue_size',
+		'local_mode',
+		'default_msg',
+		'current_time']
 
 	def __init__(
 			self,
@@ -138,14 +131,14 @@ class _FactorGraphPartition:
 			local_mode: bool = True,
 			default_msg: model.RiskScore = _DEFAULT_MESSAGE,
 			current_time: datetime.datetime = _NOW):
-		self._variables = np.unique(variables)
-		self._factors = np.unique(factors)
-		self._vertex_store = vertex_store
-		self._max_queue_size = int(max_queue_size)
-		self._queue = stores.Queue(local_mode=True, max_size=max_queue_size)
-		self._local_mode = bool(local_mode)
-		self._default_msg = default_msg
-		self._current_time = np.datetime64(current_time, 's')
+		self.variables = np.unique(variables)
+		self.factors = np.unique(factors)
+		self.vertex_store = vertex_store
+		self.max_queue_size = int(max_queue_size)
+		self.queue = stores.Queue(local_mode=True, max_size=max_queue_size)
+		self.local_mode = bool(local_mode)
+		self.default_msg = default_msg
+		self.current_time = np.datetime64(current_time, 's')
 
 	def send_to_factors(
 			self,
@@ -157,7 +150,7 @@ class _FactorGraphPartition:
 			if vertex not in incoming:
 				updated = max(itertools.chain(incoming.values(), [mx]))
 				updated = {vertex: {'max': updated}}
-				self._vertex_store.put(
+				self.vertex_store.put(
 					keys=[vertex], attributes=updated, merge=False)
 
 		def send(sender, sender_max, incoming):
@@ -169,14 +162,14 @@ class _FactorGraphPartition:
 					# receiving factor vertex
 					others = (msg for o, msg in incoming.items() if o != f)
 				msg = itertools.chain([sender_max], others)
-				if not self._local_mode:
+				if not self.local_mode:
 					msg = np.array(list(msg))
 				msg = model.Message(sender=sender, receiver=f, content=msg)
-				queue.put(msg, block=bool(self._max_queue_size))
+				queue.put(msg, block=bool(self.max_queue_size))
 
 		self._update_inboxes()
-		for v in self._variables:
-			attributes = self._vertex_store.get(key=v)
+		for v in self.variables:
+			attributes = self.vertex_store.get(key=v)
 			inbox = attributes['inbox']
 			curr_max = attributes['max']
 			update_max(v, curr_max, inbox)
@@ -192,9 +185,9 @@ class _FactorGraphPartition:
 			transmission_rate: float,
 			buffer: np.datetime64) -> bool:
 		self._update_inboxes()
-		for f in self._factors:
+		for f in self.factors:
 			neighbors = tuple(graph.get_neighbors(f))
-			inbox = self._vertex_store.get(key=f, attribute='inbox')
+			inbox = self.vertex_store.get(key=f, attribute='inbox')
 			for i, v in enumerate(neighbors):
 				# Assumes factor vertex has a degree of 2
 				content = self._compute_message(
@@ -204,7 +197,7 @@ class _FactorGraphPartition:
 					buffer=buffer)
 				if content is not None:
 					msg = model.Message(sender=f, receiver=v, content=content)
-					queue.put(msg, block=bool(self._max_queue_size))
+					queue.put(msg, block=bool(self.max_queue_size))
 		self._clear_inboxes(variables=False)
 		return True
 
@@ -217,18 +210,18 @@ class _FactorGraphPartition:
 		def sec_to_day(a: np.ndarray) -> np.ndarray:
 			return np.array(a, dtype=np.float64, copy=False) / 86400
 
-		occurs = self._vertex_store.get(key=factor, attribute='occurrences')
+		occurs = self.vertex_store.get(key=factor, attribute='occurrences')
 		occurs = np.array([o.as_array() for o in occurs]).flatten()
 		msgs = np.array([m.as_array() for m in msgs]).flatten()
 		m = np.where(msgs['timestamp'] <= np.max(occurs['timestamp']) + buffer)
 		# Order messages in ascending order
 		old_enough = np.sort(msgs[m], order=['timestamp', 'value', 'name'])
 		if not old_enough.size:
-			msg = self._default_msg
+			msg = self.default_msg
 		else:
 			# Formats each time delta as partial days
 			# TODO Should this be current time or msg timestamp?
-			diff = sec_to_day(old_enough['timestamp'] - self._current_time)
+			diff = sec_to_day(old_enough['timestamp'] - self.current_time)
 			# TODO Only necessary if using msg timestamp; current time
 			#  ensures all diffs are less than 0
 			np.clip(diff, -np.inf, 0, out=diff)
@@ -250,8 +243,8 @@ class _FactorGraphPartition:
 			only_value: bool = False,
 			with_variable: bool = False
 	) -> Union[np.ndarray, Iterable[Tuple[graphs.Vertex, model.RiskScore]]]:
-		get_max = functools.partial(self._vertex_store.get, attribute='max')
-		maxes = ((v, get_max(key=v)) for v in self._variables)
+		get_max = functools.partial(self.vertex_store.get, attribute='max')
+		maxes = ((v, get_max(key=v)) for v in self.variables)
 		if only_value:
 			if with_variable:
 				maxes = tuple((v, m.value) for v, m in maxes)
@@ -265,25 +258,22 @@ class _FactorGraphPartition:
 		return maxes
 
 	def _update_inboxes(self) -> NoReturn:
-		while self._queue.qsize():
-			msg = self._queue.get(block=bool(self._max_queue_size))
+		while self.queue.qsize():
+			msg = self.queue.get(block=bool(self.max_queue_size))
 			attrs = {msg.receiver: {'inbox': {msg.sender: msg.content}}}
-			self._vertex_store.put(
+			self.vertex_store.put(
 				keys=[msg.receiver], attributes=attrs, merge=True)
 
 	def _clear_inboxes(self, *, variables: bool) -> NoReturn:
 		def clear(vertices: np.ndarray):
 			attributes = {v: {'inbox': {}} for v in vertices}
-			self._vertex_store.put(
+			self.vertex_store.put(
 				keys=vertices, attributes=attributes, merge=False)
 
-		clear(self._variables) if variables else clear(self._factors)
-
-	def get_variables(self) -> np.ndarray:
-		return self._variables
+		clear(self.variables) if variables else clear(self.factors)
 
 	def enqueue(self, message) -> NoReturn:
-		self._queue.put(message, block=bool(self._max_queue_size))
+		self.queue.put(message, block=bool(self.max_queue_size))
 
 
 @attr.s(slots=True)
