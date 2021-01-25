@@ -10,5 +10,5 @@ setuptools.setup(
 	author='Ryan Tatton',
 	author_email='ryan.tatton@case.edu',
 	description='The computing backend for the ShareTrace mobile application.',
-	python_requires='>= 3.6',
+	python_requires='>= 3.8',
 )
