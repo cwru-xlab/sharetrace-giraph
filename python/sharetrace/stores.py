@@ -1,5 +1,5 @@
 import asyncio
-from typing import Any, Hashable, Iterable, Mapping, NoReturn, Optional
+from typing import Any, Hashable, Iterable, Mapping, NoReturn
 
 import ray
 
@@ -170,6 +170,23 @@ class _Queue:
 
 
 class VertexStore:
+	"""Data structure for storing vertex data
+
+	Examples:
+		A vertex store can be used for the following four scenarios:
+
+		(1) Vertices with no attributes:
+			{<id>: None...}
+
+		(2) Vertices with a scalar attribute:
+			{<id>: <attr> ...}
+
+		(2) Vertices with multiple scalar attributes:
+			{<id>: {<attr_key>: <attr_value>...}...}
+
+		(4) Vertices with mapping attributes:
+			{<id>: {<attr_key>: {<key>: <value>...}...}...}
+	"""
 	__slots__ = ['local_mode', 'detached', '_actor']
 
 	def __init__(self, *, local_mode: bool = None, detached: bool = True):
@@ -185,14 +202,6 @@ class VertexStore:
 			else:
 				self._actor = ray.remote(_VertexStore)
 			self._actor = self._actor.remote()
-
-	def __copy__(self):
-		store = VertexStore(local_mode=True)
-		if self.local_mode:
-			store._actor = self._actor
-		else:
-			store._actor = ray.get(self._actor.copy.remote())
-		return store
 
 	def get(
 			self,
@@ -241,30 +250,23 @@ class _VertexStore:
 	def put(
 			self,
 			keys: Iterable[Hashable],
-			attributes: Optional[Any] = None,
+			attributes: Mapping[Hashable, Any] = None,
 			merge: bool = False) -> NoReturn:
+		def combine(key):
+			for a in attributes[key]:
+				previous = self._store[key][a]
+				current = {**previous, **attributes[key][a]}
+				self._store[k][a] = current
+
+		def replace(key):
+			for a in attributes[key]:
+				self._store[key][a] = attributes[key][a]
+
 		if attributes is None:
 			self._store.update(dict.fromkeys(keys, None))
-		elif isinstance(attributes, Mapping):
+		else:
 			for k in keys:
-				if k in self._store:
-					if isinstance(attributes[k], Mapping):
-						if merge:
-							for a in attributes[k]:
-								previous = self._store[k][a]
-								current = {**previous, **attributes[k][a]}
-								self._store[k][a] = current
-						else:
-							for a in attributes[k]:
-								self._store[k][a] = attributes[k][a]
-					else:
-						self._store[k].update(attributes[k])
+				if k in self._store and isinstance(attributes[k], Mapping):
+					combine(k) if merge else replace(k)
 				else:
 					self._store[k] = attributes[k]
-		else:
-			self._store.update(attributes)
-
-	def copy(self):
-		vertex_store = _VertexStore()
-		vertex_store._store = self._store.copy()
-		return vertex_store
