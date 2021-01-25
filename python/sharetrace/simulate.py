@@ -41,10 +41,10 @@ def setup(
 	return factors, variables
 
 
-def generate_bimodal_score(mean1=0.2, var1=0.01, mean2=0.8, var2=0.01):
+def generate_bimodal_score(mean1=0.2, var1=0.01, w1=0.95, mean2=0.8, var2=0.01):
 	x1 = random.normalvariate(mean1, np.sqrt(var1))
 	x2 = random.normalvariate(mean2, np.sqrt(var2))
-	score = random.sample([x1, x2], 1)[0]
+	score = random.choices([x1, x2], weights=[w1, 1 - w1])[0]
 	return np.clip(score, 0, 1)
 
 
@@ -72,7 +72,7 @@ def main():
 	np.random.seed(12345)
 	local_mode = True
 	impl = graphs.NUMPY
-	setup_kwargs = {'users': 25, 'scores': 60, 'days': 30}
+	setup_kwargs = {'users': 10, 'scores': 10, 'days': 10}
 	backend.set_local_mode(local_mode)
 	contact_search = search.ContactSearch()
 	if local_mode:
