@@ -2,10 +2,9 @@ import datetime
 import functools
 import itertools
 import random
-from typing import Any, Hashable, Iterable, Mapping, NoReturn, Optional, \
-	Sequence, Tuple, Union
+from typing import (
+	Any, Hashable, Iterable, NoReturn, Optional, Sequence, Tuple, Union)
 
-import attr
 import codetiming
 import numpy as np
 import ray
@@ -15,11 +14,14 @@ import graphs
 import model
 import stores
 
-_TWO_DAYS = np.timedelta64(datetime.timedelta(days=2), 's')
+_TWO_DAYS = np.timedelta64(2, 'D')
 _NOW = np.datetime64(backend.TIME, 's')
 _DEFAULT_MESSAGE = model.RiskScore(
 	name='DEFAULT_ID', timestamp=backend.TIME, value=0)
+_KILL_EXCEPTION = '{} does not support kill(); use {} instead.'
 RiskScores = Iterable[model.RiskScore]
+Maxes = Union[np.ndarray, Iterable[Tuple[graphs.Vertex, model.RiskScore]]]
+TimestampBuffer = Union[datetime.timedelta, np.timedelta64]
 AllRiskScores = Iterable[Tuple[Hashable, RiskScores]]
 Contacts = Iterable[model.Contact]
 Vertices = Union[np.ndarray, ray.ObjectRef]
@@ -29,254 +31,6 @@ stdout = backend.STDOUT
 stderr = backend.STDERR
 
 
-class FactorGraphPartition:
-	__slots__ = ['local_mode', '_actor']
-
-	def __init__(
-			self,
-			*,
-			variables: Sequence[graphs.Vertex],
-			factors: Sequence[graphs.Vertex],
-			vertex_store: stores.VertexStore,
-			max_queue_size: int = 0,
-			local_mode: bool = True,
-			default_msg: model.RiskScore = _DEFAULT_MESSAGE,
-			current_time: datetime.datetime = _NOW):
-		kwargs = {
-			'variables': variables,
-			'factors': factors,
-			'vertex_store': vertex_store,
-			'max_queue_size': max_queue_size,
-			'local_mode': local_mode,
-			'default_msg': default_msg,
-			'current_time': current_time}
-		self.local_mode = bool(local_mode)
-		if local_mode:
-			self._actor = _FactorGraphPartition(**kwargs)
-		else:
-			self._actor = ray.remote(_FactorGraphPartition).remote(**kwargs)
-
-	def send_to_factors(
-			self,
-			*,
-			graph: graphs.FactorGraph,
-			queue: stores.Queue) -> bool:
-		kwargs = {'graph': graph, 'queue': queue}
-		if self.local_mode:
-			result = self._actor.send_to_factors(**kwargs)
-		else:
-			result = self._actor.send_to_factors.remote(**kwargs)
-		return result
-
-	def send_to_variables(
-			self,
-			*,
-			graph: graphs.FactorGraph,
-			queue: stores.Queue,
-			transmission_rate: float,
-			buffer: np.datetime64) -> bool:
-		kwargs = {
-			'graph': graph,
-			'queue': queue,
-			'transmission_rate': transmission_rate,
-			'buffer': buffer}
-		if self.local_mode:
-			result = self._actor.send_to_variables(**kwargs)
-		else:
-			result = self._actor.send_to_variables.remote(**kwargs)
-		return result
-
-	def get_maxes(
-			self,
-			*,
-			only_value: bool = False,
-			with_variable: bool = False
-	) -> Union[np.ndarray, Iterable[Tuple[graphs.Vertex, model.RiskScore]]]:
-		kwargs = {'only_value': only_value, 'with_variable': with_variable}
-		if self.local_mode:
-			result = self._actor.get_maxes(**kwargs)
-		else:
-			result = self._actor.get_maxes.remote(**kwargs)
-		return result
-
-	def enqueue(self, message: model.Message) -> NoReturn:
-		if self.local_mode:
-			self._actor.enqueue(message)
-		else:
-			self._actor.enqueue.remote(message)
-
-	def kill(self):
-		if not self.local_mode:
-			ray.kill(self._actor)
-
-
-class _FactorGraphPartition:
-	__slots__ = [
-		'variables',
-		'factors',
-		'vertex_store',
-		'queue',
-		'max_queue_size',
-		'local_mode',
-		'default_msg',
-		'current_time']
-
-	def __init__(
-			self,
-			*,
-			variables: Sequence[graphs.Vertex],
-			factors: Sequence[graphs.Vertex],
-			vertex_store: stores.VertexStore,
-			max_queue_size: int = 0,
-			local_mode: bool = True,
-			default_msg: model.RiskScore = _DEFAULT_MESSAGE,
-			current_time: datetime.datetime = _NOW):
-		self.variables = np.unique(variables)
-		self.factors = np.unique(factors)
-		self.vertex_store = vertex_store
-		self.max_queue_size = int(max_queue_size)
-		self.queue = stores.Queue(local_mode=True, max_size=max_queue_size)
-		self.local_mode = bool(local_mode)
-		self.default_msg = default_msg
-		self.current_time = np.datetime64(current_time, 's')
-
-	def send_to_factors(
-			self,
-			*,
-			graph: graphs.FactorGraph,
-			queue: stores.Queue) -> bool:
-		def update_max(vertex, mx, incoming):
-			# 'max' is already set when creating graph
-			if vertex not in incoming:
-				updated = max(itertools.chain(incoming.values(), [mx]))
-				updated = {vertex: {'max': updated}}
-				self.vertex_store.put(
-					keys=[vertex], attributes=updated, merge=False)
-
-		def send(sender, sender_max, incoming):
-			for f in graph.get_neighbors(sender):
-				if sender in incoming:  # First iteration only
-					others = incoming[sender]
-				else:
-					# Avoid self-bias by excluding the message sent from the
-					# receiving factor vertex
-					others = (msg for o, msg in incoming.items() if o != f)
-				msg = itertools.chain([sender_max], others)
-				if not self.local_mode:
-					msg = np.array(list(msg))
-				msg = model.Message(sender=sender, receiver=f, content=msg)
-				queue.put(msg, block=bool(self.max_queue_size))
-
-		self._update_inboxes()
-		for v in self.variables:
-			attributes = self.vertex_store.get(key=v)
-			inbox = attributes['inbox']
-			curr_max = attributes['max']
-			update_max(v, curr_max, inbox)
-			send(v, curr_max, inbox)
-		self._clear_inboxes(variables=True)
-		return True
-
-	def send_to_variables(
-			self,
-			*,
-			graph: graphs.FactorGraph,
-			queue: stores.Queue,
-			transmission_rate: float,
-			buffer: np.datetime64) -> bool:
-		self._update_inboxes()
-		for f in self.factors:
-			neighbors = tuple(graph.get_neighbors(f))
-			inbox = self.vertex_store.get(key=f, attribute='inbox')
-			for i, v in enumerate(neighbors):
-				# Assumes factor vertex has a degree of 2
-				content = self._compute_message(
-					factor=f,
-					msgs=inbox[neighbors[not i]],
-					transmission_rate=transmission_rate,
-					buffer=buffer)
-				if content is not None:
-					msg = model.Message(sender=f, receiver=v, content=content)
-					queue.put(msg, block=bool(self.max_queue_size))
-		self._clear_inboxes(variables=False)
-		return True
-
-	def _compute_message(
-			self,
-			factor: graphs.Vertex,
-			msgs: Iterable[model.RiskScore],
-			transmission_rate: float,
-			buffer: np.datetime64) -> Optional[model.RiskScore]:
-		def sec_to_day(a: np.ndarray) -> np.ndarray:
-			return np.array(a, dtype=np.float64, copy=False) / 86400
-
-		occurs = self.vertex_store.get(key=factor, attribute='occurrences')
-		occurs = np.array([o.as_array() for o in occurs]).flatten()
-		msgs = np.array([m.as_array() for m in msgs]).flatten()
-		m = np.where(msgs['timestamp'] <= np.max(occurs['timestamp']) + buffer)
-		# Order messages in ascending order
-		old_enough = np.sort(msgs[m], order=['timestamp', 'value', 'name'])
-		if not old_enough.size:
-			msg = self.default_msg
-		else:
-			# Formats each time delta as partial days
-			# TODO Should this be current time or msg timestamp?
-			diff = sec_to_day(old_enough['timestamp'] - self.current_time)
-			# TODO Only necessary if using msg timestamp; current time
-			#  ensures all diffs are less than 0
-			np.clip(diff, -np.inf, 0, out=diff)
-			# Newer messages are weighted more with a smaller decay weight
-			weight = np.exp(diff)
-			# Newer messages account for the weight of older messages (causal)
-			norm = np.cumsum(weight)
-			weighted = np.cumsum(old_enough['value'] * weight)
-			weighted *= transmission_rate / norm
-			# Select the message with the maximum weighted average
-			ind = np.argmax(weighted)
-			old_enough[ind]['value'] = weighted[ind]
-			msg = model.RiskScore.from_array(old_enough[ind])
-		return msg
-
-	def get_maxes(
-			self,
-			*,
-			only_value: bool = False,
-			with_variable: bool = False
-	) -> Union[np.ndarray, Iterable[Tuple[graphs.Vertex, model.RiskScore]]]:
-		get_max = functools.partial(self.vertex_store.get, attribute='max')
-		maxes = ((v, get_max(key=v)) for v in self.variables)
-		if only_value:
-			if with_variable:
-				maxes = tuple((v, m.value) for v, m in maxes)
-			else:
-				maxes = np.array([m.value for _, m in maxes])
-		else:
-			if with_variable:
-				maxes = tuple(maxes)
-			else:
-				maxes = np.array([m for _, m in maxes])
-		return maxes
-
-	def _update_inboxes(self) -> NoReturn:
-		while self.queue.qsize():
-			msg = self.queue.get(block=bool(self.max_queue_size))
-			attrs = {msg.receiver: {'inbox': {msg.sender: msg.content}}}
-			self.vertex_store.put(
-				keys=[msg.receiver], attributes=attrs, merge=True)
-
-	def _clear_inboxes(self, *, variables: bool) -> NoReturn:
-		def clear(vertices: np.ndarray):
-			attributes = {v: {'inbox': {}} for v in vertices}
-			self.vertex_store.put(
-				keys=vertices, attributes=attributes, merge=False)
-
-		clear(self.variables) if variables else clear(self.factors)
-
-	def enqueue(self, message) -> NoReturn:
-		self.queue.put(message, block=bool(self.max_queue_size))
-
-
-@attr.s(slots=True)
 class BeliefPropagation:
 	"""Runs the belief propagation algorithm to compute exposure scores.
 
@@ -341,55 +95,66 @@ class BeliefPropagation:
 			library is utilized to parallelize computation for each vertex
 			set.
 	"""
-	transmission_rate = attr.ib(type=float, default=0.8, converter=float)
-	tolerance = attr.ib(type=float, default=1e-10, converter=float)
-	iterations = attr.ib(type=int, default=4, converter=int)
-	timestamp_buffer = attr.ib(
-		type=Union[datetime.timedelta, np.timedelta64],
-		default=_TWO_DAYS,
-		converter=np.timedelta64)
-	max_queue_size = attr.ib(type=int, default=0, converter=int)
-	impl = attr.ib(type=str, default=graphs.DEFAULT)
-	seed = attr.ib(type=Any, default=None)
-	local_mode = attr.ib(type=bool, default=None)
-	_queue = attr.ib(type=stores.Queue, init=False, repr=False)
-	_graph = attr.ib(type=graphs.FactorGraph, init=False, repr=False)
-	_actors = attr.ib(
-		type=Sequence[FactorGraphPartition], init=False, repr=False)
-	_address_book = attr.ib(
-		type=Mapping[Hashable, Hashable], init=False, repr=False)
 
-	def __attrs_post_init__(self):
-		if self.local_mode is None:
-			self.local_mode = backend.LOCAL_MODE
-		self._queue = stores.Queue(
-			local_mode=self.local_mode,
-			max_size=self.max_queue_size,
-			detached=True)
+	__slots__ = [
+		'transmission_rate',
+		'tolerance',
+		'iterations',
+		'timestamp_buffer',
+		'max_queue_size',
+		'impl',
+		'seed',
+		'local_mode',
+		'_queue',
+		'_graph',
+		'_actors',
+		'_address_book']
+
+	def __init__(
+			self,
+			*,
+			transmission_rate: float = 0.8,
+			tolerance: float = 1e-6,
+			iterations: int = 4,
+			timestamp_buffer: TimestampBuffer = _TWO_DAYS,
+			max_queue_size: int = 0,
+			impl: str = graphs.DEFAULT,
+			local_mode: bool = None,
+			seed: Any = None, ):
+		self._check_transmission_rate(transmission_rate)
+		self._check_tolerance(tolerance)
+		self._check_iterations(iterations)
+		self.transmission_rate = float(transmission_rate)
+		self.tolerance = float(tolerance)
+		self.iterations = int(iterations)
+		self.timestamp_buffer = np.timedelta64(timestamp_buffer)
+		self.max_queue_size = int(max_queue_size)
+		self.impl = str(impl)
+		local_mode = backend.LOCAL_MODE if local_mode is None else local_mode
+		self.local_mode = bool(local_mode)
+		self.seed = seed
 		if self.seed is not None:
 			random.seed(self.seed)
 			np.random.seed(self.seed)
+		self._queue = stores.queue_factory(
+			max_size=max_queue_size,
+			local_mode=local_mode)
 
-	@transmission_rate.validator
-	def _check_transmission_rate(self, attribute, value):
+	@staticmethod
+	def _check_transmission_rate(value):
 		if value < 0 or value > 1:
 			raise ValueError(
 				"'transmission_rate' must be between 0 and 1, inclusive")
 
-	@tolerance.validator
-	def _check_tolerance(self, attribute, value):
+	@staticmethod
+	def _check_tolerance(value):
 		if value <= 0:
 			raise ValueError("'tolerance' must be greater than 0")
 
-	@iterations.validator
-	def _check_iterations(self, attribute, value):
+	@staticmethod
+	def _check_iterations(value):
 		if value < 1:
 			raise ValueError("'iterations' must be at least 1")
-
-	@impl.validator
-	def _check_backend(self, attribute, value):
-		if value not in graphs.OPTIONS:
-			raise ValueError(f"'impl' must be one of {graphs.OPTIONS}")
 
 	def __call__(
 			self, *, factors: Contacts, variables: AllRiskScores) -> Result:
@@ -440,7 +205,7 @@ class BeliefPropagation:
 		self._address_book = {vertex: actor for vertex, actor in addresses}
 		self._graph = graph
 		self._actors = tuple(
-			FactorGraphPartition(
+			ShareTraceFGPart(
 				factors=tuple(f_id for f_id, _ in f),
 				variables=tuple(v_id for v_id, _ in v),
 				vertex_store=s,
@@ -463,7 +228,7 @@ class BeliefPropagation:
 				k: {
 					'max': max(v2, default=_DEFAULT_MESSAGE),
 					'inbox': {k: tuple(v1)}}})
-		builder.add_variables(vertices, attrs)
+		builder.add_variables(vertices, attributes=attrs)
 
 	@staticmethod
 	def _add_factors_and_edges(
@@ -481,7 +246,7 @@ class BeliefPropagation:
 			vertices.append(k)
 			edges.extend(((k, v1), (k, v2)))
 			attrs.update({k: {'occurrences': f.occurrences, 'inbox': {}}})
-		builder.add_factors(vertices, attrs)
+		builder.add_factors(vertices, attributes=attrs)
 		builder.add_edges(edges)
 
 	def _get_maxes(
@@ -508,7 +273,7 @@ class BeliefPropagation:
 		else:
 			_, remaining = ray.wait(refs, timeout=0.001)
 		while remaining:
-			while self._queue.qsize():
+			while len(self._queue):
 				msg = self._queue.get(block=bool(self.max_queue_size))
 				destination = self._address_book[msg.receiver]
 				self._actors[destination].enqueue(msg)
@@ -532,8 +297,7 @@ class BeliefPropagation:
 			self,
 			iteration: int,
 			maxes: np.ndarray) -> Tuple[int, float, np.ndarray]:
-		iter_maxes = [a.get_maxes(only_value=True) for a in self._actors]
-		iter_maxes = self._collect_results(iter_maxes)
+		iter_maxes = self._get_maxes(only_value=True)
 		tolerance = np.float64(np.sum(iter_maxes - maxes))
 		stdout(f'Tolerance: {np.round(tolerance, 10)}')
 		return iteration + 1, tolerance, iter_maxes
@@ -556,3 +320,263 @@ class BeliefPropagation:
 
 	def _get_num_cpus(self) -> int:
 		return 1 if self.local_mode else backend.NUM_CPUS
+
+
+class ShareTraceFGPart(graphs.FGPart):
+	__slots__ = ['local_mode', '_actor']
+
+	def __init__(
+			self,
+			*,
+			variables: Sequence[graphs.Vertex],
+			factors: Sequence[graphs.Vertex],
+			vertex_store: stores.VertexStore,
+			max_queue_size: int = 0,
+			default_msg: model.RiskScore = _DEFAULT_MESSAGE,
+			current_time: datetime.datetime = _NOW,
+			local_mode: bool = False):
+		super(ShareTraceFGPart, self).__init__()
+		kwargs = {
+			'variables': variables,
+			'factors': factors,
+			'vertex_store': vertex_store,
+			'max_queue_size': max_queue_size,
+			'default_msg': default_msg,
+			'current_time': current_time,
+			'local_mode': local_mode}
+		local_mode = backend.LOCAL_MODE if local_mode is None else local_mode
+		self.local_mode = bool(local_mode)
+		if local_mode:
+			self._actor = _ShareTraceFGPart(**kwargs)
+		else:
+			self._actor = ray.remote(_ShareTraceFGPart).remote(**kwargs)
+
+	def send_to_factors(
+			self,
+			*,
+			graph: graphs.FactorGraph,
+			queue: stores.Queue) -> bool:
+		kwargs = {'graph': graph, 'queue': queue}
+		send_to_factors = self._actor.send_to_factors
+		if self.local_mode:
+			result = send_to_factors(**kwargs)
+		else:
+			result = send_to_factors.remote(**kwargs)
+		return result
+
+	def send_to_variables(
+			self,
+			*,
+			graph: graphs.FactorGraph,
+			queue: stores.Queue,
+			transmission_rate: float,
+			buffer: np.datetime64) -> bool:
+		kwargs = {
+			'graph': graph,
+			'queue': queue,
+			'transmission_rate': transmission_rate,
+			'buffer': buffer}
+		send_to_variables = self._actor.send_to_variables
+		if self.local_mode:
+			result = send_to_variables(**kwargs)
+		else:
+			result = send_to_variables.remote(**kwargs)
+		return result
+
+	def get_maxes(
+			self,
+			*,
+			only_value: bool = False,
+			with_variable: bool = False) -> Maxes:
+		kwargs = {'only_value': only_value, 'with_variable': with_variable}
+		get_maxes = self._actor.get_maxes
+		if self.local_mode:
+			result = get_maxes(**kwargs)
+		else:
+			result = get_maxes.remote(**kwargs)
+		return result
+
+	def enqueue(self, message: model.Message) -> bool:
+		enqueue = self._actor.enqueue
+		if self.local_mode:
+			result = enqueue(message)
+		else:
+			result = enqueue.remote(message)
+		return result
+
+	def kill(self) -> NoReturn:
+		if not self.local_mode:
+			ray.kill(self._actor)
+
+
+class _ShareTraceFGPart(graphs.FGPart):
+	__slots__ = [
+		'variables',
+		'factors',
+		'vertex_store',
+		'queue',
+		'block_queue',
+		'default_msg',
+		'current_time',
+		'local_mode']
+
+	def __init__(
+			self,
+			*,
+			variables: Sequence[graphs.Vertex],
+			factors: Sequence[graphs.Vertex],
+			vertex_store: stores.VertexStore,
+			max_queue_size: int = 0,
+			default_msg: model.RiskScore = _DEFAULT_MESSAGE,
+			current_time: datetime.datetime = _NOW,
+			local_mode: bool = None):
+		super(_ShareTraceFGPart, self).__init__()
+		self.variables = np.unique(variables)
+		self.factors = np.unique(factors)
+		self.vertex_store = vertex_store
+		self.block_queue = max_queue_size < 1
+		self.queue = stores.queue_factory(
+			max_size=max_queue_size, local_mode=True)
+		self.default_msg = default_msg
+		self.current_time = np.datetime64(current_time, 's')
+		local_mode = backend.LOCAL_MODE if local_mode is None else local_mode
+		self.local_mode = bool(local_mode)
+
+	def send_to_factors(
+			self,
+			*,
+			graph: graphs.FactorGraph,
+			queue: stores.Queue) -> bool:
+		def update_max(vertex, mx, incoming):
+			# 'max' is already set when creating graph
+			if vertex not in incoming:
+				updated = max(itertools.chain(incoming.values(), [mx]))
+				updated = {vertex: {'max': updated}}
+				self.vertex_store.put(
+					keys=[vertex], attributes=updated, merge=False)
+
+		def send(sender, sender_max, incoming):
+			for f in graph.get_neighbors(sender):
+				if sender in incoming:  # First iteration only
+					others = incoming[sender]
+				else:
+					# Avoid self-bias by excluding the message sent from the
+					# receiving factor vertex
+					others = (msg for o, msg in incoming.items() if o != f)
+				msg = itertools.chain([sender_max], others)
+				if not self.local_mode:
+					msg = np.array(list(msg))
+				msg = model.Message(sender=sender, receiver=f, content=msg)
+				queue.put(msg, block=self.block_queue)
+
+		self._update_inboxes()
+		for v in self.variables:
+			attributes = self.vertex_store.get(key=v)
+			inbox = attributes['inbox']
+			curr_max = attributes['max']
+			update_max(v, curr_max, inbox)
+			send(v, curr_max, inbox)
+		self._clear_inboxes(variables=True)
+		return True
+
+	def send_to_variables(
+			self,
+			*,
+			graph: graphs.FactorGraph,
+			queue: stores.Queue,
+			transmission_rate: float,
+			buffer: np.datetime64) -> bool:
+		self._update_inboxes()
+		for f in self.factors:
+			neighbors = tuple(graph.get_neighbors(f))
+			inbox = self.vertex_store.get(key=f, attribute='inbox')
+			for i, v in enumerate(neighbors):
+				# Assumes factor vertex has a degree of 2
+				content = self._compute_message(
+					factor=f,
+					msgs=inbox[neighbors[not i]],
+					transmission_rate=transmission_rate,
+					buffer=buffer)
+				if content is not None:
+					msg = model.Message(sender=f, receiver=v, content=content)
+					queue.put(msg, block=self.block_queue)
+		self._clear_inboxes(variables=False)
+		return True
+
+	def _compute_message(
+			self,
+			factor: graphs.Vertex,
+			msgs: Iterable[model.RiskScore],
+			transmission_rate: float,
+			buffer: np.datetime64) -> Optional[model.RiskScore]:
+		def sec_to_day(a: np.ndarray) -> np.ndarray:
+			return np.array(a, dtype=np.float64, copy=False) / 86400
+
+		occurs = self.vertex_store.get(key=factor, attribute='occurrences')
+		occurs = np.array([o.as_array() for o in occurs]).flatten()
+		msgs = np.array([m.as_array() for m in msgs]).flatten()
+		m = np.where(msgs['timestamp'] <= np.max(occurs['timestamp']) + buffer)
+		# Order messages in ascending order
+		old_enough = np.sort(msgs[m], order=['timestamp', 'value', 'name'])
+		if not old_enough.size:
+			msg = self.default_msg
+		else:
+			# Formats each time delta as partial days
+			# TODO Should this be current time or msg timestamp?
+			diff = sec_to_day(old_enough['timestamp'] - self.current_time)
+			# TODO Only necessary if using msg timestamp; current time
+			#  ensures all diffs are less than 0
+			np.clip(diff, -np.inf, 0, out=diff)
+			# Newer messages are weighted more with a smaller decay weight
+			weight = np.exp(diff)
+			# Newer messages account for the weight of older messages (causal)
+			norm = np.cumsum(weight)
+			weighted = np.cumsum(old_enough['value'] * weight)
+			weighted *= transmission_rate / norm
+			# Select the message with the maximum weighted average
+			ind = np.argmax(weighted)
+			old_enough[ind]['value'] = weighted[ind]
+			msg = model.RiskScore.from_array(old_enough[ind])
+		return msg
+
+	def get_maxes(
+			self,
+			*,
+			only_value: bool = False,
+			with_variable: bool = False) -> Maxes:
+		get_max = functools.partial(self.vertex_store.get, attribute='max')
+		maxes = ((v, get_max(key=v)) for v in self.variables)
+		if only_value:
+			if with_variable:
+				maxes = tuple((v, m.value) for v, m in maxes)
+			else:
+				maxes = np.array([m.value for _, m in maxes])
+		else:
+			if with_variable:
+				maxes = tuple(maxes)
+			else:
+				maxes = np.array([m for _, m in maxes])
+		return maxes
+
+	def _update_inboxes(self) -> NoReturn:
+		while len(self.queue):
+			msg = self.queue.get(block=self.block_queue)
+			attrs = {msg.receiver: {'inbox': {msg.sender: msg.content}}}
+			self.vertex_store.put(
+				keys=[msg.receiver], attributes=attrs, merge=True)
+
+	def _clear_inboxes(self, *, variables: bool) -> NoReturn:
+		def clear(vertices: np.ndarray):
+			attributes = {v: {'inbox': {}} for v in vertices}
+			self.vertex_store.put(
+				keys=vertices, attributes=attributes, merge=False)
+
+		clear(self.variables) if variables else clear(self.factors)
+
+	def enqueue(self, message: model.Message) -> bool:
+		return self.queue.put(message, block=self.block_queue)
+
+	def kill(self) -> NoReturn:
+		cls = self.__class__.__name__
+		msg = _KILL_EXCEPTION.format(cls, 'RemoteShareTraceFGPart')
+		raise NotImplementedError(msg)
