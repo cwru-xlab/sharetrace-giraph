@@ -1,9 +1,13 @@
-import asyncio
-from typing import Any, Hashable, Iterable, Mapping, NoReturn
+import abc
+import collections
+from typing import Any, Hashable, Iterable, Mapping, NoReturn, Optional
 
 import ray
+from ray.util import queue
 
 import backend
+
+_KILL_EXCEPTION = '{} does not support kill(); use {} instead.'
 
 
 class Empty(Exception):
@@ -14,159 +18,118 @@ class Full(Exception):
 	pass
 
 
-class Queue:
-	"""Extension of Queue implementation on Ray.
+class Queue(abc.ABC):
+	__slots__ = []
 
-	Allows for a non-actor queue using asyncio.Queue.
-	"""
+	def __init__(self):
+		super(Queue, self).__init__()
 
-	__slots__ = ['local_mode', 'detached', 'max_size', '_actor']
+	@abc.abstractmethod
+	def __len__(self) -> int:
+		pass
 
-	def __init__(
+	@abc.abstractmethod
+	def empty(self) -> bool:
+		pass
+
+	@abc.abstractmethod
+	def full(self) -> bool:
+		pass
+
+	@abc.abstractmethod
+	def put(
+			self,
+			item: Any,
+			*,
+			block: bool = True,
+			timeout: Optional[float] = None) -> bool:
+		pass
+
+	@abc.abstractmethod
+	def get(
 			self,
 			*,
-			local_mode: bool = None,
-			detached: bool = True,
-			max_size: int = 0):
-		local_mode = backend.LOCAL_MODE if local_mode is None else local_mode
-		self.local_mode = bool(local_mode)
-		self.detached = bool(detached)
-		self.max_size = int(max_size)
-		if self.local_mode:
-			self._actor = _Queue(max_size=max_size)
-		else:
-			self._actor = ray.remote(_Queue)
-			if self.detached:
-				self._actor.options(lifetime='detached')
-			self._actor = self._actor.remote(max_size)
+			block: bool = True,
+			timeout: Optional[float] = None) -> Any:
+		pass
 
-	def qsize(self):
-		"""The size of the queue."""
-		qsize = self._actor.qsize
-		return qsize() if self.local_mode else ray.get(qsize.remote())
-
-	def empty(self):
-		"""Whether the queue is empty."""
-		empty = self._actor.empty
-		return empty() if self.local_mode else ray.get(empty.remote())
-
-	def full(self):
-		"""Whether the queue is full."""
-		full = self._actor.full
-		return full() if self.local_mode else ray.get(full.remote())
-
-	def put(self, item, block=True, timeout=None):
-		"""Adds an item to the queue.
-
-		There is no guarantee of order if multiple producers put to the same
-		full queue.
-
-		Raises:
-			Full if the queue is full and blocking is False.
-			Full if the queue is full, blocking is True, and it timed out.
-			ValueError if timeout is negative.
-		"""
-		if not block:
-			try:
-				put = self._actor.put_nowait
-				put(item) if self.local_mode else put.remote(item)
-			except asyncio.QueueFull:
-				raise Full
-		else:
-			if timeout is not None and timeout < 0:
-				raise ValueError("'timeout' must be a non-negative number")
-			else:
-				put = self._actor.put
-				if self.local_mode:
-					put(item, timeout)
-				else:
-					put.remote(item, timeout)
-
-	def get(self, block=True, timeout=None):
-		"""Gets an item from the queue.
-
-		There is no guarantee of order if multiple consumers get from the
-		same empty queue.
-
-		Returns:
-			The next item in the queue.
-
-		Raises:
-			Empty if the queue is empty and blocking is False.
-			Empty if the queue is empty, blocking is True, and it timed out.
-			ValueError if timeout is negative.
-		"""
-		if block:
-			if timeout is not None and timeout < 0:
-				raise ValueError("'timeout' must be a non-negative number")
-			else:
-				get = self._actor.get
-				if self.local_mode:
-					value = get(timeout)
-				else:
-					value = ray.get(get.remote(timeout))
-		else:
-			try:
-				get = self._actor.get_nowait
-				value = get() if self.local_mode else ray.get(get.remote())
-			except asyncio.QueueEmpty:
-				raise Empty
-
-		return value
-
-	def put_nowait(self, item):
-		"""Equivalent to put(item, block=False).
-
-		Raises:
-			Full if the queue is full.
-		"""
-		return self.put(item, block=False)
-
-	def get_nowait(self):
-		"""Equivalent to get(block=False).
-
-		Raises:
-			Empty if the queue is empty.
-		"""
-		return self.get(block=False)
-
-	def kill(self):
-		if not self.local_mode:
-			ray.kill(self._actor)
+	@abc.abstractmethod
+	def kill(self) -> NoReturn:
+		pass
 
 
-class _Queue:
+class LocalQueue(Queue):
 	__slots__ = ['max_size', '_queue']
 
-	def __init__(self, max_size):
-		self._queue = asyncio.Queue(max_size)
+	def __init__(self, max_size: int = 0):
+		super(LocalQueue, self).__init__()
+		self.max_size = None if max_size in {None, 0} else int(max_size)
+		self._queue = collections.deque(maxlen=self.max_size)
 
-	def qsize(self):
-		return self._queue.qsize()
+	def __len__(self) -> int:
+		return len(self._queue)
 
-	def empty(self):
-		return self._queue.empty()
+	def empty(self) -> bool:
+		return len(self._queue) == 0
 
-	def full(self):
-		return self._queue.full()
+	def full(self) -> bool:
+		return len(self._queue) == self._queue.maxlen
 
-	async def put(self, item, timeout=None):
-		try:
-			await asyncio.wait_for(self._queue.put(item), timeout)
-		except asyncio.TimeoutError:
-			raise Full
+	def put(
+			self,
+			item: Any,
+			*,
+			block: bool = True,
+			timeout: Optional[float] = None) -> bool:
+		self._queue.append(item)
+		return True
 
-	async def get(self, timeout=None):
-		try:
-			return await asyncio.wait_for(self._queue.get(), timeout)
-		except asyncio.TimeoutError:
-			raise Empty
+	def get(
+			self,
+			*,
+			block: bool = True,
+			timeout: Optional[float] = None) -> Any:
+		return self._queue.popleft()
 
-	def put_nowait(self, item):
-		self._queue.put_nowait(item)
+	def kill(self) -> NoReturn:
+		msg = _KILL_EXCEPTION.format(self.__class__.__name__, 'RemoteQueue')
+		raise NotImplementedError(msg)
 
-	def get_nowait(self):
-		return self._queue.get_nowait()
+
+class RemoteQueue(Queue):
+	__slots__ = ['max_size', '_actor']
+
+	def __init__(self, max_size: int = 0):
+		super(RemoteQueue, self).__init__()
+		self.max_size = int(max_size)
+		self._actor = queue.Queue(maxsize=max_size)
+
+	def __len__(self) -> int:
+		return self._actor.qsize()
+
+	def empty(self) -> bool:
+		return self._actor.empty()
+
+	def full(self) -> bool:
+		return self._actor.full()
+
+	def put(
+			self,
+			item: Any,
+			*,
+			block: bool = True,
+			timeout: Optional[float] = None) -> bool:
+		return self._actor.put(item, block=block, timeout=timeout)
+
+	def get(
+			self,
+			*,
+			block: bool = True,
+			timeout: Optional[float] = None) -> Any:
+		return self._actor.get(block=block, timeout=timeout)
+
+	def kill(self) -> NoReturn:
+		ray.kill(self._actor.actor)
 
 
 class VertexStore:
@@ -270,3 +233,12 @@ class _VertexStore:
 					combine(k) if merge else replace(k)
 				else:
 					self._store[k] = attributes[k]
+
+
+def queue_factory(max_size: int = 0, *, local_mode: bool = None) -> Queue:
+	local_mode = backend.LOCAL_MODE if local_mode is None else local_mode
+	if local_mode:
+		queue_obj = LocalQueue(max_size=max_size)
+	else:
+		queue_obj = RemoteQueue(max_size=max_size)
+	return queue_obj
