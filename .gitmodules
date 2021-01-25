@@ -1,0 +1,4 @@
+[submodule "python/aws-lambda-base-images"]
+	path = python/aws-lambda-base-images
+	url = https://github.com/aws/aws-lambda-base-images
+	branch = python3.8
