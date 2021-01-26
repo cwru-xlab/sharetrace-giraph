@@ -11,8 +11,8 @@ NUM_CPUS = psutil.cpu_count(logical=False)
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
-STDOUT: Callable = print
-STDERR: Callable = print
+STDOUT: Callable = logger.info
+STDERR: Callable = logger.error
 
 LOCAL_MODE = True
 TIME = datetime.datetime.utcnow()
