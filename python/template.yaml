@@ -1,0 +1,78 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Globals:
+  Function:
+    Handler: app.handle
+    Runtime: python3.8
+    Timeout: 180
+    MemorySize: 8000
+    Environment:
+      Variables:
+        CLIENT_NAMESPACE:
+          "AQICAHhSpftPnvKaY96TB4Pb3D4dvUDfecQCwvzrWfdTRugRSAE+7+KtQh295UBVmll\
+          WwPeSAAAAZDBiBgkqhkiG9w0BBwagVTBTAgEAME4GCSqGSIb3DQEHATAeBglghkgBZQM\
+          EAS4wEQQMHVhwwqbdGek40FPbAgEQgCGpjlLNE528RzKfs9PoGTw53ROsw/HZCzjKSdl\
+          CEa6zvRA="
+        CONTRACT_ID:
+          "AQICAHhSpftPnvKaY96TB4Pb3D4dvUDfecQCwvzrWfdTRugRSAEsUpyidVGGcvsm3j\
+          u/sqTqAAAAgzCBgAYJKoZIhvcNAQcGoHMwcQIBADBsBgkqhkiG9w0BBwEwHgYJYIZIAW\
+          UDBAEuMBEEDJk5SwBeqKCZNoeknwIBEIA/v1GFFC7mN+LAZ5Qrgpw4pOtscOyv3djZ0\
+          YR6q7RKC5PWVO+9TEPSkJGI1XBhfsbBoszfEH6jwc9zm/terd//"
+        ITERATIONS: 4
+        KEYRING_URL: https://contracts.dataswift.io/v1/contracts/keyring
+        LONG_LIVED_TOKEN:
+          "AQICAHhSpftPnvKaY96TB4Pb3D4dvUDfecQCwvzrWfdTRugRSAGPKgSfFibBR9X0F\
+          cRrf+m/AAABXDCCAVgGCSqGSIb3DQEHBqCCAUkwggFFAgEAMIIBPgYJKoZIhvcNAQc\
+          BMB4GCWCGSAFlAwQBLjARBAzEzVWZxj6j5idSHXUCARCAggEPO1gTc88OLI65jaWcH\
+          PD1LhJ2wPehIRLyoARCc4lJg9wV/q1MC4NN+vd+AVAsiGjTYZ34RquTmBkYu9TG3mOW\
+          +DIBnWkSPne5FVFHrXfFkRdHd+NIZ1emdi/wCEhO/xukppScoAekEZXhh96vWeLfKWB\
+          pKufu2apfh7T92kwic1PAiJZUJlxP1etwxxbZaECrlcl7h9CxhAtL96gBu9w13kDdzC\
+          Ayk9aJExBUO8xFL9Ytie8b/FwAmXz3P0MeecxtwbuoZIeDUT9vyk435z4lrtBNpE16um\
+          8WmlYCG3arVIP17YYESOaVImMJMxDxRLJ8toS5OhKaNwSe4IDM8S/evgeZdvndgzs1M\
+          +2D60KqYg=="
+        MIN_DURATION: 900
+        READ_LOCATION_NAMESPACE:
+          "AQICAHhSpftPnvKaY96TB4Pb3D4dvUDfecQCwvzrWfdTRugRSAHX2upfhz2yawv13a\
+          apoypPAAAAbTBrBgkqhkiG9w0BBwagXjBcAgEAMFcGCSqGSIb3DQEHATAeBglghkgBZ\
+          QMEAS4wEQQMNVliFra1nQqlc43zAgEQgCqvriNzEzhVmUb6Bup5lVaFy86PwXZNU5S4\
+          k0GH25TxgvI+z5pkH4rn07w="
+        READ_SCORE_NAMESPACE:
+          "AQICAHhSpftPnvKaY96TB4Pb3D4dvUDfecQCwvzrWfdTRugRSAG257M01ocajflJlW\
+          xQIf7lAAAAcDBuBgkqhkiG9w0BBwagYTBfAgEAMFoGCSqGSIb3DQEHATAeBglghkgBZ\
+          QMEAS4wEQQMuV6dEp7ATpAGKk2RAgEQgC0kQWWItkAACDcUWOixYFQkci8aqKxnUNh\
+          IeHQWi7pGtG0//k8ZX8VFd8HrIeU="
+        READ_URL: https://hubofallthings.net/api/v2.6/contract-data/read
+        SCORE_TIMESTAMP_BUFFER: 172800
+        TAKE_LOCATIONS: 100
+        TAKE_SCORES: 100
+        TOLERANCE: 0.00000000001
+        TRANSMISSION_RATE: 0.8
+        WRITE_SCORE_NAMESPACE:
+        WRITE_URL: https://hubofallthings.net/api/v2.6/contract-data/create
+    KmsKeyArn:
+      "arn:aws:kms:us-east-2:429105560611:key/944114e2-94d3-40da-82dc\
+      -b2c23f7465c1"
+    AutoPublishAlias: live
+    DeploymentPreference:
+      Type: AllAtOnce
+      Alarms:
+        - !Ref AliasErrorMetricGreaterThanZeroAlarm
+        - !Ref LatestVersionErrorMetricGreaterThanZeroAlarm
+
+Resources:
+  sharetrace-compute:
+    Type: AWS::Serverless::Function
+    Properties:
+      Role: arn:aws:iam::429105560611:role/lambda-role
+      PackageType: Image
+      Events:
+        ScheduledEvent:
+          Type: Schedule
+          Properties:
+            Input: rate(12 hours)
+      Tracing: Active
+    Metadata:
+      Dockerfile: Dockerfile
+      DockerContext: ./sharetrace
+      DockerTag: python3.8-v1
