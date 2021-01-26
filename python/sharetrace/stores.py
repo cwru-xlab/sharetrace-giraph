@@ -59,6 +59,7 @@ class Queue(abc.ABC):
 
 
 class LocalQueue(Queue):
+	"""FIFO queue implementation using collections.deque."""
 	__slots__ = ['max_size', '_queue']
 
 	def __init__(self, max_size: int = 0):
@@ -159,11 +160,9 @@ class VertexStore:
 		if self.local_mode:
 			self._actor = _VertexStore()
 		else:
+			self._actor = ray.remote(_VertexStore)
 			if self.detached:
-				self._actor = ray.remote(_VertexStore)
 				self._actor = self._actor.options(lifetime='detached')
-			else:
-				self._actor = ray.remote(_VertexStore)
 			self._actor = self._actor.remote()
 
 	def get(
@@ -217,9 +216,8 @@ class _VertexStore:
 			merge: bool = False) -> NoReturn:
 		def combine(key):
 			for a in attributes[key]:
-				previous = self._store[key][a]
-				current = {**previous, **attributes[key][a]}
-				self._store[k][a] = current
+				updated = {**self._store[key][a], **attributes[key][a]}
+				self._store[k][a] = updated
 
 		def replace(key):
 			for a in attributes[key]:
