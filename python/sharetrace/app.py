@@ -2,7 +2,7 @@ import asyncio
 import datetime
 import os
 from base64 import b64decode
-from typing import Any, Mapping
+from typing import NoReturn
 
 import aws_xray_sdk.core as xray
 import boto3
@@ -13,6 +13,15 @@ import backend
 import pda
 import propagation
 import search
+
+xray.patch_all()
+stdout = backend.STDOUT
+stderr = backend.STDERR
+backend.set_local_mode(True)
+
+lambda_client = boto3.client('lambda')
+lambda_client.get_account_settings()
+kms_client = boto3.client('kms')
 
 
 def _decrypt(value: str) -> str:
@@ -51,17 +60,8 @@ _TOLERANCE = float(os.environ['TOLERANCE'])
 _SCORE_TIMESTAMP_BUFFER = datetime.timedelta(
 	seconds=float(os.environ['SCORE_TIMESTAMP_BUFFER']))
 
-xray.patch_all()
-stdout = backend.STDOUT
-stderr = backend.STDERR
-backend.set_local_mode(True)
 
-lambda_client = boto3.client('lambda')
-lambda_client.get_account_settings()
-kms_client = boto3.client('kms')
-
-
-def handle(event: Mapping[str, Any], context: Mapping[str, Any]):
+def handle(event, context):
 	"""Communicates with user PDAs to compute exposure scores.
 
 	Args:
@@ -83,7 +83,8 @@ def handle(event: Mapping[str, Any], context: Mapping[str, Any]):
 	Returns: Mapping that contains the status code of the execution.
 
 	References:
-		https://docs.aws.amazon.com/lambda/latest/dg/services-cloudwatchevents.html
+		https://docs.aws.amazon.com/lambda/latest/dg/services-cloudwatchevents
+		.html
 		https://docs.aws.amazon.com/lambda/latest/dg/python-context.html
 	"""
 	environment = jsonpickle.encode(dict(**os.environ))
@@ -96,8 +97,9 @@ def handle(event: Mapping[str, Any], context: Mapping[str, Any]):
 	return {'status_code': pda.SUCCESS_CODE}
 
 
+# noinspection PyTypeChecker
 @codetiming.Timer(text='Total task duration: {:0.6f} s', logger=stdout)
-async def _ahandle():
+async def _ahandle() -> NoReturn:
 	def compute(locs, users):
 		contact_search = search.ContactSearch(min_duration=_MIN_DURATION)
 		factors = contact_search(locs)
@@ -105,7 +107,7 @@ async def _ahandle():
 			transmission_rate=_TRANSMISSION_RATE,
 			iterations=_ITERATIONS,
 			tolerance=_TOLERANCE,
-			timestamp_buffer=_SCORE_TIMESTAMP_BUFFER)
+			time_buffer=_SCORE_TIMESTAMP_BUFFER)
 		return prop(factors=factors, variables=users)
 
 	async with pda.PdaContext(**_KWARGS) as p:
