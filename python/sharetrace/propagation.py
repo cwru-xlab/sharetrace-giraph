@@ -79,7 +79,7 @@ class BeliefPropagation:
 			the tolerance value is not exceeded, then it may not be the case
 			that all iterations are completed.
 
-		timestamp_buffer: The amount of time (in seconds) that must have
+		time_buffer: The amount of time (in seconds) that must have
 			passed between an occurrence and risk score for it to be retained
 			by the factor vertex during computation.
 
@@ -100,7 +100,7 @@ class BeliefPropagation:
 		'transmission_rate',
 		'tolerance',
 		'iterations',
-		'timestamp_buffer',
+		'time_buffer',
 		'max_queue_size',
 		'impl',
 		'seed',
@@ -116,7 +116,7 @@ class BeliefPropagation:
 			transmission_rate: float = 0.8,
 			tolerance: float = 1e-6,
 			iterations: int = 4,
-			timestamp_buffer: TimestampBuffer = _TWO_DAYS,
+			time_buffer: TimestampBuffer = _TWO_DAYS,
 			max_queue_size: int = 0,
 			impl: str = graphs.DEFAULT,
 			local_mode: bool = None,
@@ -127,7 +127,7 @@ class BeliefPropagation:
 		self.transmission_rate = float(transmission_rate)
 		self.tolerance = float(tolerance)
 		self.iterations = int(iterations)
-		self.timestamp_buffer = np.timedelta64(timestamp_buffer)
+		self.time_buffer = np.timedelta64(time_buffer)
 		self.max_queue_size = int(max_queue_size)
 		self.impl = str(impl)
 		local_mode = backend.LOCAL_MODE if local_mode is None else local_mode
@@ -211,6 +211,8 @@ class BeliefPropagation:
 				vertex_store=s,
 				max_queue_size=self.max_queue_size,
 				local_mode=self.local_mode,
+				transmission_rate=self.transmission_rate,
+				time_buffer=self.time_buffer,
 				default_msg=_DEFAULT_MESSAGE,
 				current_time=_NOW)
 			for f, v, s in zip(factors, variables, vertex_stores))
@@ -290,7 +292,7 @@ class BeliefPropagation:
 			'graph': self._graph,
 			'queue': self._queue,
 			'transmission_rate': self.transmission_rate,
-			'buffer': self.timestamp_buffer}
+			'buffer': self.time_buffer}
 		return [a.send_to_variables(**kwargs) for a in self._actors]
 
 	def _update(
@@ -331,16 +333,20 @@ class ShareTraceFGPart(graphs.FGPart):
 			variables: Sequence[graphs.Vertex],
 			factors: Sequence[graphs.Vertex],
 			vertex_store: stores.VertexStore,
-			max_queue_size: int = 0,
-			default_msg: model.RiskScore = _DEFAULT_MESSAGE,
-			current_time: datetime.datetime = _NOW,
-			local_mode: bool = False):
+			max_queue_size: int,
+			transmission_rate: float,
+			time_buffer: np.timedelta64,
+			default_msg: model.RiskScore,
+			current_time: datetime.datetime,
+			local_mode: bool):
 		super(ShareTraceFGPart, self).__init__()
 		kwargs = {
 			'variables': variables,
 			'factors': factors,
 			'vertex_store': vertex_store,
 			'max_queue_size': max_queue_size,
+			'transmission_rate': transmission_rate,
+			'time_buffer': time_buffer,
 			'default_msg': default_msg,
 			'current_time': current_time,
 			'local_mode': local_mode}
@@ -417,6 +423,8 @@ class _ShareTraceFGPart(graphs.FGPart):
 		'queue',
 		'block_queue',
 		'default_msg',
+		'transmission_rate',
+		'time_buffer',
 		'current_time',
 		'local_mode']
 
@@ -426,10 +434,12 @@ class _ShareTraceFGPart(graphs.FGPart):
 			variables: Sequence[graphs.Vertex],
 			factors: Sequence[graphs.Vertex],
 			vertex_store: stores.VertexStore,
-			max_queue_size: int = 0,
-			default_msg: model.RiskScore = _DEFAULT_MESSAGE,
-			current_time: datetime.datetime = _NOW,
-			local_mode: bool = None):
+			max_queue_size: int,
+			transmission_rate: float,
+			time_buffer: np.timedelta64,
+			default_msg: model.RiskScore,
+			current_time: datetime.datetime,
+			local_mode: bool):
 		super(_ShareTraceFGPart, self).__init__()
 		self.variables = np.unique(variables)
 		self.factors = np.unique(factors)
@@ -437,9 +447,10 @@ class _ShareTraceFGPart(graphs.FGPart):
 		self.block_queue = max_queue_size < 1
 		self.queue = stores.queue_factory(
 			max_size=max_queue_size, local_mode=True)
+		self.transmission_rate = float(transmission_rate)
+		self.time_buffer = np.timedelta64(time_buffer, 's')
 		self.default_msg = default_msg
 		self.current_time = np.datetime64(current_time, 's')
-		local_mode = backend.LOCAL_MODE if local_mode is None else local_mode
 		self.local_mode = bool(local_mode)
 
 	def send_to_factors(
@@ -493,10 +504,7 @@ class _ShareTraceFGPart(graphs.FGPart):
 			for i, v in enumerate(neighbors):
 				# Assumes factor vertex has a degree of 2
 				content = self._compute_message(
-					factor=f,
-					msgs=inbox[neighbors[not i]],
-					transmission_rate=transmission_rate,
-					buffer=buffer)
+					factor=f, msgs=inbox[neighbors[not i]])
 				if content is not None:
 					msg = model.Message(sender=f, receiver=v, content=content)
 					queue.put(msg, block=self.block_queue)
@@ -506,16 +514,15 @@ class _ShareTraceFGPart(graphs.FGPart):
 	def _compute_message(
 			self,
 			factor: graphs.Vertex,
-			msgs: Iterable[model.RiskScore],
-			transmission_rate: float,
-			buffer: np.datetime64) -> Optional[model.RiskScore]:
+			msgs: Iterable[model.RiskScore]) -> Optional[model.RiskScore]:
 		def sec_to_day(a: np.ndarray) -> np.ndarray:
 			return np.array(a, dtype=np.float64, copy=False) / 86400
 
 		occurs = self.vertex_store.get(key=factor, attribute='occurrences')
 		occurs = np.array([o.as_array() for o in occurs]).flatten()
 		msgs = np.array([m.as_array() for m in msgs]).flatten()
-		m = np.where(msgs['timestamp'] <= np.max(occurs['timestamp']) + buffer)
+		most_recent = np.max(occurs['timestamp'])
+		m = np.where(msgs['timestamp'] <= most_recent + self.time_buffer)
 		# Order messages in ascending order
 		old_enough = np.sort(msgs[m], order=['timestamp', 'value', 'name'])
 		if not old_enough.size:
@@ -523,7 +530,7 @@ class _ShareTraceFGPart(graphs.FGPart):
 		else:
 			# Formats each time delta as partial days
 			# TODO Should this be current time or msg timestamp?
-			diff = sec_to_day(old_enough['timestamp'] - self.current_time)
+			diff = sec_to_day(old_enough['timestamp'] - most_recent)
 			# TODO Only necessary if using msg timestamp; current time
 			#  ensures all diffs are less than 0
 			np.clip(diff, -np.inf, 0, out=diff)
@@ -532,7 +539,7 @@ class _ShareTraceFGPart(graphs.FGPart):
 			# Newer messages account for the weight of older messages (causal)
 			norm = np.cumsum(weight)
 			weighted = np.cumsum(old_enough['value'] * weight)
-			weighted *= transmission_rate / norm
+			weighted *= self.transmission_rate / norm
 			# Select the message with the maximum weighted average
 			ind = np.argmax(weighted)
 			old_enough[ind]['value'] = weighted[ind]
