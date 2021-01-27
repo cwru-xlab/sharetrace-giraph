@@ -127,7 +127,7 @@ class BeliefPropagation:
 		self.transmission_rate = float(transmission_rate)
 		self.tolerance = float(tolerance)
 		self.iterations = int(iterations)
-		self.time_buffer = np.timedelta64(time_buffer)
+		self.time_buffer = np.timedelta64(time_buffer, 's')
 		self.max_queue_size = int(max_queue_size)
 		self.impl = str(impl)
 		local_mode = backend.LOCAL_MODE if local_mode is None else local_mode
@@ -299,9 +299,13 @@ class BeliefPropagation:
 			self,
 			iteration: int,
 			maxes: np.ndarray) -> Tuple[int, float, np.ndarray]:
-		iter_maxes = self._get_maxes(only_value=True)
-		tolerance = np.float64(np.sum(iter_maxes - maxes))
-		stdout(f'Tolerance: {np.round(tolerance, 10)}')
+		if iteration:  # Maxes aren't updated until after the first iteration
+			iter_maxes = self._get_maxes(only_value=True)
+			tolerance = np.float64(np.sum(iter_maxes - maxes))
+		else:
+			tolerance = np.inf
+			iter_maxes = maxes
+		stdout(f'Tolerance: {np.round(tolerance, 6)}')
 		return iteration + 1, tolerance, iter_maxes
 
 	def _collect_results(self, refs: Sequence) -> np.ndarray:
@@ -325,7 +329,7 @@ class BeliefPropagation:
 		return 1 if self.local_mode else backend.NUM_CPUS
 
 
-class ShareTraceFGPart(graphs.FGPart):
+class ShareTraceFGPart(graphs.FGPart, backend.ActorMixin):
 	__slots__ = ['local_mode', '_actor']
 
 	def __init__(
@@ -378,11 +382,7 @@ class ShareTraceFGPart(graphs.FGPart):
 			queue: stores.Queue,
 			transmission_rate: float,
 			buffer: np.datetime64) -> bool:
-		kwargs = {
-			'graph': graph,
-			'queue': queue,
-			'transmission_rate': transmission_rate,
-			'buffer': buffer}
+		kwargs = {'graph': graph, 'queue': queue}
 		send_to_variables = self._actor.send_to_variables
 		if self.local_mode:
 			result = send_to_variables(**kwargs)
@@ -495,9 +495,7 @@ class _ShareTraceFGPart(graphs.FGPart):
 			self,
 			*,
 			graph: graphs.FactorGraph,
-			queue: stores.Queue,
-			transmission_rate: float,
-			buffer: np.datetime64) -> bool:
+			queue: stores.Queue) -> bool:
 		self._update_inboxes()
 		for f in self.factors:
 			neighbors = tuple(graph.get_neighbors(f))
@@ -530,10 +528,7 @@ class _ShareTraceFGPart(graphs.FGPart):
 			msg = self.default_msg
 		else:
 			# Formats each time delta as partial days
-			# TODO Should this be current time or msg timestamp?
 			diff = sec_to_day(old_enough['timestamp'] - most_recent)
-			# TODO Only necessary if using msg timestamp; current time
-			#  ensures all diffs are less than 0
 			np.clip(diff, -np.inf, 0, out=diff)
 			# Newer messages are weighted more with a smaller decay weight
 			weight = np.exp(diff)
