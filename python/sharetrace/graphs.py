@@ -566,6 +566,7 @@ class FactorGraphBuilder:
 					self._stores[ind].put(keys=[v], attributes={v: attrs[v]})
 					self._increment()
 			else:
+				add_func(vertices)
 				self._stores[0].put(keys=vertices, attributes=attrs)
 				all_vertices[0].extend((v, 0) for v in vertices)
 		else:
@@ -623,7 +624,7 @@ class FactorGraphBuilder:
 		self._store_ind = 0 if reset else plus_one
 
 
-class FGPart(abc.ABC, backend.ActorMixin):
+class FGPart(abc.ABC):
 	__slots__ = []
 
 	def __init__(self):
