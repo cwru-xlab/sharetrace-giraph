@@ -314,11 +314,12 @@ class BeliefPropagation:
 
 	def _shutdown(self):
 		if not self.local_mode:
-			self._queue.kill()
+			if isinstance(self._graph, backend.ActorMixin):
+				self._graph.kill()
+			if isinstance(self._queue, backend.ActorMixin):
+				self._queue.kill()
 			for a in self._actors:
 				a.kill()
-			if isinstance(self._graph, graphs.FactorGraph):
-				self._graph.kill()
 
 	def _get_num_cpus(self) -> int:
 		return 1 if self.local_mode else backend.NUM_CPUS
@@ -582,8 +583,3 @@ class _ShareTraceFGPart(graphs.FGPart):
 
 	def enqueue(self, message: model.Message) -> bool:
 		return self.queue.put(message, block=self.block_queue)
-
-	def kill(self) -> NoReturn:
-		cls = self.__class__.__name__
-		msg = _KILL_EXCEPTION.format(cls, 'RemoteShareTraceFGPart')
-		raise NotImplementedError(msg)

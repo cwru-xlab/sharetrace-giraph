@@ -107,10 +107,6 @@ class FactorGraph(abc.ABC):
 			attributes: EdgeAttributes = None) -> bool:
 		pass
 
-	@abc.abstractmethod
-	def kill(self) -> NoReturn:
-		pass
-
 
 class IGraphFactorGraph(FactorGraph):
 	"""A factor graph implemented using the python-igraph package."""
@@ -199,10 +195,6 @@ class IGraphFactorGraph(FactorGraph):
 				self._graph.add_edge(*e, **attributes[e])
 		return True
 
-	def kill(self) -> NoReturn:
-		cls = self.__class__.__name__
-		raise NotImplementedError(_KILL_EXCEPTION.format(cls))
-
 
 class NetworkXFactorGraph(FactorGraph):
 	"""A factor graph implemented using the networkx package."""
@@ -282,10 +274,6 @@ class NetworkXFactorGraph(FactorGraph):
 		else:
 			self._graph.add_edges_from(((*e, attributes[e]) for e in edges))
 		return True
-
-	def kill(self) -> NoReturn:
-		cls = self.__class__.__name__
-		raise NotImplementedError(_KILL_EXCEPTION.format(cls))
 
 
 class NumpyFactorGraph(FactorGraph):
@@ -394,12 +382,8 @@ class NumpyFactorGraph(FactorGraph):
 			self._graph[v2] = np.append(self._graph[v2], np.array([v1]))
 		return True
 
-	def kill(self) -> NoReturn:
-		cls = self.__class__.__name__
-		raise NotImplementedError(_KILL_EXCEPTION.format(cls))
 
-
-class RayFactorGraph(FactorGraph):
+class RayFactorGraph(FactorGraph, backend.ActorMixin):
 	__slots__ = ['detached', '_actor']
 
 	def __init__(self, graph: Type, *, detached: bool = False):
@@ -639,7 +623,7 @@ class FactorGraphBuilder:
 		self._store_ind = 0 if reset else plus_one
 
 
-class FGPart(abc.ABC):
+class FGPart(abc.ABC, backend.ActorMixin):
 	__slots__ = []
 
 	def __init__(self):
@@ -651,10 +635,6 @@ class FGPart(abc.ABC):
 
 	@abc.abstractmethod
 	def send_to_variables(self, *args, **kwargs) -> bool:
-		pass
-
-	@abc.abstractmethod
-	def kill(self) -> NoReturn:
 		pass
 
 
@@ -671,7 +651,6 @@ def factor_graph_factory(
 		graph = NumpyFactorGraph
 	else:
 		raise ValueError(_IMPL_EXCEPTION)
-
 	if as_actor:
 		graph = RayFactorGraph(graph, detached=detached)
 	else:

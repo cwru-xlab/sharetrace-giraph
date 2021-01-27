@@ -53,10 +53,6 @@ class Queue(abc.ABC):
 			timeout: Optional[float] = None) -> Any:
 		pass
 
-	@abc.abstractmethod
-	def kill(self) -> NoReturn:
-		pass
-
 
 class LocalQueue(Queue):
 	"""FIFO queue implementation using collections.deque."""
@@ -92,12 +88,8 @@ class LocalQueue(Queue):
 			timeout: Optional[float] = None) -> Any:
 		return self._queue.popleft()
 
-	def kill(self) -> NoReturn:
-		msg = _KILL_EXCEPTION.format(self.__class__.__name__, 'RemoteQueue')
-		raise NotImplementedError(msg)
 
-
-class RemoteQueue(Queue):
+class RemoteQueue(Queue, backend.ActorMixin):
 	__slots__ = ['max_size', '_actor']
 
 	def __init__(self, max_size: int = 0):
@@ -133,7 +125,7 @@ class RemoteQueue(Queue):
 		ray.kill(self._actor.actor)
 
 
-class VertexStore:
+class VertexStore(backend.ActorMixin):
 	"""Data structure for storing vertex data
 
 	Examples:
@@ -154,6 +146,7 @@ class VertexStore:
 	__slots__ = ['local_mode', 'detached', '_actor']
 
 	def __init__(self, *, local_mode: bool = None, detached: bool = True):
+		super(VertexStore, self).__init__()
 		local_mode = backend.LOCAL_MODE if local_mode is None else local_mode
 		self.local_mode = bool(local_mode)
 		self.detached = bool(detached)
