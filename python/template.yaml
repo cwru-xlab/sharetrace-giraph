@@ -3,8 +3,6 @@ Transform: AWS::Serverless-2016-10-31
 
 Globals:
   Function:
-    Handler: app.handle
-    Runtime: python3.8
     Timeout: 180
     MemorySize: 8000
     Environment:
@@ -61,18 +59,20 @@ Globals:
         - !Ref LatestVersionErrorMetricGreaterThanZeroAlarm
 
 Resources:
-  sharetrace-compute:
+  SharetraceCompute:
     Type: AWS::Serverless::Function
     Properties:
       Role: arn:aws:iam::429105560611:role/lambda-role
       PackageType: Image
+      ImageUri: >
+        sharetrace.dkr.ecr.us-east-1.amazonaws.com/sharetrace-compute:latest
       Events:
         ScheduledEvent:
           Type: Schedule
           Properties:
-            Input: rate(12 hours)
+            Schedule: rate(12 hours)
       Tracing: Active
     Metadata:
       Dockerfile: Dockerfile
       DockerContext: ./sharetrace
-      DockerTag: python3.8-v1
+      DockerTag: v1
