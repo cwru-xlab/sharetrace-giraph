@@ -3,7 +3,6 @@ import itertools
 import random
 from typing import Iterable, Optional
 
-import attr
 import codetiming
 import numpy as np
 
@@ -18,7 +17,6 @@ Contacts = Iterable[model.Contact]
 Occurrences = Iterable[model.Occurrence]
 
 
-@attr.s(slots=True, frozen=True)
 class ContactSearch:
 	"""
 	Given two LocationHistory instances, this algorithm finds a contact if one
@@ -56,11 +54,14 @@ class ContactSearch:
 		min_duration: Minimum duration of a common sequence of locations for
 			it to be considered an occurrence.
 	"""
-	min_duration = attr.ib(
-		type=datetime.timedelta,
-		validator=attr.validators.instance_of(datetime.timedelta),
-		default=_MIN_DURATION,
-		kw_only=True)
+	__slots__ = ['min_duration']
+
+	def __init__(self, *, min_duration: datetime.timedelta = _MIN_DURATION):
+		self.min_duration = min_duration
+
+	def __repr__(self):
+		cls = self.__class__.__name__
+		return backend.rep(cls, min_duration=self.min_duration)
 
 	def __call__(
 			self,
@@ -76,7 +77,7 @@ class ContactSearch:
 	def _call(self, histories: Histories, as_iterator: bool) -> Contacts:
 		pairs = itertools.combinations(histories, 2)
 		contacts = (self._find_contact(*p) for p in pairs)
-		contacts = (c for c in contacts if len(c.occurrences) > 0)
+		contacts = (c for c in contacts if c is not None)
 		if not as_iterator:
 			contacts = np.array(list(contacts))
 		return contacts
@@ -84,33 +85,32 @@ class ContactSearch:
 	def _find_contact(
 			self,
 			h1: model.LocationHistory,
-			h2: model.LocationHistory) -> model.Contact:
+			h2: model.LocationHistory) -> Optional[model.Contact]:
 		users = {h1.name, h2.name}
 		occurrences = self._find_occurrences(h1, h2)
-		return model.Contact(users=users, occurrences=occurrences)
+		if occurrences is None:
+			contact = None
+		else:
+			contact = model.Contact(users=users, occurrences=occurrences)
+		return contact
 
 	def _find_occurrences(
 			self,
 			h1: model.LocationHistory,
-			h2: model.LocationHistory) -> Occurrences:
-		occurrences = set()
+			h2: model.LocationHistory) -> Optional[Occurrences]:
 		if len(h1.history) == 0 and len(h2.history) == 0 or h1.name == h2.name:
-			return occurrences
-		iter1 = iter(sorted(h1.history))
-		iter2 = iter(sorted(h2.history))
-		loc1 = next(iter1)
-		loc2 = next(iter2)
-		next1 = next(iter1, None)
-		next2 = next(iter2, None)
+			return None
+		occurrences = set()
+		iter1, iter2 = iter(sorted(h1.history)), iter(sorted(h2.history))
+		loc1, loc2 = next(iter1), next(iter2)
+		next1, next2 = next(iter1, None), next(iter2, None)
 		started = False
 		start = self._get_later(loc1, loc2)
 		while next1 is not None and next2 is not None:
 			if loc1.location == loc2.location:
 				if started:
-					loc1 = next1
-					next1 = next(iter1, None)
-					loc2 = next2
-					next2 = next(iter2, None)
+					loc1, next1 = next1, next(iter1, None)
+					loc2, next2 = next2, next(iter2, None)
 				else:
 					started = True
 					start = self._get_later(loc1, loc2)
@@ -122,18 +122,14 @@ class ContactSearch:
 						occurrences.add(occur)
 				else:
 					if loc1.timestamp < loc2.timestamp:
-						loc1 = next1
-						next1 = next(iter1, None)
+						loc1, next1 = next1, next(iter1, None)
 					elif loc2.timestamp < loc1.timestamp:
-						loc2 = next2
-						next2 = next(iter2, None)
+						loc2, next2 = next2, next(iter2, None)
 					else:
 						if random.randint(1, 2) == 1:
-							loc1 = next1
-							next1 = next(iter1, None)
+							loc1, next1 = next1, next(iter1, None)
 						else:
-							loc2 = next2
-							next2 = next(iter2, None)
+							loc2, next2 = next2, next(iter2, None)
 		if started:
 			occur = self._create_occurrence(start, loc1, loc2)
 			if occur is not None:
@@ -145,11 +141,10 @@ class ContactSearch:
 			start: model.TemporalLocation,
 			loc1: model.TemporalLocation,
 			loc2: model.TemporalLocation) -> Optional[model.Occurrence]:
-		end = ContactSearch._get_earlier(loc1, loc2)
-		duration = end.timestamp - start.timestamp
-		if duration >= self.min_duration:
-			occurrence = model.Occurrence(
-				timestamp=start.timestamp, duration=duration)
+		start = start.timestamp
+		end = ContactSearch._get_earlier(loc1, loc2).timestamp
+		if (duration := end - start) >= self.min_duration:
+			occurrence = model.Occurrence(timestamp=start, duration=duration)
 		else:
 			occurrence = None
 		return occurrence
