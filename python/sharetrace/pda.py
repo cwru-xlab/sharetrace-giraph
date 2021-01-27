@@ -6,12 +6,11 @@ import time
 from typing import Any, Iterable, Mapping, NoReturn, Optional, Tuple, Union
 
 import aiohttp
-import attr
 import codetiming
 import numpy as np
 
-import model
 import backend
+import model
 
 SUCCESS_CODE = 200
 _CONTENT_TYPE_HEADER = {'Content-Type': 'application/json'}
@@ -27,8 +26,15 @@ stdout = backend.STDOUT
 stderr = backend.STDERR
 
 
-@attr.s(slots=True)
 class PdaContext:
+	__slots__ = [
+		'client_namespace',
+		'contract_id',
+		'long_lived_token',
+		'keyring_url',
+		'read_url',
+		'write_url',
+		'_session']
 	"""Contracted PDA context manager for the ShareTrace project.
 
 	Communicates with user PDAs to retrieve data to send back computed
@@ -43,13 +49,21 @@ class PdaContext:
 		long_lived_token: Required to retrieve a short-lived token and send
 			requests.
 	"""
-	client_namespace = attr.ib(type=str, default=None)
-	contract_id = attr.ib(type=str, default=None)
-	keyring_url = attr.ib(type=str, default=None)
-	read_url = attr.ib(type=str, default=None)
-	write_url = attr.ib(type=str, default=None)
-	long_lived_token = attr.ib(type=str, default=None)
-	_session = attr.ib(type=aiohttp.ClientSession, init=False, repr=False)
+
+	def __init__(
+			self,
+			client_namespace: str,
+			contract_id: str,
+			long_lived_token: str = None,
+			keyring_url: str = None,
+			read_url: str = None,
+			write_url: str = None):
+		self.client_namespace = str(client_namespace)
+		self.contract_id = str(contract_id)
+		self.long_lived_token = str(long_lived_token)
+		self.keyring_url = str(keyring_url)
+		self.read_url = str(read_url)
+		self.write_url = str(write_url)
 
 	async def __aenter__(self):
 		self._session = aiohttp.ClientSession()
