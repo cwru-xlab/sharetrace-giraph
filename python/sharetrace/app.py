@@ -4,7 +4,6 @@ import os
 from base64 import b64decode
 from typing import NoReturn
 
-import aws_xray_sdk.core as xray
 import boto3
 import codetiming
 import jsonpickle
@@ -14,13 +13,11 @@ import pda
 import propagation
 import search
 
-xray.patch_all()
 stdout = backend.STDOUT
 stderr = backend.STDERR
 backend.set_local_mode(True)
 
 lambda_client = boto3.client('lambda')
-lambda_client.get_account_settings()
 kms_client = boto3.client('kms')
 
 
