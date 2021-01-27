@@ -44,7 +44,7 @@ Globals:
         SCORE_TIMESTAMP_BUFFER: 172800
         TAKE_LOCATIONS: 100
         TAKE_SCORES: 100
-        TOLERANCE: 0.00000000001
+        TOLERANCE: 0.000001
         TRANSMISSION_RATE: 0.8
         WRITE_SCORE_NAMESPACE:
         WRITE_URL: https://hubofallthings.net/api/v2.6/contract-data/create
