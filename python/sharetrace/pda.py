@@ -27,14 +27,6 @@ stderr = backend.STDERR
 
 
 class PdaContext:
-	__slots__ = [
-		'client_namespace',
-		'contract_id',
-		'long_lived_token',
-		'keyring_url',
-		'read_url',
-		'write_url',
-		'_session']
 	"""Contracted PDA context manager for the ShareTrace project.
 
 	Communicates with user PDAs to retrieve data to send back computed
@@ -49,6 +41,14 @@ class PdaContext:
 		long_lived_token: Required to retrieve a short-lived token and send
 			requests.
 	"""
+	__slots__ = [
+		'client_namespace',
+		'contract_id',
+		'long_lived_token',
+		'keyring_url',
+		'read_url',
+		'write_url',
+		'_session']
 
 	def __init__(
 			self,
@@ -64,6 +64,16 @@ class PdaContext:
 		self.keyring_url = str(keyring_url)
 		self.read_url = str(read_url)
 		self.write_url = str(write_url)
+
+	def __repr__(self):
+		return backend.rep(
+			self.__class__.__name__,
+			client_namespace=self.client_namespace,
+			contract_id=self.contract_id,
+			long_lived_token=self.long_lived_token,
+			keyring_url=self.keyring_url,
+			read_url=self.read_url,
+			write_url=self.write_url)
 
 	async def __aenter__(self):
 		self._session = aiohttp.ClientSession()
