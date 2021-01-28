@@ -8,8 +8,6 @@ from typing import Callable, NoReturn
 import psutil
 import ray
 
-import model
-
 NUM_CPUS = psutil.cpu_count(logical=False)
 
 logger = logging.getLogger()
@@ -51,7 +49,7 @@ def get_per_task_overhead():
 
 def rep(cls, **attrs):
 	attrs = ('{}={}'.format(k, v) for k, v in attrs.items())
-	return f"{f'{cls}'}({', '.join(attrs)})"
+	return f"{cls}({', '.join(attrs)})"
 
 
 class ActorMixin(abc.ABC):
@@ -63,12 +61,3 @@ class ActorMixin(abc.ABC):
 	@abc.abstractmethod
 	def kill(self) -> NoReturn:
 		pass
-
-
-if __name__ == '__main__':
-	r = model.RiskScore(
-		name='Ryan', value=0, timestamp=datetime.datetime.utcnow())
-	print(rep(r.__class__.__name__,
-			  name=r.name,
-			  value=r.value,
-			  timestamp=r.timestamp))
