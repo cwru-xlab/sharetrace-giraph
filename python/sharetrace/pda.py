@@ -123,8 +123,8 @@ class PdaContext:
 		values = (s['data'] for s in data)
 		values = ((s['score'], _to_timestamp(s['timestamp'])) for s in values)
 		scores = (
-			model.RiskScore(name=hat, value=v, timestamp=t)
-			for t, v in values if t >= since)
+			model.RiskScore(name=hat, value=v / 100, timestamp=t)
+			for v, t in values if t >= since)
 		return hat, scores
 
 	@codetiming.Timer(text=_READ_LOCATIONS_MSG, logger=stdout)
