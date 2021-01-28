@@ -56,6 +56,8 @@ _ITERATIONS = int(os.environ['ITERATIONS'])
 _TOLERANCE = float(os.environ['TOLERANCE'])
 _SCORE_TIMESTAMP_BUFFER = datetime.timedelta(
 	seconds=float(os.environ['SCORE_TIMESTAMP_BUFFER']))
+_MESSAGE_THRESHOLD = float(os.environ['MESSAGE_THRESHOLD'])
+_TIME_CONSTANT = float(os.environ['TIME_CONSTANT'])
 
 
 def handle(event, context):
@@ -104,7 +106,9 @@ async def _ahandle() -> NoReturn:
 			transmission_rate=_TRANSMISSION_RATE,
 			iterations=_ITERATIONS,
 			tolerance=_TOLERANCE,
-			time_buffer=_SCORE_TIMESTAMP_BUFFER)
+			time_buffer=_SCORE_TIMESTAMP_BUFFER,
+			msg_threshold=_MESSAGE_THRESHOLD,
+			time_constant=_TIME_CONSTANT)
 		return prop(factors=factors, variables=users)
 
 	async with pda.PdaContext(**_KWARGS) as p:
