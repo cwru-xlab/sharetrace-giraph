@@ -45,6 +45,10 @@ class FactorGraph(abc.ABC):
 	def __init__(self):
 		super(FactorGraph, self).__init__()
 
+	def __repr__(self):
+		cls = self.__class__.__name__
+		return backend.rep(cls)
+
 	@abc.abstractmethod
 	def get_factors(self) -> Iterable[Vertex]:
 		pass
@@ -522,6 +526,16 @@ class FactorGraphBuilder:
 		self._factors = [[] for _ in range(n)]
 		self._variables = [[] for _ in range(n)]
 
+	def __repr__(self):
+		return backend.rep(
+			self.__class__.__name__,
+			share_graph=self.share_graph,
+			graph_as_actor=self.graph_as_actor,
+			use_vertex_store=self.use_vertex_store,
+			num_stores=self.num_stores,
+			store_as_actor=self.store_as_actor,
+			detached=self.detached)
+
 	def _cross_check_num_stores(self):
 		if self.use_vertex_store:
 			num_cpus = backend.NUM_CPUS
@@ -629,6 +643,9 @@ class FGPart(abc.ABC):
 
 	def __init__(self):
 		super(FGPart, self).__init__()
+
+	def __repr__(self):
+		return backend.rep(self.__class__.__name__)
 
 	@abc.abstractmethod
 	def send_to_factors(self, *args, **kwargs) -> bool:

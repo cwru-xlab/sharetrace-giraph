@@ -156,6 +156,18 @@ class BeliefPropagation:
 		if value < 1:
 			raise ValueError("'iterations' must be at least 1")
 
+	def __repr__(self):
+		return backend.rep(
+			self.__class__.__name__,
+			transmission_rate=self.transmission_rate,
+			tolerance=self.tolerance,
+			iterations=self.iterations,
+			time_buffer=self.time_buffer,
+			max_queue_size=self.max_queue_size,
+			impl=self.impl,
+			local_mode=self.local_mode,
+			seed=self.seed)
+
 	def __call__(
 			self, *, factors: Contacts, variables: AllRiskScores) -> Result:
 		stdout('-----------START BELIEF PROPAGATION-----------')

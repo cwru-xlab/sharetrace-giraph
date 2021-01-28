@@ -24,6 +24,9 @@ class Queue(abc.ABC):
 	def __init__(self):
 		super(Queue, self).__init__()
 
+	def __repr__(self):
+		return backend.rep(self.__class__.__name__)
+
 	@abc.abstractmethod
 	def __len__(self) -> int:
 		pass
@@ -63,6 +66,9 @@ class LocalQueue(Queue):
 		self.max_size = None if max_size in {None, 0} else int(max_size)
 		self._queue = collections.deque(maxlen=self.max_size)
 
+	def __repr__(self):
+		return backend.rep(self.__class__.__name__, max_size=self.max_size)
+
 	def __len__(self) -> int:
 		return len(self._queue)
 
@@ -96,6 +102,9 @@ class RemoteQueue(Queue, backend.ActorMixin):
 		super(RemoteQueue, self).__init__()
 		self.max_size = int(max_size)
 		self._actor = queue.Queue(maxsize=max_size)
+
+	def __repr__(self):
+		return backend.rep(self.__class__.__name__, max_size=self.max_size)
 
 	def __len__(self) -> int:
 		return self._actor.qsize()
@@ -157,6 +166,12 @@ class VertexStore(backend.ActorMixin):
 			if self.detached:
 				self._actor = self._actor.options(lifetime='detached')
 			self._actor = self._actor.remote()
+
+	def __repr__(self):
+		return backend.rep(
+			self.__class__.__name__,
+			local_mode=self.local_mode,
+			detached=self.detached)
 
 	def get(
 			self,

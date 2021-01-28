@@ -56,8 +56,8 @@ def simulate(
 		iterations: int = 4,
 		tolerance: float = 1e-5,
 		impl=graphs.IGRAPH):
-	transmission_rate = max((min((1, transmission_rate)), 0))
-	iterations = max((1, iterations))
+	transmission_rate = max(min(1., transmission_rate), 0.)
+	iterations = max(1, iterations)
 	tolerance = max(1e-16, tolerance)
 	bp = propagation.BeliefPropagation(
 		iterations=iterations,
@@ -72,13 +72,17 @@ def main():
 	np.random.seed(12345)
 	local_mode = True
 	impl = graphs.NUMPY
-	setup_kwargs = {'users': 10, 'scores': 10, 'days': 10}
+	setup_kwargs = {'users': 10, 'scores': 10, 'days': 10, 'locations': 3}
 	backend.set_local_mode(local_mode)
 	contact_search = search.ContactSearch()
 	if local_mode:
 		factors, variables = setup(**setup_kwargs)
 		factors = contact_search(factors)
-		simulate(factors=factors, variables=variables, impl=impl)
+		simulate(
+			factors=factors,
+			variables=variables,
+			transmission_rate=0.8,
+			impl=impl)
 	else:
 		with backend.ray_context(num_cpus=backend.NUM_CPUS):
 			factors, variables = setup(**setup_kwargs)
@@ -87,7 +91,7 @@ def main():
 
 
 if __name__ == '__main__':
-	for i in range(1, 2):
+	for i in range(1):
 		with codetiming.Timer(name='main'):
 			main()
 	print(f"mean:{codetiming.Timer.timers.mean('main')}")
