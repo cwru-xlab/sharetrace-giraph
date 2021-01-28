@@ -101,6 +101,8 @@ class BeliefPropagation:
 		'tolerance',
 		'iterations',
 		'time_buffer',
+		'msg_threshold',
+		'time_constant',
 		'max_queue_size',
 		'impl',
 		'seed',
@@ -117,6 +119,8 @@ class BeliefPropagation:
 			tolerance: float = 1e-6,
 			iterations: int = 4,
 			time_buffer: TimestampBuffer = _TWO_DAYS,
+			time_constant: float = 1,
+			msg_threshold: float = 0,
 			max_queue_size: int = 0,
 			impl: str = graphs.DEFAULT,
 			local_mode: bool = None,
@@ -124,10 +128,13 @@ class BeliefPropagation:
 		self._check_transmission_rate(transmission_rate)
 		self._check_tolerance(tolerance)
 		self._check_iterations(iterations)
+		self._check_msg_threshold(msg_threshold)
 		self.transmission_rate = float(transmission_rate)
 		self.tolerance = float(tolerance)
 		self.iterations = int(iterations)
 		self.time_buffer = np.timedelta64(time_buffer, 's')
+		self.msg_threshold = float(msg_threshold)
+		self.time_constant = float(time_constant)
 		self.max_queue_size = int(max_queue_size)
 		self.impl = str(impl)
 		local_mode = backend.LOCAL_MODE if local_mode is None else local_mode
@@ -155,6 +162,12 @@ class BeliefPropagation:
 	def _check_iterations(value):
 		if value < 1:
 			raise ValueError("'iterations' must be at least 1")
+
+	@staticmethod
+	def _check_msg_threshold(value):
+		if not 0 <= value <= 1:
+			raise ValueError(
+				"'msg_threshold' must be between 0 and 1, inclusive")
 
 	def __repr__(self):
 		return backend.rep(
@@ -224,6 +237,8 @@ class BeliefPropagation:
 				max_queue_size=self.max_queue_size,
 				local_mode=self.local_mode,
 				transmission_rate=self.transmission_rate,
+				time_constant=self.time_constant,
+				msg_threshold=self.msg_threshold,
 				time_buffer=self.time_buffer,
 				default_msg=_DEFAULT_MESSAGE,
 				current_time=_NOW)
@@ -353,6 +368,8 @@ class ShareTraceFGPart(graphs.FGPart, backend.ActorMixin):
 			max_queue_size: int,
 			transmission_rate: float,
 			time_buffer: np.timedelta64,
+			time_constant: float,
+			msg_threshold: float,
 			default_msg: model.RiskScore,
 			current_time: datetime.datetime,
 			local_mode: bool):
@@ -364,6 +381,8 @@ class ShareTraceFGPart(graphs.FGPart, backend.ActorMixin):
 			'max_queue_size': max_queue_size,
 			'transmission_rate': transmission_rate,
 			'time_buffer': time_buffer,
+			'time_constant': time_constant,
+			'msg_threshold': msg_threshold,
 			'default_msg': default_msg,
 			'current_time': current_time,
 			'local_mode': local_mode}
@@ -438,6 +457,8 @@ class _ShareTraceFGPart(graphs.FGPart):
 		'default_msg',
 		'transmission_rate',
 		'time_buffer',
+		'time_constant',
+		'msg_threshold',
 		'current_time',
 		'local_mode']
 
@@ -450,6 +471,8 @@ class _ShareTraceFGPart(graphs.FGPart):
 			max_queue_size: int,
 			transmission_rate: float,
 			time_buffer: np.timedelta64,
+			time_constant: float,
+			msg_threshold: float,
 			default_msg: model.RiskScore,
 			current_time: datetime.datetime,
 			local_mode: bool):
@@ -462,6 +485,8 @@ class _ShareTraceFGPart(graphs.FGPart):
 			max_size=max_queue_size, local_mode=True)
 		self.transmission_rate = float(transmission_rate)
 		self.time_buffer = np.timedelta64(time_buffer, 's')
+		self.time_constant = float(time_constant)
+		self.msg_threshold = float(msg_threshold)
 		self.default_msg = default_msg
 		self.current_time = np.datetime64(current_time, 's')
 		self.local_mode = bool(local_mode)
@@ -486,7 +511,9 @@ class _ShareTraceFGPart(graphs.FGPart):
 				else:
 					# Avoid self-bias by excluding the message sent from the
 					# receiving factor vertex
-					others = (msg for o, msg in incoming.items() if o != f)
+					others = (
+						msg for o, msg in incoming.items()
+						if msg.value >= self.msg_threshold and o != f)
 				msg = itertools.chain([sender_max], others)
 				if not self.local_mode:
 					msg = np.array(list(msg))
@@ -543,7 +570,7 @@ class _ShareTraceFGPart(graphs.FGPart):
 			diff = sec_to_day(old_enough['timestamp'] - most_recent)
 			np.clip(diff, -np.inf, 0, out=diff)
 			# Newer messages are weighted more with a smaller decay weight
-			weight = np.exp(diff)
+			weight = np.exp(diff / self.time_constant)
 			# Newer messages account for the weight of older messages (causal)
 			norm = np.cumsum(weight)
 			weighted = np.cumsum(old_enough['value'] * weight)
