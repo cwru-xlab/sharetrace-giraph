@@ -1,7 +1,7 @@
 import datetime
 import itertools
 import random
-from typing import Iterable, Optional
+from typing import Collection, Iterable, Optional
 
 import codetiming
 import numpy as np
@@ -14,7 +14,7 @@ stderr = backend.STDERR
 _MIN_DURATION = datetime.timedelta(minutes=15)
 Histories = Iterable[model.LocationHistory]
 Contacts = Iterable[model.Contact]
-Occurrences = Iterable[model.Occurrence]
+Occurrences = Collection[model.Occurrence]
 
 
 class ContactSearch:
@@ -60,8 +60,9 @@ class ContactSearch:
 		self.min_duration = min_duration
 
 	def __repr__(self):
-		cls = self.__class__.__name__
-		return backend.rep(cls, min_duration=self.min_duration)
+		return backend.rep(
+			self.__class__.__name__,
+			min_duration=self.min_duration)
 
 	def __call__(
 			self,
@@ -86,11 +87,11 @@ class ContactSearch:
 			self,
 			h1: model.LocationHistory,
 			h2: model.LocationHistory) -> Optional[model.Contact]:
-		users = {h1.name, h2.name}
 		occurrences = self._find_occurrences(h1, h2)
-		if occurrences is None:
+		if not occurrences:
 			contact = None
 		else:
+			users = {h1.name, h2.name}
 			contact = model.Contact(users=users, occurrences=occurrences)
 		return contact
 
