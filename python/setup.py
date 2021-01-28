@@ -3,7 +3,7 @@ import setuptools
 setuptools.setup(
 	name='sharetrace',
 	version='1.0',
-	packages=setuptools.find_packages(),
+	packages=setuptools.find_packages(exclude='tests'),
 	package_dir='sharetrace',
 	url='https://github.com/rtatton/ShareTrace',
 	license='',
