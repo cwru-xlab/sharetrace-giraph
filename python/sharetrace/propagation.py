@@ -1,9 +1,11 @@
+import abc
 import datetime
 import functools
 import itertools
 import random
 from typing import (
-	Any, Hashable, Iterable, NoReturn, Optional, Sequence, Tuple, Union)
+	Any, Collection, Hashable, Iterable, NoReturn, Optional, Sequence, Tuple,
+	Union)
 
 import codetiming
 import numpy as np
@@ -15,14 +17,12 @@ import model
 import stores
 
 _TWO_DAYS = np.timedelta64(2, 'D')
-_NOW = np.datetime64(backend.TIME, 's')
 _DEFAULT_MESSAGE = model.RiskScore(
 	name='DEFAULT_ID', timestamp=backend.TIME, value=0)
-_KILL_EXCEPTION = '{} does not support kill(); use {} instead.'
 RiskScores = Iterable[model.RiskScore]
 Maxes = Union[np.ndarray, Iterable[Tuple[graphs.Vertex, model.RiskScore]]]
 TimestampBuffer = Union[datetime.timedelta, np.timedelta64]
-AllRiskScores = Iterable[Tuple[Hashable, RiskScores]]
+AllRiskScores = Collection[Tuple[Hashable, RiskScores]]
 Contacts = Iterable[model.Contact]
 Vertices = Union[np.ndarray, ray.ObjectRef]
 OptionalObjectRefs = Optional[Sequence[ray.ObjectRef]]
@@ -107,10 +107,9 @@ class BeliefPropagation:
 		'impl',
 		'seed',
 		'local_mode',
-		'_queue',
 		'_graph',
-		'_actors',
-		'_address_book']
+		'_factor_actors',
+		'_variable_actors']
 
 	def __init__(
 			self,
@@ -124,11 +123,9 @@ class BeliefPropagation:
 			max_queue_size: int = 0,
 			impl: str = graphs.DEFAULT,
 			local_mode: bool = None,
-			seed: Any = None, ):
-		self._check_transmission_rate(transmission_rate)
+			seed: Any = None):
 		self._check_tolerance(tolerance)
 		self._check_iterations(iterations)
-		self._check_msg_threshold(msg_threshold)
 		self.transmission_rate = float(transmission_rate)
 		self.tolerance = float(tolerance)
 		self.iterations = int(iterations)
@@ -143,15 +140,6 @@ class BeliefPropagation:
 		if self.seed is not None:
 			random.seed(self.seed)
 			np.random.seed(self.seed)
-		self._queue = stores.queue_factory(
-			max_size=max_queue_size,
-			local_mode=local_mode)
-
-	@staticmethod
-	def _check_transmission_rate(value):
-		if value < 0 or value > 1:
-			raise ValueError(
-				"'transmission_rate' must be between 0 and 1, inclusive")
 
 	@staticmethod
 	def _check_tolerance(value):
@@ -162,12 +150,6 @@ class BeliefPropagation:
 	def _check_iterations(value):
 		if value < 1:
 			raise ValueError("'iterations' must be at least 1")
-
-	@staticmethod
-	def _check_msg_threshold(value):
-		if not 0 <= value <= 1:
-			raise ValueError(
-				"'msg_threshold' must be between 0 and 1, inclusive")
 
 	def __repr__(self):
 		return backend.rep(
@@ -184,21 +166,20 @@ class BeliefPropagation:
 	def __call__(
 			self, *, factors: Contacts, variables: AllRiskScores) -> Result:
 		stdout('-----------START BELIEF PROPAGATION-----------')
-		result = self._call(factors=factors, variables=variables)
+		result = self._call(factors, variables)
 		stdout('------------END BELIEF PROPAGATION------------')
 		return result
 
+	# TODO Base on number of messages passed as "epoch"
 	@codetiming.Timer(text='Total duration: {:0.6f} s', logger=stdout)
-	def _call(self, *, factors: Contacts, variables: AllRiskScores) -> Result:
-		self._create_graph(factors=factors, variables=variables)
+	def _call(self, factors, variables) -> Result:
+		self._create_graph(factors, variables)
 		maxes = self._get_maxes(only_value=True)
 		i, t = 0, np.inf
 		while i < self.iterations and t > self.tolerance:
 			stdout(f'-----------Iteration {i + 1}-----------')
 			remaining = self._send_to_factors()
-			self._route_messages(remaining)
 			remaining = self._send_to_variables()
-			self._route_messages(remaining)
 			i, t, maxes = self._update(iteration=i, maxes=maxes)
 			stdout(f'---------------------------------')
 		maxes = self._get_maxes(with_variable=True)
@@ -207,8 +188,18 @@ class BeliefPropagation:
 
 	# noinspection PyTypeChecker
 	@codetiming.Timer(text='Creating graph: {:0.6f} s', logger=stdout)
-	def _create_graph(
-			self, factors: Contacts, variables: AllRiskScores) -> NoReturn:
+	def _create_graph(self, factors, variables) -> NoReturn:
+		def num_stores():
+			if self.local_mode:
+				f_stores, v_stores = 1, 1
+			else:
+				# < 1001 variables: 1 CPU
+				v_stores = max(1, np.ceil(np.log10(len(variables))) - 2)
+				# 2:1 factor:variable ratio
+				f_stores = max(self._get_num_cpus() - v_stores, 2 * v_stores)
+			return int(f_stores), int(v_stores)
+
+		num_factor_stores, num_variable_stores = num_stores()
 		builder = graphs.FactorGraphBuilder(
 			impl=self.impl,
 			# Graph structure is static; local mode = single-process
@@ -216,47 +207,41 @@ class BeliefPropagation:
 			graph_as_actor=False,
 			# Separate the stateless (structure) and stateful (attributes)
 			use_vertex_store=True,
-			# Reserve 1 for queue if in non-local mode
-			num_stores=1 if self.local_mode else self._get_num_cpus() - 1,
+			# Store actor index in shared graph for actor-actor communication
+			store_in_graph=['address'],
+			num_stores=(num_factor_stores, num_variable_stores),
+			# Vertex stores are stored in each actor
 			store_as_actor=False,
 			# Prevent actors from being killed automatically
 			detached=True)
-		self._add_variables(builder, variables)
+		queue = functools.partial(
+			stores.queue_factory, self.max_queue_size, local_mode=True)
+		variable_queues = [queue() for _ in range(num_variable_stores)]
+		factor_queues = [queue() for _ in range(num_factor_stores)]
+		self._add_variables(builder, variables, variable_queues)
 		self._add_factors_and_edges(builder, factors)
+		# TODO Do we need factors and variables?
 		graph, factors, variables, vertex_stores = builder.build()
-		addresses = itertools.chain(
-			itertools.chain.from_iterable(factors),
-			itertools.chain.from_iterable(variables))
-		self._address_book = {vertex: actor for vertex, actor in addresses}
+		factor_stores, variable_stores = vertex_stores
 		self._graph = graph
-		self._actors = tuple(
-			ShareTraceFGPart(
-				factors=tuple(f_id for f_id, _ in f),
-				variables=tuple(v_id for v_id, _ in v),
-				vertex_store=s,
-				max_queue_size=self.max_queue_size,
-				local_mode=self.local_mode,
-				transmission_rate=self.transmission_rate,
-				time_constant=self.time_constant,
-				msg_threshold=self.msg_threshold,
-				time_buffer=self.time_buffer,
-				default_msg=_DEFAULT_MESSAGE,
-				current_time=_NOW)
-			for f, v, s in zip(factors, variables, vertex_stores))
+		self._variable_actors = None
+		self._factor_actors = None
 
 	@staticmethod
 	def _add_variables(
 			builder: graphs.FactorGraphBuilder,
-			variables: AllRiskScores) -> NoReturn:
+			variables: AllRiskScores,
+			queues: Sequence[stores.Queue]) -> NoReturn:
 		vertices = []
 		attrs = {}
-		for k, v in ((str(k), v) for k, v in variables):
+		num_queues = len(queues)
+		for q, (k, v) in enumerate((str(k), v) for k, v in variables):
 			vertices.append(k)
 			v1, v2 = itertools.tee(v)
-			attrs.update({
-				k: {
-					'max': max(v2, default=_DEFAULT_MESSAGE),
-					'inbox': {k: tuple(v1)}}})
+			attrs.update({k: {'max': max(v1, default=_DEFAULT_MESSAGE)}})
+			msgs = (model.Message(sender=k, receiver=k, content=c) for c in v2)
+			for m in msgs:
+				queues[q % num_queues].put(m)
 		builder.add_variables(vertices, attributes=attrs)
 
 	@staticmethod
@@ -274,7 +259,7 @@ class BeliefPropagation:
 			k, (v1, v2) = make_key(f)
 			vertices.append(k)
 			edges.extend(((k, v1), (k, v2)))
-			attrs.update({k: {'occurrences': f.occurrences, 'inbox': {}}})
+			attrs[k] = {'occurrences': f.occurrences}
 		builder.add_factors(vertices, attributes=attrs)
 		builder.add_edges(edges)
 
@@ -293,24 +278,6 @@ class BeliefPropagation:
 	def _send_to_factors(self) -> Sequence:
 		kwargs = {'graph': self._graph, 'queue': self._queue}
 		return [a.send_to_factors(**kwargs) for a in self._actors]
-
-	# noinspection PyTypeChecker
-	@codetiming.Timer(text='Routing messages: {:0.6f} s', logger=stdout)
-	def _route_messages(self, refs: Sequence) -> NoReturn:
-		if self.local_mode:
-			remaining = True
-		else:
-			_, remaining = ray.wait(refs, timeout=0.001)
-		while remaining:
-			while len(self._queue):
-				msg = self._queue.get(block=bool(self.max_queue_size))
-				destination = self._address_book[msg.receiver]
-				self._actors[destination].enqueue(msg)
-			if self.local_mode:
-				remaining = False
-			else:
-				# Wait for the queue to populate
-				_, remaining = ray.wait(remaining, timeout=0.001)
 
 	# noinspection PyTypeChecker
 	@codetiming.Timer(text='Sending to variables: {:0.6f} s', logger=stdout)
@@ -347,273 +314,278 @@ class BeliefPropagation:
 		if not self.local_mode:
 			if isinstance(self._graph, backend.ActorMixin):
 				self._graph.kill()
-			if isinstance(self._queue, backend.ActorMixin):
-				self._queue.kill()
-			for a in self._actors:
+			actors = itertools.chain(
+				self._variable_actors, self._factor_actors)
+			for a in actors:
 				a.kill()
 
 	def _get_num_cpus(self) -> int:
 		return 1 if self.local_mode else backend.NUM_CPUS
 
 
-class ShareTraceFGPart(graphs.FGPart, backend.ActorMixin):
+class ShareTraceFGPart(backend.ActorMixin):
+	__slots__ = []
+
+	def __init__(self):
+		super(ShareTraceFGPart, self).__init__()
+
+	@abc.abstractmethod
+	def enqueue(self, *messages: model.Message) -> bool:
+		pass
+
+
+class ShareTraceVariablePart(graphs.VariablePart, ShareTraceFGPart):
 	__slots__ = ['local_mode', '_actor']
 
 	def __init__(
 			self,
 			*,
-			variables: Sequence[graphs.Vertex],
-			factors: Sequence[graphs.Vertex],
 			vertex_store: stores.VertexStore,
-			max_queue_size: int,
-			transmission_rate: float,
-			time_buffer: np.timedelta64,
-			time_constant: float,
-			msg_threshold: float,
-			default_msg: model.RiskScore,
-			current_time: datetime.datetime,
-			local_mode: bool):
-		super(ShareTraceFGPart, self).__init__()
+			queue: stores.Queue = None,
+			max_queue_size: int = 0,
+			local_mode: bool = None):
+		super(ShareTraceVariablePart, self).__init__()
 		kwargs = {
-			'variables': variables,
-			'factors': factors,
 			'vertex_store': vertex_store,
-			'max_queue_size': max_queue_size,
-			'transmission_rate': transmission_rate,
-			'time_buffer': time_buffer,
-			'time_constant': time_constant,
-			'msg_threshold': msg_threshold,
-			'default_msg': default_msg,
-			'current_time': current_time,
-			'local_mode': local_mode}
+			'queue': queue,
+			'max_queue_size': max_queue_size}
 		local_mode = backend.LOCAL_MODE if local_mode is None else local_mode
 		self.local_mode = bool(local_mode)
 		if local_mode:
-			self._actor = _ShareTraceFGPart(**kwargs)
+			self._actor = _ShareTraceVariablePart(**kwargs)
 		else:
-			self._actor = ray.remote(_ShareTraceFGPart).remote(**kwargs)
+			self._actor = ray.remote(_ShareTraceVariablePart).remote(**kwargs)
 
 	def send_to_factors(
 			self,
 			*,
 			graph: graphs.FactorGraph,
-			queue: stores.Queue) -> bool:
-		kwargs = {'graph': graph, 'queue': queue}
-		send_to_factors = self._actor.send_to_factors
-		if self.local_mode:
-			result = send_to_factors(**kwargs)
-		else:
-			result = send_to_factors.remote(**kwargs)
-		return result
+			factors: Sequence['ShareTraceFactorPart']) -> bool:
+		kwargs = {'graph': graph, 'factors': factors}
+		func = self._actor.send_to_factors
+		return func(**kwargs) if self.local_mode else func.remote(**kwargs)
 
-	def send_to_variables(
-			self,
-			*,
-			graph: graphs.FactorGraph,
-			queue: stores.Queue,
-			transmission_rate: float,
-			buffer: np.datetime64) -> bool:
-		kwargs = {'graph': graph, 'queue': queue}
-		send_to_variables = self._actor.send_to_variables
-		if self.local_mode:
-			result = send_to_variables(**kwargs)
-		else:
-			result = send_to_variables.remote(**kwargs)
-		return result
-
-	def get_maxes(
-			self,
-			*,
-			only_value: bool = False,
-			with_variable: bool = False) -> Maxes:
-		kwargs = {'only_value': only_value, 'with_variable': with_variable}
-		get_maxes = self._actor.get_maxes
-		if self.local_mode:
-			result = get_maxes(**kwargs)
-		else:
-			result = get_maxes.remote(**kwargs)
-		return result
-
-	def enqueue(self, message: model.Message) -> bool:
-		enqueue = self._actor.enqueue
-		if self.local_mode:
-			result = enqueue(message)
-		else:
-			result = enqueue.remote(message)
-		return result
+	def enqueue(self, *messages: model.Message) -> bool:
+		func = self._actor.enqueue
+		return func(*messages) if self.local_mode else func.remote(*messages)
 
 	def kill(self) -> NoReturn:
 		if not self.local_mode:
 			ray.kill(self._actor)
 
 
-class _ShareTraceFGPart(graphs.FGPart):
-	__slots__ = [
-		'variables',
-		'factors',
-		'vertex_store',
-		'queue',
-		'block_queue',
-		'default_msg',
-		'transmission_rate',
-		'time_buffer',
-		'time_constant',
-		'msg_threshold',
-		'current_time',
-		'local_mode']
+class _ShareTraceVariablePart(graphs.VariablePart, ShareTraceFGPart):
+	__slots__ = ['vertex_store', 'queue', 'block_queue', 'msg_threshold']
 
 	def __init__(
 			self,
 			*,
-			variables: Sequence[graphs.Vertex],
-			factors: Sequence[graphs.Vertex],
 			vertex_store: stores.VertexStore,
+			queue: stores.Queue,
 			max_queue_size: int,
-			transmission_rate: float,
-			time_buffer: np.timedelta64,
-			time_constant: float,
-			msg_threshold: float,
-			default_msg: model.RiskScore,
-			current_time: datetime.datetime,
-			local_mode: bool):
-		super(_ShareTraceFGPart, self).__init__()
-		self.variables = np.unique(variables)
-		self.factors = np.unique(factors)
+			msg_threshold: float):
+		super(_ShareTraceVariablePart, self).__init__()
+		self._check_queue_and_max_queue_size(queue, max_queue_size)
+		self._check_msg_threshold(msg_threshold)
 		self.vertex_store = vertex_store
+		if max_queue_size is None:
+			max_queue_size = queue.max_size
 		self.block_queue = max_queue_size < 1
-		self.queue = stores.queue_factory(
-			max_size=max_queue_size, local_mode=True)
-		self.transmission_rate = float(transmission_rate)
-		self.time_buffer = np.timedelta64(time_buffer, 's')
-		self.time_constant = float(time_constant)
+		if queue is None:
+			self.queue = stores.queue_factory(
+				max_size=max_queue_size, local_mode=True)
+		else:
+			self.queue = queue
 		self.msg_threshold = float(msg_threshold)
-		self.default_msg = default_msg
-		self.current_time = np.datetime64(current_time, 's')
-		self.local_mode = bool(local_mode)
+
+	@staticmethod
+	def _check_queue_and_max_queue_size(queue, max_queue_size):
+		# TODO(rdt17) Issue warning if both are not None
+		if queue is None and max_queue_size is None:
+			raise ValueError("Must provide either 'queue' or 'max_queue_size'")
+
+	@staticmethod
+	def _check_msg_threshold(value):
+		if not 0 <= value <= 1:
+			raise ValueError(
+				"'msg_threshold' must be between 0 and 1, inclusive")
 
 	def send_to_factors(
 			self,
 			*,
 			graph: graphs.FactorGraph,
-			queue: stores.Queue) -> bool:
-		def update_max(vertex, mx, incoming):
-			# 'max' is already set when creating graph
-			if vertex not in incoming:
-				updated = max(itertools.chain(incoming.values(), [mx]))
-				updated = {vertex: {'max': updated}}
-				self.vertex_store.put(
-					keys=[vertex], attributes=updated, merge=False)
+			factors: Sequence['ShareTraceFactorPart']) -> bool:
+		def update_max(receiver, mx, incoming):
+			if (updated := max(incoming, mx)) > mx:
+				updated = {receiver: {'max': updated}}
+				self.vertex_store.put(keys=[receiver], attributes=updated)
 
-		def send(sender, sender_max, incoming):
-			for f in graph.get_neighbors(sender):
-				if sender in incoming:  # First iteration only
-					others = incoming[sender]
-				else:
-					# Avoid self-bias by excluding the message sent from the
-					# receiving factor vertex
-					others = (
-						msg for o, msg in incoming.items()
-						if msg.value >= self.msg_threshold and o != f)
-				msg = itertools.chain([sender_max], others)
-				if not self.local_mode:
-					msg = np.array(list(msg))
-				msg = model.Message(sender=sender, receiver=f, content=msg)
-				queue.put(msg, block=self.block_queue)
+		def send(sender, receiver, content):
+			# Avoid self-bias: do not send message back to sending factor
+			for f in (n for n in graph.get_neighbors(receiver) if n != sender):
+				m = model.Message(sender=receiver, receiver=f, content=content)
+				factor = factors[graph.get_vertex_attr(f, key='address')]
+				factor.enqueue(m)
 
-		self._update_inboxes()
-		for v in self.variables:
-			attributes = self.vertex_store.get(key=v)
-			inbox = attributes['inbox']
-			curr_max = attributes['max']
-			update_max(v, curr_max, inbox)
-			send(v, curr_max, inbox)
-		self._clear_inboxes(variables=True)
+		# TODO Modify loop condition? Set number of messages to process?
+		while len(self.queue):
+			msg = self.queue.get(block=self.block_queue)
+			curr_max = self.vertex_store.get(key=msg.receiver, attribute='max')
+			update_max(msg.receiver, curr_max, msg.content)
+			if msg.value >= self.msg_threshold:
+				send(msg.sender, msg.receiver, msg.content)
 		return True
+
+	def enqueue(self, *messages: model.Message) -> bool:
+		for m in messages:
+			self.queue.put(m, block=self.block_queue)
+		return True
+
+	def kill(self) -> NoReturn:
+		pass
+
+
+class ShareTraceFactorPart(graphs.FactorPart, ShareTraceFGPart):
+	__slots__ = ['local_mode', '_actor']
+
+	def __init__(
+			self,
+			*,
+			vertex_store: stores.VertexStore,
+			transmission_rate: float = 0.8,
+			time_buffer: np.timedelta64 = _TWO_DAYS,
+			time_constant: float = 1,
+			queue: stores.Queue = None,
+			max_queue_size: int = 0,
+			default_msg: model.RiskScore = _DEFAULT_MESSAGE,
+			local_mode: bool = None):
+		super(ShareTraceFactorPart, self).__init__()
+		kwargs = {
+			'vertex_store': vertex_store,
+			'transmission_rate': transmission_rate,
+			'time_buffer': time_buffer,
+			'time_constant': time_constant,
+			'queue': queue,
+			'max_queue_size': max_queue_size,
+			'default_msg': default_msg}
+		local_mode = backend.LOCAL_MODE if local_mode is None else local_mode
+		self.local_mode = bool(local_mode)
+		if local_mode:
+			self._actor = _ShareTraceFactorPart(**kwargs)
+		else:
+			self._actor = ray.remote(_ShareTraceFactorPart).remote(**kwargs)
 
 	def send_to_variables(
 			self,
 			*,
 			graph: graphs.FactorGraph,
-			queue: stores.Queue) -> bool:
-		self._update_inboxes()
-		for f in self.factors:
-			neighbors = tuple(graph.get_neighbors(f))
-			inbox = self.vertex_store.get(key=f, attribute='inbox')
-			for i, v in enumerate(neighbors):
-				# Assumes factor vertex has a degree of 2
-				content = self._compute_message(
-					factor=f, msgs=inbox[neighbors[not i]])
-				if content is not None:
-					msg = model.Message(sender=f, receiver=v, content=content)
-					queue.put(msg, block=self.block_queue)
-		self._clear_inboxes(variables=False)
+			variables: Sequence[ShareTraceVariablePart]) -> bool:
+		kwargs = {'graph': graph, 'variables': variables}
+		func = self._actor.send_to_variables
+		return func(**kwargs) if self.local_mode else func.remote(**kwargs)
+
+	def enqueue(self, *messages: model.Message) -> bool:
+		func = self._actor.enqueue
+		return func(*messages) if self.local_mode else func.remote(*messages)
+
+	def kill(self) -> NoReturn:
+		if not self.local_mode:
+			ray.kill(self._actor)
+
+
+class _ShareTraceFactorPart(graphs.FactorPart, ShareTraceFGPart):
+	__slots__ = [
+		'vertex_store',
+		'queue',
+		'block_queue',
+		'transmission_rate',
+		'time_buffer',
+		'time_constant',
+		'msg_threshold',
+		'default_msg']
+
+	def __init__(
+			self,
+			*,
+			vertex_store: stores.VertexStore,
+			queue: stores.Queue,
+			max_queue_size: int,
+			transmission_rate: float,
+			time_buffer: np.timedelta64,
+			time_constant: float,
+			default_msg: model.RiskScore):
+		super(_ShareTraceFactorPart, self).__init__()
+		self._check_queue_and_max_queue_size(queue, max_queue_size)
+		self._check_transmission_rate(transmission_rate)
+		self.vertex_store = vertex_store
+		self.block_queue = max_queue_size < 1
+		if queue is None:
+			self.queue = stores.queue_factory(
+				max_size=max_queue_size, local_mode=True)
+		else:
+			self.queue = queue
+		self.transmission_rate = float(transmission_rate)
+		self.time_buffer = np.timedelta64(time_buffer, 's')
+		self.time_constant = float(time_constant)
+		self.default_msg = default_msg
+
+	@staticmethod
+	def _check_queue_and_max_queue_size(queue, max_queue_size):
+		# TODO(rdt17) Issue warning if both are not None
+		if queue is None and max_queue_size is None:
+			raise ValueError("Must provide either 'queue' or 'max_queue_size'")
+
+	@staticmethod
+	def _check_transmission_rate(value):
+		if value < 0 or value > 1:
+			raise ValueError(
+				"'transmission_rate' must be between 0 and 1, inclusive")
+
+	def send_to_variables(
+			self,
+			*,
+			graph: graphs.FactorGraph,
+			variables: Sequence[ShareTraceVariablePart]) -> bool:
+		while len(self.queue):
+			msg = self.queue.get(block=self.block_queue)
+			sender = msg.receiver
+			neighbors = tuple(graph.get_neighbors(sender))
+			# Assumes factor vertex has a degree of 2
+			receiver = neighbors[not neighbors.index(msg.sender)]
+			msg = self._compute_message(factor=sender, msg=msg)
+			msg = model.Message(sender=sender, receiver=receiver, content=msg)
+			v = graph.get_vertex_attr(receiver, key='address')
+			variables[v].enqueue(msg)
 		return True
 
 	def _compute_message(
 			self,
 			factor: graphs.Vertex,
-			msgs: Iterable[model.RiskScore]) -> Optional[model.RiskScore]:
-		def sec_to_day(a: np.ndarray) -> np.ndarray:
-			return np.array(a, dtype=np.float64, copy=False) / 86400
+			msg: model.RiskScore) -> model.RiskScore:
+		def sec_to_day(s: np.float64) -> np.float64:
+			return np.divide(s, 86400)
 
-		occurs = self.vertex_store.get(key=factor, attribute='occurrences')
-		occurs = np.array([o.as_array() for o in occurs]).flatten()
-		msgs = np.array([m.as_array() for m in msgs]).flatten()
-		most_recent = np.max(occurs['timestamp'])
-		m = np.where(msgs['timestamp'] <= most_recent + self.time_buffer)
-		# Order messages in ascending order
-		old_enough = np.sort(msgs[m], order=['timestamp', 'value', 'name'])
-		if not old_enough.size:
+		occurrences = self.vertex_store.get(factor, attribute='occurrences')
+		occurrences = np.array([o.as_array() for o in occurrences]).flatten()
+		msg = msg.as_array()
+		most_recent = np.max(occurrences['timestamp'])
+		after_contact = msg['timestamp'] > most_recent + self.time_buffer
+		not_transmitted = np.random.uniform() > self.transmission_rate
+		if after_contact or not_transmitted:
 			msg = self.default_msg
 		else:
-			# Formats each time delta as partial days
-			diff = sec_to_day(old_enough['timestamp'] - most_recent)
+			# Formats time delta as partial days
+			diff = sec_to_day(np.float64(msg['timestamp'] - most_recent))
+			# Weight can only decrease original message value
 			np.clip(diff, -np.inf, 0, out=diff)
-			# Newer messages are weighted more with a smaller decay weight
-			weight = np.exp(diff / self.time_constant)
-			# Newer messages account for the weight of older messages (causal)
-			norm = np.cumsum(weight)
-			weighted = np.cumsum(old_enough['value'] * weight)
-			weighted *= self.transmission_rate / norm
-			# Select the message with the maximum weighted average
-			ind = np.argmax(weighted)
-			old_enough[ind]['value'] = weighted[ind]
-			msg = model.RiskScore.from_array(old_enough[ind])
+			msg['value'] *= np.exp(diff / self.time_constant)
+			msg = model.RiskScore.from_array(msg)
 		return msg
 
-	def get_maxes(
-			self,
-			*,
-			only_value: bool = False,
-			with_variable: bool = False) -> Maxes:
-		get_max = functools.partial(self.vertex_store.get, attribute='max')
-		maxes = ((v, get_max(key=v)) for v in self.variables)
-		if only_value:
-			if with_variable:
-				maxes = tuple((v, m.value) for v, m in maxes)
-			else:
-				maxes = np.array([m.value for _, m in maxes])
-		else:
-			if with_variable:
-				maxes = tuple(maxes)
-			else:
-				maxes = np.array([m for _, m in maxes])
-		return maxes
+	def enqueue(self, *messages: model.Message) -> bool:
+		for m in messages:
+			self.queue.put(m, block=self.block_queue)
+		return True
 
-	def _update_inboxes(self) -> NoReturn:
-		while len(self.queue):
-			msg = self.queue.get(block=self.block_queue)
-			attrs = {msg.receiver: {'inbox': {msg.sender: msg.content}}}
-			self.vertex_store.put(
-				keys=[msg.receiver], attributes=attrs, merge=True)
-
-	def _clear_inboxes(self, *, variables: bool) -> NoReturn:
-		def clear(vertices: np.ndarray):
-			attributes = {v: {'inbox': {}} for v in vertices}
-			self.vertex_store.put(
-				keys=vertices, attributes=attributes, merge=False)
-
-		clear(self.variables) if variables else clear(self.factors)
-
-	def enqueue(self, message: model.Message) -> bool:
-		return self.queue.put(message, block=self.block_queue)
+	def kill(self) -> NoReturn:
+		pass
