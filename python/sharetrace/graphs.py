@@ -73,8 +73,7 @@ class FactorGraph(abc.ABC):
 		pass
 
 	@abc.abstractmethod
-	def get_vertex_attr(
-			self, vertex: Vertex, *, key: Hashable) -> Iterable[Vertex]:
+	def get_vertex_attr(self, vertex: Vertex, *, key: Hashable) -> Any:
 		pass
 
 	@abc.abstractmethod
@@ -146,8 +145,7 @@ class IGraphFactorGraph(FactorGraph):
 			neighbors = (self._graph.vs[n]['name'] for n in neighbors)
 		return neighbors
 
-	def get_vertex_attr(
-			self, vertex: Vertex, *, key: Hashable) -> Iterable[Vertex]:
+	def get_vertex_attr(self, vertex: Vertex, *, key: Hashable) -> Any:
 		return self._graph.vs.find(name=vertex).attributes()[key]
 
 	def set_vertex_attr(
@@ -231,8 +229,7 @@ class NetworkXFactorGraph(FactorGraph):
 	def get_neighbors(self, vertex: Vertex) -> Iterable[Vertex]:
 		return self._graph.neighbors(vertex)
 
-	def get_vertex_attr(
-			self, vertex: Vertex, *, key: Hashable) -> Iterable[Vertex]:
+	def get_vertex_attr(self, vertex: Vertex, *, key: Hashable) -> Any:
 		return self._graph.nodes[vertex][key]
 
 	def set_vertex_attr(
@@ -320,11 +317,7 @@ class NumpyFactorGraph(FactorGraph):
 		return self._graph[vertex]
 
 	# noinspection PyTypeChecker
-	def get_vertex_attr(
-			self,
-			vertex: Vertex,
-			*,
-			key: Hashable) -> Iterable[Vertex]:
+	def get_vertex_attr(self, vertex: Vertex, *, key: Hashable) -> Any:
 		return self._attrs[vertex][key]
 
 	# noinspection PyTypeChecker
@@ -414,8 +407,7 @@ class RayFactorGraph(FactorGraph, backend.ActorMixin):
 	def get_neighbors(self, vertex: Vertex) -> Iterable[Vertex]:
 		return ray.get(self._actor.get_neighbors.remote(vertex))
 
-	def get_vertex_attr(
-			self, vertex: Vertex, *, key: Hashable) -> Iterable[Vertex]:
+	def get_vertex_attr(self, vertex: Vertex, *, key: Hashable) -> Any:
 		return ray.get(self._actor.get_vertex_attr.remote(vertex, key=key))
 
 	def set_vertex_attr(
@@ -748,21 +740,25 @@ class FactorGraphBuilder:
 		int_incr() if isinstance(self._store_ind, int) else seq_incr(variables)
 
 
-class FGPart(abc.ABC):
+class FactorPart(abc.ABC):
 	__slots__ = []
 
 	def __init__(self):
-		super(FGPart, self).__init__()
-
-	def __repr__(self):
-		return backend.rep(self.__class__.__name__)
-
-	@abc.abstractmethod
-	def send_to_factors(self, *args, **kwargs) -> bool:
-		pass
+		super(FactorPart, self).__init__()
 
 	@abc.abstractmethod
 	def send_to_variables(self, *args, **kwargs) -> bool:
+		pass
+
+
+class VariablePart(abc.ABC):
+	__slots__ = []
+
+	def __init__(self):
+		super(VariablePart, self).__init__()
+
+	@abc.abstractmethod
+	def send_to_factors(self, *args, **kwargs) -> bool:
 		pass
 
 
