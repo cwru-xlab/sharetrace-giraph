@@ -1,5 +1,6 @@
 import abc
 import collections
+import functools
 import itertools
 from typing import (
 	Any, Hashable, Iterable, Mapping, NoReturn, Optional, Sequence, Tuple,
@@ -20,7 +21,9 @@ VertexAttributes = Mapping[Vertex, Attributes]
 EdgeAttributes = Mapping[Edge, Attributes]
 VertexVector = Sequence[Tuple[Vertex, int]]
 VertexMatrix = Sequence[Sequence[Tuple[Vertex, int]]]
-OptionalVertexStores = Optional[Sequence[stores.VertexStore]]
+VertexStores = Sequence[stores.VertexStore]
+OptionalVertexStores = Optional[
+	Union[Tuple[VertexStores, VertexStores], VertexStores]]
 NETWORKX = 'networkx'
 IGRAPH = 'igraph'
 NUMPY = 'numpy'
@@ -469,8 +472,12 @@ class FactorGraphBuilder:
 		graph_as_actor: True instantiates the graph as an actor using the ray
 			package.
 		use_vertex_store: True stores vertex attributes in a VertexStore.
-		num_stores: If greater than 1, vertices are round-robin assigned to
-			multiple vertex stores.
+		num_stores: If an integer and greater than 1, vertices are assigned
+			to each store in a round-robin fashion. If a Sequence of length 2,
+			interpreted as (num_factor_stores, num_variable_stores);
+			vertices are still assigned in a round-robin fashion, but only
+			amongst the stores for the corresponding type. Only non-empty
+			stores are retained upon return.
 		store_as_actor: True instantiates the VertexStore as an actor using
 			the ray package.
 		detached: True instantiates the FactorGraph and VertexStore as
@@ -499,32 +506,79 @@ class FactorGraphBuilder:
 			share_graph: bool = False,
 			graph_as_actor: bool = False,
 			use_vertex_store: bool = False,
-			num_stores: int = 1,
+			num_stores: Union[int, Sequence] = 1,
 			store_as_actor: bool = False,
 			detached: bool = False):
+		self._cross_check_graph_state(graph_as_actor, share_graph)
 		self.impl = str(impl)
 		self.share_graph = bool(share_graph)
 		self.graph_as_actor = bool(graph_as_actor)
+		self._graph = factor_graph_factory(
+			impl, as_actor=graph_as_actor, detached=detached)
 		self.use_vertex_store = bool(use_vertex_store),
-		self.num_stores = int(num_stores)
 		self.store_as_actor = bool(store_as_actor)
 		self.detached = bool(detached)
-		self._cross_check_graph_state()
-		self._graph = factor_graph_factory(
-			impl=impl, as_actor=graph_as_actor, detached=detached)
 		if self.use_vertex_store:
-			self._cross_check_num_stores()
-			self._stores = tuple(
-				stores.VertexStore(
-					local_mode=not store_as_actor,
-					detached=detached)
-				for _ in range(self.num_stores))
+			self._check_num_stores(num_stores, store_as_actor)
+			vertex_store = functools.partial(
+				stores.VertexStore,
+				local_mode=not store_as_actor,
+				detached=detached)
+			if isinstance(num_stores, int):
+				self.num_stores = int(num_stores)
+				self._stores = tuple(
+					vertex_store() for _ in range(self.num_stores))
+				self._store_ind = 0
+			else:
+				self.num_stores = tuple(num_stores)
+				self._stores = (
+					tuple(vertex_store() for _ in range(self.num_stores[0])),
+					tuple(vertex_store() for _ in range(self.num_stores[1])))
+				self._store_ind = [0, 0]
 		else:
+			self.num_stores = 0
 			self._stores = None
-		self._store_ind = 0
-		n = 1 if self.num_stores == 0 else self.num_stores
-		self._factors = [[] for _ in range(n)]
-		self._variables = [[] for _ in range(n)]
+		if isinstance(self.num_stores, int):
+			n = min(1, self.num_stores)
+			self._factors = [[] for _ in range(n)]
+			self._variables = [[] for _ in range(n)]
+		else:
+			self._factors = [[] for _ in range(self.num_stores[0])]
+			self._variables = [[] for _ in range(self.num_stores[1])]
+
+	@staticmethod
+	def _check_num_stores(num_stores, store_as_actor):
+		def check_num(n):
+			if n < 1:
+				raise ValueError("int 'num_stores' must be at least 1")
+
+		if not isinstance(num_stores, (int, Sequence)):
+			raise TypeError(
+				"'num_stores' must be an int or Sequence of 2 ints")
+		if isinstance(num_stores, int):
+			check_num(num_stores)
+		if isinstance(num_stores, Sequence):
+			if len(num_stores) != 2:
+				raise ValueError("Sequence 'num_stores' must be of length 2")
+			for x in num_stores:
+				check_num(x)
+		num_cpus = backend.NUM_CPUS
+		if store_as_actor:
+			if isinstance(num_stores, int) and num_stores > num_cpus:
+				raise ValueError(_NUM_STORES_CPU_EXCEPTION.format(num_cpus))
+			else:
+				total_exceeded = sum(num_stores) > num_cpus
+				either_exceeded = any(n for n in num_stores if n > num_cpus)
+				if total_exceeded or either_exceeded:
+					raise ValueError(
+						"Neither the sum, nor individual entry in "
+						"'num_stores' must exceed the number of physical "
+						f"CPUs; got {num_stores}")
+
+	@staticmethod
+	def _cross_check_graph_state(graph_as_actor, share_graph):
+		if graph_as_actor and share_graph:
+			raise ValueError(_GRAPH_STATE_EXCEPTION)
 
 	def __repr__(self):
 		return backend.rep(
@@ -536,28 +590,17 @@ class FactorGraphBuilder:
 			store_as_actor=self.store_as_actor,
 			detached=self.detached)
 
-	def _cross_check_num_stores(self):
-		if self.use_vertex_store:
-			num_cpus = backend.NUM_CPUS
-			if self.store_as_actor and self.num_stores > num_cpus:
-				raise ValueError(_NUM_STORES_CPU_EXCEPTION.format(num_cpus))
-			if self.num_stores < 1:
-				raise ValueError(_MIN_NUM_STORES_EXCEPTION)
-
-	def _cross_check_graph_state(self):
-		if self.graph_as_actor and self.share_graph:
-			raise ValueError(_GRAPH_STATE_EXCEPTION)
-
 	def add_variables(
 			self,
 			vertices: Iterable[Vertex],
 			*,
 			attributes: VertexAttributes = None) -> bool:
 		return self._add_vertices(
-			vertices,
-			attributes,
-			self._graph.add_variables,
-			self._variables)
+			to_add=vertices,
+			attrs=attributes,
+			add_func=self._graph.add_variables,
+			added=self._variables,
+			variables=True)
 
 	def add_factors(
 			self,
@@ -565,27 +608,48 @@ class FactorGraphBuilder:
 			*,
 			attributes: VertexAttributes = None) -> bool:
 		return self._add_vertices(
-			vertices,
-			attributes,
-			self._graph.add_factors,
-			self._factors)
+			to_add=vertices,
+			attrs=attributes,
+			add_func=self._graph.add_factors,
+			added=self._factors,
+			variables=False)
 
-	def _add_vertices(self, vertices, attrs, add_func, all_vertices) -> bool:
+	def _add_vertices(self, to_add, attrs, add_func, added, variables) -> bool:
 		if self.use_vertex_store:
+			self._add_with_store(to_add, attrs, add_func, added, variables)
+		else:
+			add_func(to_add, attrs)
+		return True
+
+	def _add_with_store(self, to_add, attrs, add_func, added, variables):
+		def add():
 			if self.num_stores > 1:
-				for v in vertices:
+				for v in to_add:
 					add_func([v])
 					ind = self._store_ind
-					all_vertices[ind].append((v, ind))
+					added[ind].append((v, ind))
 					self._stores[ind].put(keys=[v], attributes={v: attrs[v]})
 					self._increment()
 			else:
-				add_func(vertices)
-				self._stores[0].put(keys=vertices, attributes=attrs)
-				all_vertices[0].extend((v, 0) for v in vertices)
-		else:
-			add_func(vertices, attrs)
-		return True
+				add_func(to_add)
+				self._stores[0].put(keys=to_add, attributes=attrs)
+				added[0].extend((v, 0) for v in to_add)
+
+		def grouped_add(i):
+			if self.num_stores[i] > 1:
+				for v in to_add:
+					add_func([v])
+					ind = self._store_ind[i]
+					added[ind].append((v, ind))
+					attributes = {v: attrs[v]}
+					self._stores[i][ind].put(keys=[v], attributes=attributes)
+					self._increment(variables)
+			else:
+				add_func(to_add)
+				self._stores[i][0].put(keys=to_add, attributes=attrs)
+				added[0].extend((v, 0) for v in to_add)
+
+		add() if isinstance(self.num_stores, int) else grouped_add(variables)
 
 	def add_edges(
 			self,
@@ -601,9 +665,9 @@ class FactorGraphBuilder:
 		OptionalVertexStores]:
 		"""Instantiates the built FactorGraph and optional VertexStore.
 
-		If multiple VertexStores are used, the factor and variable vertex
-		lists are list of lists, each list corresponding to the VertexStore
-		in which its attributes are stored.
+		If multiple VertexStores are used, then the factor and variable vertex
+		lists are each a list of lists, each list corresponding to the
+		VertexStore in which its attributes are stored.
 
 		Args:
 			set_graph: True will store the factor and variable lists in the
@@ -611,31 +675,43 @@ class FactorGraphBuilder:
 
 		Returns:
 			FactorGraph instance, factor and variable lists, and optional
-			VertexStore instance.
+			VertexStore instances.
 		"""
 		graph = self._graph
-		factors = self._factors
-		variables = self._variables
-		if set_graph:
-			if self.num_stores > 1:
-				v_ids = itertools.chain.from_iterable(variables)
-				v_ids = (v for v, _ in v_ids)
-				f_ids = itertools.chain.from_iterable(factors)
-				f_ids = (v for v, _ in f_ids)
+		# Remove empty partitions and stores
+		factors = (f for f in self._factors if f)
+		variables = (v for v in self._variables if v)
+		if self.use_vertex_store:
+			if isinstance(self.num_stores, int):
+				vertex_stores = tuple(s for s in self._stores if s)
 			else:
-				v_ids = variables[0]
-				f_ids = factors[0]
+				vertex_stores = tuple(
+					tuple(s for s in group if s) for group in self._stores)
+		else:
+			vertex_stores = None
+		if set_graph:
+			v_ids = (v for v, _ in itertools.chain.from_iterable(variables))
+			f_ids = (f for f, _ in itertools.chain.from_iterable(factors))
 			graph.set_variables(v_ids)
 			graph.set_factors(f_ids)
-			factors = None
-			variables = None
+			factors, variables = None, None
+		else:
+			factors = tuple(factors)
+			variables = tuple(variables)
 		if self.share_graph:
 			graph = ray.put(graph)
-		return graph, factors, variables, self._stores
+		return graph, factors, variables, vertex_stores
 
-	def _increment(self):
-		reset = (plus_one := self._store_ind + 1) >= self.num_stores
-		self._store_ind = 0 if reset else plus_one
+	def _increment(self, variables: bool = True):
+		def int_incr():
+			reset = (plus_one := self._store_ind + 1) >= self.num_stores
+			self._store_ind = 0 if reset else plus_one
+
+		def seq_incr(i):
+			reset = (plus_one := self._store_ind[i] + 1) >= self.num_stores[i]
+			self._store_ind[i] = 0 if reset else plus_one
+
+		int_incr() if isinstance(self._store_ind, int) else seq_incr(variables)
 
 
 class FGPart(abc.ABC):
