@@ -48,7 +48,7 @@ Globals:
         MESSAGE_THRESHOLD: 0
         TIME_CONSTANT: 1
         TRANSMISSION_RATE: 0.8
-        WRITE_SCORE_NAMESPACE:
+        WRITE_SCORE_NAMESPACE: # TODO
         WRITE_URL: https://hubofallthings.net/api/v2.6/contract-data/create
     KmsKeyArn:
       "arn:aws:kms:us-east-2:429105560611:key/944114e2-94d3-40da-82dc\

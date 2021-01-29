@@ -3,8 +3,8 @@ import collections
 import functools
 import itertools
 from typing import (
-	Any, Hashable, Iterable, Mapping, NoReturn, Optional, Sequence, Tuple,
-	Type, Union)
+	Any, Collection, Hashable, Iterable, Mapping, NoReturn, Optional, Sequence,
+	Tuple, Type, Union)
 
 import igraph
 import networkx
@@ -290,15 +290,15 @@ class NumpyFactorGraph(FactorGraph):
 		The key is a vertex identifier and the value is a numpy array of the
 		neighbors of the vertex.
 
-		Vertex and edge attributes are not supported. Use VertexStore to
-		store vertex attributes.
+		Edge attributes are not supported.
 	"""
 
-	__slots__ = ['_graph', '_variables', '_factors']
+	__slots__ = ['_graph', '_variables', '_factors', '_attrs']
 
 	def __init__(self):
 		super(NumpyFactorGraph, self).__init__()
 		self._graph = collections.defaultdict(lambda: np.array([]))
+		self._attrs = {}
 		self._factors = set()
 		self._variables = set()
 
@@ -325,8 +325,7 @@ class NumpyFactorGraph(FactorGraph):
 			vertex: Vertex,
 			*,
 			key: Hashable) -> Iterable[Vertex]:
-		cls = self.__class__.__name__
-		raise NotImplementedError(_VERTEX_ATTRIBUTE_EXCEPTION.format(cls))
+		return self._attrs[vertex][key]
 
 	# noinspection PyTypeChecker
 	def set_vertex_attr(
@@ -335,8 +334,8 @@ class NumpyFactorGraph(FactorGraph):
 			*,
 			key: Hashable,
 			value: Any) -> bool:
-		cls = self.__class__.__name__
-		raise NotImplementedError(_VERTEX_ATTRIBUTE_EXCEPTION.format(cls))
+		self._attrs[vertex][key] = value
+		return True
 
 	def get_edge_attr(self, edge: Edge, *, key: Hashable) -> Any:
 		cls = self.__class__.__name__
@@ -367,8 +366,8 @@ class NumpyFactorGraph(FactorGraph):
 			attributes: VertexAttributes = None,
 			variables: bool = True) -> NoReturn:
 		if attributes is not None:
-			cls = self.__class__.__name__
-			raise NotImplementedError(_VERTEX_ATTRIBUTE_EXCEPTION.format(cls))
+			for v in attributes:
+				self._attrs[v] = attributes[v]
 		if variables:
 			self._variables.update(vertices)
 		else:
@@ -478,6 +477,13 @@ class FactorGraphBuilder:
 			vertices are still assigned in a round-robin fashion, but only
 			amongst the stores for the corresponding type. Only non-empty
 			stores are retained upon return.
+		store_in_graph: A collection of attributes that should be stored in
+			the graph as vertex attributes. If using VertexStores, these will
+			not be stored in them. 'address' is a reserved attribute
+			indicating the VertexStore index in which a vertex's attributes
+			are stored. If specified in `store_in_graph`, it will only be
+			added to the graph as a vertex attribute. Otherwise, it will be
+			automatically added as an attribute in the VertexStore.
 		store_as_actor: True instantiates the VertexStore as an actor using
 			the ray package.
 		detached: True instantiates the FactorGraph and VertexStore as
@@ -491,13 +497,15 @@ class FactorGraphBuilder:
 		'graph_as_actor',
 		'use_vertex_store',
 		'num_stores',
+		'store_in_graph',
 		'store_as_actor',
 		'detached',
 		'_graph',
 		'_variables',
 		'_factors',
 		'_stores',
-		'_store_ind']
+		'_store_ind',
+		'_store_address']
 
 	def __init__(
 			self,
@@ -506,6 +514,7 @@ class FactorGraphBuilder:
 			share_graph: bool = False,
 			graph_as_actor: bool = False,
 			use_vertex_store: bool = False,
+			store_in_graph: Collection[str] = None,
 			num_stores: Union[int, Sequence] = 1,
 			store_as_actor: bool = False,
 			detached: bool = False):
@@ -515,7 +524,14 @@ class FactorGraphBuilder:
 		self.graph_as_actor = bool(graph_as_actor)
 		self._graph = factor_graph_factory(
 			impl, as_actor=graph_as_actor, detached=detached)
-		self.use_vertex_store = bool(use_vertex_store),
+		self.use_vertex_store = bool(use_vertex_store)
+		if store_in_graph is None:
+			self.store_in_graph = None
+		else:
+			self.store_in_graph = frozenset(store_in_graph)
+			self._store_address = 'address' in store_in_graph
+			if self._store_address:
+				self.store_in_graph = self.store_in_graph - {'address'}
 		self.store_as_actor = bool(store_as_actor)
 		self.detached = bool(detached)
 		if self.use_vertex_store:
@@ -586,6 +602,7 @@ class FactorGraphBuilder:
 			share_graph=self.share_graph,
 			graph_as_actor=self.graph_as_actor,
 			use_vertex_store=self.use_vertex_store,
+			store_in_graph=self.store_in_graph,
 			num_stores=self.num_stores,
 			store_as_actor=self.store_as_actor,
 			detached=self.detached)
@@ -622,34 +639,51 @@ class FactorGraphBuilder:
 		return True
 
 	def _add_with_store(self, to_add, attrs, add_func, added, variables):
-		def add():
-			if self.num_stores > 1:
-				for v in to_add:
-					add_func([v])
-					ind = self._store_ind
-					added[ind].append((v, ind))
-					self._stores[ind].put(keys=[v], attributes={v: attrs[v]})
-					self._increment()
-			else:
-				add_func(to_add)
-				self._stores[0].put(keys=to_add, attributes=attrs)
-				added[0].extend((v, 0) for v in to_add)
+		if self.store_in_graph:
+			in_graph = functools.partial(lambda a: a in self.store_in_graph)
+			in_store = functools.partial(lambda a: not in_graph(a))
+			in_graph = {
+				v: {a: attrs[v][a] for a in attrs[v] if in_graph(a)}
+				for v in attrs}
+			in_store = {
+				v: {a: attrs[v][a] for a in attrs[v] if in_store(a)}
+				for v in attrs}
+		else:
+			in_graph, in_store = collections.defaultdict(dict), attrs
 
-		def grouped_add(i):
-			if self.num_stores[i] > 1:
-				for v in to_add:
-					add_func([v])
-					ind = self._store_ind[i]
-					added[ind].append((v, ind))
-					attributes = {v: attrs[v]}
-					self._stores[i][ind].put(keys=[v], attributes=attributes)
-					self._increment(variables)
+		def common_add(index, vertex):
+			added[index].append(vertex)
+			if self._store_address:
+				in_graph[vertex].update({'address': index})
+				add_func([vertex], attributes={vertex: in_graph[vertex]})
 			else:
-				add_func(to_add)
-				self._stores[i][0].put(keys=to_add, attributes=attrs)
-				added[0].extend((v, 0) for v in to_add)
+				add_func([vertex], attributes=in_graph)
 
-		add() if isinstance(self.num_stores, int) else grouped_add(variables)
+		def int_add():
+			for v in to_add:
+				ind = self._store_ind
+				common_add(ind, v)
+				if not self._store_address:
+					in_store[v].update({'address': ind})
+					attributes = {v: in_store[v]}
+				else:
+					attributes = in_store
+				self._stores[ind].put(keys=[v], attributes=attributes)
+				self._increment()
+
+		def seq_add(i):
+			for v in to_add:
+				ind = self._store_ind[i]
+				common_add(ind, v)
+				if not self._store_address:
+					in_store[v]['address'] = ind
+					attributes = {v: in_store[v]}
+				else:
+					attributes = in_store
+				self._stores[i][ind].put(keys=[v], attributes=attributes)
+				self._increment(variables)
+
+		int_add() if isinstance(self.num_stores, int) else seq_add(variables)
 
 	def add_edges(
 			self,
