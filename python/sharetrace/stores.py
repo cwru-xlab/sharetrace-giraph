@@ -32,6 +32,11 @@ class Queue(abc.ABC):
 		pass
 
 	@abc.abstractmethod
+	@property
+	def max_size(self) -> int:
+		pass
+
+	@abc.abstractmethod
 	def empty(self) -> bool:
 		pass
 
@@ -59,11 +64,11 @@ class Queue(abc.ABC):
 
 class LocalQueue(Queue):
 	"""FIFO queue implementation using collections.deque."""
-	__slots__ = ['max_size', '_queue']
+	__slots__ = ['_max_size', '_queue']
 
 	def __init__(self, max_size: int = 0):
 		super(LocalQueue, self).__init__()
-		self.max_size = None if max_size in {None, 0} else int(max_size)
+		self._max_size = None if max_size in {None, 0} else int(max_size)
 		self._queue = collections.deque(maxlen=self.max_size)
 
 	def __repr__(self):
@@ -71,6 +76,10 @@ class LocalQueue(Queue):
 
 	def __len__(self) -> int:
 		return len(self._queue)
+
+	@property
+	def max_size(self) -> int:
+		return self.max_size
 
 	def empty(self) -> bool:
 		return len(self._queue) == 0
@@ -96,11 +105,11 @@ class LocalQueue(Queue):
 
 
 class RemoteQueue(Queue, backend.ActorMixin):
-	__slots__ = ['max_size', '_actor']
+	__slots__ = ['_max_size', '_actor']
 
 	def __init__(self, max_size: int = 0):
 		super(RemoteQueue, self).__init__()
-		self.max_size = int(max_size)
+		self._max_size = int(max_size)
 		self._actor = queue.Queue(maxsize=max_size)
 
 	def __repr__(self):
@@ -108,6 +117,10 @@ class RemoteQueue(Queue, backend.ActorMixin):
 
 	def __len__(self) -> int:
 		return self._actor.qsize()
+
+	@property
+	def max_size(self) -> int:
+		return self.max_size
 
 	def empty(self) -> bool:
 		return self._actor.empty()
@@ -175,8 +188,8 @@ class VertexStore(backend.ActorMixin):
 
 	def get(
 			self,
-			*,
 			key: Hashable,
+			*,
 			attribute: Any = None,
 			as_ref: bool = False) -> Any:
 		get = self._actor.get
@@ -188,8 +201,8 @@ class VertexStore(backend.ActorMixin):
 
 	def put(
 			self,
-			*,
 			keys: Iterable[Hashable],
+			*,
 			attributes: Mapping[Hashable, Any] = None,
 			merge: bool = False) -> NoReturn:
 		put = self._actor.put
