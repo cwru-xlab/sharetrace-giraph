@@ -20,7 +20,7 @@ class Full(Exception):
 	pass
 
 
-class Queue(abc.ABC):
+class Queue(abc.ABC, collections.Sized):
 	__slots__ = []
 
 	def __init__(self):
@@ -28,10 +28,6 @@ class Queue(abc.ABC):
 
 	def __repr__(self):
 		return backend.rep(self.__class__.__name__)
-
-	@abc.abstractmethod
-	def __len__(self) -> int:
-		pass
 
 	@property
 	@abc.abstractmethod
@@ -49,8 +45,7 @@ class Queue(abc.ABC):
 	@abc.abstractmethod
 	def put(
 			self,
-			item: Any,
-			*,
+			*items: Any,
 			block: bool = True,
 			timeout: Optional[float] = None) -> bool:
 		pass
@@ -91,11 +86,10 @@ class LocalQueue(Queue):
 
 	def put(
 			self,
-			item: Any,
-			*,
+			*items: Any,
 			block: bool = True,
 			timeout: Optional[float] = None) -> bool:
-		self._queue.append(item)
+		self._queue.extend(items)
 		return True
 
 	def get(
@@ -132,19 +126,20 @@ class AsyncQueue(Queue):
 
 	def put(
 			self,
-			item: Any,
-			*,
+			*items: Any,
 			block: bool = True,
 			timeout: Optional[float] = None) -> bool:
 		if block:
-			future = self._queue.put(item)
-			if timeout is None:
-				# TODO Causes TypeError: can't pickle 'Context' object
-				asyncio.get_event_loop().run_until_complete(future)
-			else:
-				asyncio.wait_for(future, timeout=timeout)
+			for item in items:
+				future = self._queue.put(item)
+				if timeout is None:
+					# TODO Causes TypeError: can't pickle 'Context' object
+					asyncio.get_event_loop().run_until_complete(future)
+				else:
+					asyncio.wait_for(future, timeout=timeout)
 		else:
-			self._queue.put_nowait(item)
+			for item in items:
+				self._queue.put_nowait(item)
 		return True
 
 	def get(
@@ -189,11 +184,12 @@ class RemoteQueue(Queue, backend.ActorMixin):
 
 	def put(
 			self,
-			item: Any,
-			*,
+			*items: Any,
 			block: bool = True,
 			timeout: Optional[float] = None) -> bool:
-		return self._actor.put(item, block=block, timeout=timeout)
+		for item in items:
+			self._actor.put(item, block=block, timeout=timeout)
+		return True
 
 	def get(
 			self,
@@ -262,7 +258,6 @@ class VertexStore(collections.Collection, backend.ActorMixin):
 	def get(
 			self,
 			key: Hashable,
-			*,
 			attribute: Any = None,
 			as_ref: bool = False) -> Any:
 		get = self._actor.get
@@ -275,7 +270,6 @@ class VertexStore(collections.Collection, backend.ActorMixin):
 	def put(
 			self,
 			keys: Iterable[Hashable],
-			*,
 			attributes: Mapping[Hashable, Any] = None,
 			merge: bool = False) -> NoReturn:
 		put = self._actor.put
