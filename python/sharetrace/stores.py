@@ -1,6 +1,8 @@
 import abc
+import asyncio
 import collections
-from typing import Any, Hashable, Iterable, Mapping, NoReturn, Optional
+from typing import Any, Hashable, Iterable, Iterator, Mapping, NoReturn, \
+	Optional
 
 import ray
 from ray.util import queue
@@ -31,8 +33,8 @@ class Queue(abc.ABC):
 	def __len__(self) -> int:
 		pass
 
-	@abc.abstractmethod
 	@property
+	@abc.abstractmethod
 	def max_size(self) -> int:
 		pass
 
@@ -79,7 +81,7 @@ class LocalQueue(Queue):
 
 	@property
 	def max_size(self) -> int:
-		return self.max_size
+		return self._max_size
 
 	def empty(self) -> bool:
 		return len(self._queue) == 0
@@ -104,6 +106,63 @@ class LocalQueue(Queue):
 		return self._queue.popleft()
 
 
+class AsyncQueue(Queue):
+	__slots__ = ['_max_size', '_queue']
+
+	def __init__(self, max_size: int = 0):
+		super(AsyncQueue, self).__init__()
+		self._max_size = int(max_size)
+		self._queue = asyncio.Queue(maxsize=max_size)
+
+	def __repr__(self):
+		return backend.rep(self.__class__.__name__, max_size=self.max_size)
+
+	def __len__(self):
+		return self._queue.qsize()
+
+	@property
+	def max_size(self) -> int:
+		return self._max_size
+
+	def empty(self) -> bool:
+		return self._queue.empty()
+
+	def full(self) -> bool:
+		return self._queue.full()
+
+	def put(
+			self,
+			item: Any,
+			*,
+			block: bool = True,
+			timeout: Optional[float] = None) -> bool:
+		if block:
+			future = self._queue.put(item)
+			if timeout is None:
+				# TODO Causes TypeError: can't pickle 'Context' object
+				asyncio.get_event_loop().run_until_complete(future)
+			else:
+				asyncio.wait_for(future, timeout=timeout)
+		else:
+			self._queue.put_nowait(item)
+		return True
+
+	def get(
+			self,
+			*,
+			block: bool = True,
+			timeout: Optional[float] = None) -> Any:
+		if block:
+			future = self._queue.get()
+			if timeout is None:
+				item = asyncio.get_event_loop().run_until_complete(future)
+			else:
+				item = asyncio.wait_for(future, timeout=timeout)
+		else:
+			item = self._queue.get_nowait()
+		return item
+
+
 class RemoteQueue(Queue, backend.ActorMixin):
 	__slots__ = ['_max_size', '_actor']
 
@@ -120,7 +179,7 @@ class RemoteQueue(Queue, backend.ActorMixin):
 
 	@property
 	def max_size(self) -> int:
-		return self.max_size
+		return self._max_size
 
 	def empty(self) -> bool:
 		return self._actor.empty()
@@ -147,7 +206,7 @@ class RemoteQueue(Queue, backend.ActorMixin):
 		ray.kill(self._actor.actor)
 
 
-class VertexStore(backend.ActorMixin):
+class VertexStore(collections.Collection, backend.ActorMixin):
 	"""Data structure for storing vertex data
 
 	Examples:
@@ -165,6 +224,7 @@ class VertexStore(backend.ActorMixin):
 		(4) Vertices with mapping attributes:
 			{<id>: {<attr_key>: {<key>: <value>...}...}...}
 	"""
+
 	__slots__ = ['local_mode', 'detached', '_actor']
 
 	def __init__(self, *, local_mode: bool = None, detached: bool = True):
@@ -185,6 +245,19 @@ class VertexStore(backend.ActorMixin):
 			self.__class__.__name__,
 			local_mode=self.local_mode,
 			detached=self.detached)
+
+	def __iter__(self) -> Iterator:
+		return iter(self._actor)
+
+	def __next__(self) -> Any:
+		iterable = iter(self._actor)
+		yield next(iterable)
+
+	def __len__(self) -> int:
+		return len(self._actor)
+
+	def __contains__(self, __x: object) -> bool:
+		return __x in self._actor
 
 	def get(
 			self,
@@ -216,11 +289,24 @@ class VertexStore(backend.ActorMixin):
 			ray.kill(self._actor)
 
 
-class _VertexStore:
+class _VertexStore(collections.Collection):
 	__slots__ = ['_store']
 
 	def __init__(self):
 		self._store = {}
+
+	def __iter__(self) -> Iterator:
+		return iter(self._store)
+
+	def __next__(self):
+		iterable = iter(self)
+		yield next(iterable)
+
+	def __len__(self) -> int:
+		return len(self._store)
+
+	def __contains__(self, __x: object) -> bool:
+		return __x in self._store
 
 	def get(self, key: Hashable, attribute: Any = None) -> Any:
 		if attribute is None:
@@ -254,10 +340,16 @@ class _VertexStore:
 					self._store[k] = attributes[k]
 
 
-def queue_factory(max_size: int = 0, *, local_mode: bool = None) -> Queue:
+def queue_factory(
+		max_size: int = 0, *,
+		asynchronous: bool = False,
+		local_mode: bool = None) -> Queue:
 	local_mode = backend.LOCAL_MODE if local_mode is None else local_mode
 	if local_mode:
-		queue_obj = LocalQueue(max_size=max_size)
+		if asynchronous:
+			queue_obj = AsyncQueue(max_size)
+		else:
+			queue_obj = LocalQueue(max_size)
 	else:
-		queue_obj = RemoteQueue(max_size=max_size)
+		queue_obj = RemoteQueue(max_size)
 	return queue_obj

@@ -70,7 +70,7 @@ def simulate(
 def main():
 	random.seed(12345)
 	np.random.seed(12345)
-	local_mode = True
+	local_mode = False
 	impl = graphs.NUMPY
 	setup_kwargs = {'users': 10, 'scores': 10, 'days': 10, 'locations': 3}
 	backend.set_local_mode(local_mode)

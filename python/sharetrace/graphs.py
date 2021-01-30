@@ -747,7 +747,7 @@ class FactorPart(abc.ABC):
 		super(FactorPart, self).__init__()
 
 	@abc.abstractmethod
-	def send_to_variables(self, *args, **kwargs) -> bool:
+	def send_to_variables(self, *args, **kwargs):
 		pass
 
 
@@ -758,7 +758,7 @@ class VariablePart(abc.ABC):
 		super(VariablePart, self).__init__()
 
 	@abc.abstractmethod
-	def send_to_factors(self, *args, **kwargs) -> bool:
+	def send_to_factors(self, *args, **kwargs):
 		pass
 
 
