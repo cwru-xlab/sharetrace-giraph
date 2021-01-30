@@ -35,8 +35,8 @@ class RiskScore:
 	@classmethod
 	def from_array(cls, a: np.ndarray) -> 'RiskScore':
 		return RiskScore(
-			name=a['name'],
-			timestamp=_from_datetime64(a['timestamp']),
+			name=a['name'][0],
+			timestamp=_from_datetime64(a['timestamp'][0]),
 			value=a['value'])
 
 
@@ -139,7 +139,8 @@ class Message:
 
 
 def _from_datetime64(timestamp: np.datetime64) -> datetime.datetime:
-	return datetime.datetime.utcfromtimestamp(np.float64(timestamp))
+	timestamp = np.float64(np.datetime64(timestamp, 's'))
+	return datetime.datetime.utcfromtimestamp(timestamp)
 
 
 def _from_timedelta64(duration: np.timedelta64) -> datetime.timedelta:
