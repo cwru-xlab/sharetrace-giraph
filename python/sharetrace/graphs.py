@@ -519,6 +519,7 @@ class FactorGraphBuilder:
 		self.use_vertex_store = bool(use_vertex_store)
 		if store_in_graph is None:
 			self.store_in_graph = None
+			self._store_address = False
 		else:
 			self.store_in_graph = frozenset(store_in_graph)
 			self._store_address = 'address' in store_in_graph
