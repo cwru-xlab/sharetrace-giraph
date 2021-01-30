@@ -35,8 +35,8 @@ class RiskScore:
 	@classmethod
 	def from_array(cls, a: np.ndarray) -> 'RiskScore':
 		return RiskScore(
-			name=a['name'][0],
-			timestamp=_from_datetime64(a['timestamp'][0]),
+			name=a['name'],
+			timestamp=_from_datetime64(a['timestamp']),
 			value=a['value'])
 
 

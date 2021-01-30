@@ -4,7 +4,7 @@ import itertools
 import numbers
 import random
 from typing import (
-	Any, Hashable, Iterable, NoReturn, Optional, Tuple, Union
+	Any, Dict, Hashable, Iterable, NoReturn, Optional, Tuple, Union
 )
 
 import attr
@@ -66,16 +66,21 @@ class BeliefPropagation(abc.ABC):
 			the factor vertex. A value of 1 implies that only the effect of
 			the exponential time decay weighting scheme affects which risk
 			score is sent to the opposite variable vertex.
-		# TODO Update
 		tolerance: The minimum value that must be exceeded to continue onto
 			the next iteration. The summed difference of all variable
 			vertices' max risk scores between the previous iteration and
 			current iteration must exceed the tolerance value to continue
-			onto the next iteration.
-		# TODO Update
+			onto the next iteration. The difference is measured, per message
+			sent from factors, rather than per variable. Thus, a max risk
+			score could be updated multiple times, and all are included in
+			the sum.
 		iterations: The maximum number of loops the algorithm will run. If
 			the tolerance value is not exceeded, then it may not be the case
-			that all iterations are completed.
+			that all iterations are completed. For local computing,
+			this defines the number of times the variable vertices compute.
+			For remote computing, this defines the number of messages a
+			variable Ray actor should process before re-calculating the
+			tolerance.
 		time_buffer: The amount of time (in seconds) that must have
 			passed between an occurrence and risk score for it to be retained
 			by the factor vertex during computation.
@@ -167,13 +172,9 @@ class LocalBeliefPropagation(BeliefPropagation):
 	_graph = attr.ib(type=graphs.FactorGraph, init=False, repr=False)
 	_variables = attr.ib(type=stores.VertexStore, init=False, repr=False)
 	_factors = attr.ib(type=stores.VertexStore, init=False, repr=False)
-	_variable_queue = attr.ib(type=stores.Queue, init=False, repr=False)
-	_factor_queue = attr.ib(type=stores.Queue, init=False, repr=False)
 
 	def __attrs_post_init__(self):
 		super(LocalBeliefPropagation, self).__attrs_post_init__()
-		self._variable_queue = stores.queue_factory(local_mode=True)
-		self._factor_queue = stores.queue_factory(local_mode=True)
 
 	def __call__(
 			self, *, factors: Contacts, variables: AllRiskScores) -> Result:
@@ -185,10 +186,10 @@ class LocalBeliefPropagation(BeliefPropagation):
 	@codetiming.Timer(text='Total duration: {:0.6f} s', logger=stdout)
 	def _call(self, factors: Contacts, variables: AllRiskScores) -> Result:
 		self._create_graph(factors, variables)
-		i, epoch = 0, None
+		i, epoch = 1, None
 		stop = False
 		while not stop:
-			stdout(f'-----------Iteration {i + 1}-----------')
+			stdout(f'-----------Iteration {i}-----------')
 			epoch = self._send_to_factors()
 			self._send_to_variables()
 			stop = self._stopping_condition(i, epoch)
@@ -224,10 +225,9 @@ class LocalBeliefPropagation(BeliefPropagation):
 		for k, v in ((str(k), v) for k, v in variables):
 			vertices.append(k)
 			v1, v2 = itertools.tee(v)
-			attrs[k] = {'max': max(v1, default=self.default_msg)}
-			for item in v2:
-				m = model.Message(sender=k, receiver=k, content=item)
-				self._variable_queue.put(m)
+			attrs[k] = {
+				'max': max(v1, default=self.default_msg),
+				'inbox': {k: tuple(v2)}}
 		builder.add_variables(vertices, attributes=attrs)
 
 	@staticmethod
@@ -245,66 +245,81 @@ class LocalBeliefPropagation(BeliefPropagation):
 			k, (v1, v2) = make_key(f)
 			vertices.append(k)
 			edges.extend(((k, v1), (k, v2)))
-			attrs[k] = {'occurrences': f.occurrences}
+			attrs[k] = {'occurrences': f.occurrences, 'inbox': {}}
 		builder.add_factors(vertices, attributes=attrs)
 		builder.add_edges(edges)
 
 	# noinspection PyTypeChecker
 	@codetiming.Timer(text='Sending to factors: {:0.6f} s', logger=stdout)
 	def _send_to_factors(self) -> np.ndarray:
-		def update_max(v, incoming):
-			curr_max = self._variables.get(v, 'max')
-			if (updated := max(curr_max, incoming)) > curr_max:
+		def update_max(sender, incoming: Dict):
+			curr_max = self._variables.get(sender, 'max')
+			# First iteration only: messages only from self
+			if sender in incoming:
+				values = itertools.chain([curr_max], incoming[sender])
+			else:
+				values = itertools.chain([curr_max], incoming.values())
+			if (updated := max(values)) > curr_max:
 				difference = updated.value - curr_max.value
-				self._variables.put([v], {v: {'max': updated}})
+				self._variables.put([sender], {sender: {'max': updated}})
 			else:
 				difference = 0
 			return difference
 
-		def send(from_, to_, message):
-			for f in (n for n in self._graph.get_neighbors(from_) if n != to_):
-				m = model.Message(sender=from_, receiver=f, content=message)
-				self._factor_queue.put(m)
+		def send(sender, incoming: Dict):
+			for f in self._graph.get_neighbors(sender):
+				# First iteration only: messages only from self
+				if sender in incoming:
+					from_others = (
+						o for o in incoming[sender]
+						if o.value > self.msg_threshold)
+				else:
+					from_others = (
+						incoming[o] for o in incoming
+						if o != f and incoming[o].value > self.msg_threshold)
+				outgoing = {f: {'inbox': {sender: from_others}}}
+				self._factors.put([f], outgoing, merge=True)
 
 		epoch = []
-		while len(self._variable_queue):
-			msg = self._variable_queue.get()
-			# Receiver becomes the sender and vice versa
-			sender, receiver, msg = msg.receiver, msg.sender, msg.content
-			diff = update_max(sender, msg)
+		for v in self._variables:
+			inbox = self._variables.get(v, 'inbox')
+			diff = update_max(v, inbox)
 			epoch.append(diff)
-			if msg.value > self.msg_threshold:
-				send(sender, receiver, msg)
+			send(v, inbox)
+			self._variables.put([v], {v: {'inbox': {}}})
 		return np.array(epoch)
 
 	# noinspection PyTypeChecker
 	@codetiming.Timer(text='Sending to variables: {:0.6f} s', logger=stdout)
 	def _send_to_variables(self) -> NoReturn:
-		while len(self._factor_queue):
-			msg = self._factor_queue.get()
-			# Receiver becomes the sender
-			sender = msg.receiver
-			neighbors = tuple(self._graph.get_neighbors(sender))
-			# Assumes factor vertex has a degree of 2
-			receiver = neighbors[not neighbors.index(msg.sender)]
-			msg = self._compute_message(factor=sender, msg=msg.content)
-			msg = model.Message(sender=sender, receiver=receiver, content=msg)
-			self._variable_queue.put(msg)
+		for f in self._factors:
+			neighbors = tuple(self._graph.get_neighbors(f))
+			inbox: Dict = self._factors.get(f, 'inbox')
+			for i, n in enumerate(neighbors):
+				# Assumes factor vertex has a degree of 2
+				receiver = neighbors[not i]
+				msg = self._compute_message(f, inbox[n])
+				outgoing = {receiver: {'inbox': {f: msg}}}
+				self._variables.put([receiver], outgoing, merge=True)
+			self._factors.put([f], {f: {'inbox': {}}})
 
 	def _compute_message(
 			self,
 			factor: graphs.Vertex,
-			msg: model.RiskScore) -> model.RiskScore:
+			msg: Iterable[model.RiskScore]) -> model.RiskScore:
 		def sec_to_day(s: np.ndarray) -> np.float64:
 			return np.divide(np.float64(s), 86400)
 
 		occurrences = self._factors.get(factor, attribute='occurrences')
 		occurrences = np.array([o.as_array() for o in occurrences]).flatten()
-		msg = msg.as_array()
 		most_recent = np.max(occurrences['timestamp'])
-		after_contact = msg['timestamp'] > most_recent + self.time_buffer
+		msg = np.array([m.as_array() for m in msg]).flatten()
+		if msg.size:
+			old = np.where(msg['timestamp'] <= most_recent + self.time_buffer)
+			msg = msg[old]
+		no_valid_messages = not msg.size
 		not_transmitted = np.random.uniform() > self.transmission_rate
-		if np.any((after_contact, not_transmitted)):
+		if np.any((no_valid_messages, not_transmitted)):
 			msg = self.default_msg
 		else:
 			# Formats time delta as partial days
@@ -312,17 +327,18 @@ class LocalBeliefPropagation(BeliefPropagation):
 			# Weight can only decrease original message value
 			np.clip(diff, -np.inf, 0, out=diff)
 			msg['value'] *= np.exp(diff / self.time_constant)
-			msg = model.RiskScore.from_array(msg)
+			msg.sort(order=['value', 'timestamp', 'name'])
+			msg = model.RiskScore.from_array(msg[-1])
 		return msg
 
 	def _stopping_condition(self, iteration: int, epoch: np.ndarray = None):
-		if epoch is None or not iteration:
+		if iteration == 1:
 			stop = False
-			stdout(f'Epoch difference: n/a')
+			stdout(f'Epoch tolerance: n/a')
 		else:
 			diff = sum(epoch)
-			stop = diff > self.tolerance and iteration < self.iterations
-			stdout(f'Epoch difference: {np.round(diff, 6)}')
+			stop = diff < self.tolerance or iteration >= self.iterations
+			stdout(f'Iteration tolerance: {np.round(diff, 6)}')
 		return stop
 
 
