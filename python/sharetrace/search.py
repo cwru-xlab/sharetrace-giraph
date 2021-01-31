@@ -3,8 +3,10 @@ import itertools
 import random
 from typing import Collection, Iterable, Optional
 
+import attr
 import codetiming
 import numpy as np
+from attr import validators
 
 import backend
 import model
@@ -17,6 +19,7 @@ Contacts = Iterable[model.Contact]
 Occurrences = Collection[model.Occurrence]
 
 
+@attr.s(slots=True, frozen=True)
 class ContactSearch:
 	"""
 	Given two LocationHistory instances, this algorithm finds a contact if one
@@ -54,15 +57,11 @@ class ContactSearch:
 		min_duration: Minimum duration of a common sequence of locations for
 			it to be considered an occurrence.
 	"""
-	__slots__ = ['min_duration']
-
-	def __init__(self, *, min_duration: datetime.timedelta = _MIN_DURATION):
-		self.min_duration = min_duration
-
-	def __repr__(self):
-		return backend.rep(
-			self.__class__.__name__,
-			min_duration=self.min_duration)
+	min_duration = attr.ib(
+		type=datetime.timedelta,
+		default=_MIN_DURATION,
+		validator=validators.instance_of(datetime.timedelta),
+		kw_only=True)
 
 	def __call__(
 			self,
