@@ -741,28 +741,6 @@ class FactorGraphBuilder:
 		int_incr() if isinstance(self._store_ind, int) else seq_incr(variables)
 
 
-class FactorPart(abc.ABC):
-	__slots__ = []
-
-	def __init__(self):
-		super(FactorPart, self).__init__()
-
-	@abc.abstractmethod
-	def send_to_variables(self, *args, **kwargs):
-		pass
-
-
-class VariablePart(abc.ABC):
-	__slots__ = []
-
-	def __init__(self):
-		super(VariablePart, self).__init__()
-
-	@abc.abstractmethod
-	def send_to_factors(self, *args, **kwargs):
-		pass
-
-
 def factor_graph_factory(
 		impl: str = DEFAULT,
 		*,
