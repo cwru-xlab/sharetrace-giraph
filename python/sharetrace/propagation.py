@@ -1,15 +1,17 @@
 import abc
 import datetime
+import functools
 import itertools
 import numbers
 import random
 from typing import (
-	Any, Dict, Hashable, Iterable, NoReturn, Optional, Tuple, Union
-)
+	Any, Callable, Collection, Dict, Hashable, Iterable, NoReturn,
+	Optional, Sequence, Tuple, Union)
 
 import attr
 import codetiming
 import numpy as np
+import ray
 from attr import validators
 
 import backend
@@ -17,19 +19,48 @@ import graphs
 import model
 import stores
 
+"""
+Local-remote trade-off:
+	System information: 
+		System model:				Dell XPS 15 9560
+		Physical memory:			16GB RAM
+		Processor: 					Intel i7-7700HQ CPU @ 2.8GHz
+		Cores (logical/physical):	8/4
+	
+	Simulation setup:
+		Users:						500, 1000
+		Scores per user:			14
+		Days: 						14
+		Unique locations: 			10
+		Graph implementation: 		Numpy
+		Iterations (local/remote): 	4/550
+		Tolerance: 					1e-6
+		Transmission factor: 		0.8
+		Time constant:				1
+		Time buffer:				2 days
+		Seed: 						12345
+	
+	Timing:
+		500 users (local/remote): 	346/374 	= 1.08x faster
+		1000 users (local/remote):	1330/788	= 0.59x faster
+		
+		Linear interpolation: ~600 users leads to 1:1 performance
+"""
+
 # Globals
 _TWO_DAYS = np.timedelta64(2, 'D')
 _DEFAULT_MESSAGE = model.RiskScore(
-	name='DEFAULT_ID', timestamp=backend.TIME, value=0)
+	name='DEFAULT_ID', timestamp=datetime.datetime.utcnow(), value=0)
 stdout = backend.STDOUT
 stderr = backend.STDERR
 # Types
 TimestampBuffer = Union[datetime.timedelta, np.timedelta64]
 RiskScores = Iterable[model.RiskScore]
-AllRiskScores = Iterable[Tuple[Hashable, RiskScores]]
+AllRiskScores = Collection[Tuple[Hashable, RiskScores]]
 Contacts = Iterable[model.Contact]
 Result = Iterable[Tuple[Hashable, model.RiskScore]]
 Maxes = Union[np.ndarray, Iterable[Tuple[graphs.Vertex, model.RiskScore]]]
+StoppingCondition = Callable[..., bool]
 
 
 @attr.s(slots=True)
@@ -76,13 +107,12 @@ class BeliefPropagation(abc.ABC):
 			the sum.
 		iterations: The maximum number of loops the algorithm will run. If
 			the tolerance value is not exceeded, then it may not be the case
-			that all iterations are completed. For local computing,
-			this defines the number of times the variable vertices compute.
-			For remote computing, this defines the number of messages a
-			variable Ray actor should process before re-calculating the
-			tolerance.
-		time_buffer: The amount of time (in seconds) that must have
-			passed between an occurrence and risk score for it to be retained
+			that all iterations are completed. For local computing, this
+			defines the number of times the variable vertices compute. For
+			remote computing, this defines the number of messages a variable
+			Ray actor should process before re-calculating the tolerance.
+		time_buffer: The amount of time (in seconds) that must have passed
+			between an occurrence and risk score for it to be retained
 			by the factor vertex during computation.
 		impl: Implementation to use for the factor graph.
 		seed: Random seed to allow for reproducibility. If left unset,
@@ -116,6 +146,11 @@ class BeliefPropagation(abc.ABC):
 		default=1,
 		validator=validators.instance_of(numbers.Real),
 		converter=float,
+		kw_only=True)
+	queue_size = attr.ib(
+		type=int,
+		default=0,
+		validator=validators.instance_of(int),
 		kw_only=True)
 	msg_threshold = attr.ib(
 		type=numbers.Real,
@@ -165,6 +200,18 @@ class BeliefPropagation(abc.ABC):
 				f"'msg_threshold' must be between 0 and 1, inclusive; got "
 				f"{value}")
 
+	@abc.abstractmethod
+	def call(self, *args, **kwargs):
+		pass
+
+	@abc.abstractmethod
+	def create_graph(self, factors: Iterable, variables: Iterable):
+		pass
+
+	@abc.abstractmethod
+	def stopping_condition(self, *args, **kwargs) -> bool:
+		pass
+
 
 @attr.s(slots=True)
 class LocalBeliefPropagation(BeliefPropagation):
@@ -179,28 +226,27 @@ class LocalBeliefPropagation(BeliefPropagation):
 	def __call__(
 			self, *, factors: Contacts, variables: AllRiskScores) -> Result:
 		stdout('-----------START BELIEF PROPAGATION-----------')
-		result = self._call(factors, variables)
+		result = self.call(factors, variables)
 		stdout('------------END BELIEF PROPAGATION------------')
 		return result
 
 	@codetiming.Timer(text='Total duration: {:0.6f} s', logger=stdout)
-	def _call(self, factors: Contacts, variables: AllRiskScores) -> Result:
-		self._create_graph(factors, variables)
+	def call(self, factors: Contacts, variables: AllRiskScores) -> Result:
+		self.create_graph(factors, variables)
 		i, epoch = 1, None
 		stop = False
 		while not stop:
 			stdout(f'-----------Iteration {i}-----------')
 			epoch = self._send_to_factors()
 			self._send_to_variables()
-			stop = self._stopping_condition(i, epoch)
+			stop = self.stopping_condition(i, epoch)
 			i += 1
 			stdout(f'---------------------------------')
 		return ((v, self._variables.get(v, 'max')) for v in self._variables)
 
 	# noinspection PyTypeChecker
 	@codetiming.Timer(text='Creating graph: {:0.6f} s', logger=stdout)
-	def _create_graph(
-			self, factors: Contacts, variables: AllRiskScores) -> NoReturn:
+	def create_graph(self, factors: Contacts, variables: AllRiskScores):
 		builder = graphs.FactorGraphBuilder(
 			impl=self.impl,
 			share_graph=False,
@@ -245,7 +291,10 @@ class LocalBeliefPropagation(BeliefPropagation):
 			k, (v1, v2) = make_key(f)
 			vertices.append(k)
 			edges.extend(((k, v1), (k, v2)))
-			attrs[k] = {'occurrences': f.occurrences, 'inbox': {}}
+			occurrences = (o.as_array() for o in f.occurrences)
+			attrs[k] = {
+				'occurrences': np.array(list(occurrences)).flatten(),
+				'inbox': {}}
 		builder.add_factors(vertices, attributes=attrs)
 		builder.add_edges(edges)
 
@@ -311,15 +360,16 @@ class LocalBeliefPropagation(BeliefPropagation):
 			return np.divide(np.float64(s), 86400)
 
 		occurrences = self._factors.get(factor, attribute='occurrences')
-		occurrences = np.array([o.as_array() for o in occurrences]).flatten()
 		most_recent = np.max(occurrences['timestamp'])
 		msg = np.array([m.as_array() for m in msg]).flatten()
 		if msg.size:
 			old = np.where(msg['timestamp'] <= most_recent + self.time_buffer)
 			msg = msg[old]
 		no_valid_messages = not msg.size
+		# TODO(rdt17) Should transmission rate alter message value?
+		#  Using as random variable results in very high risk scores
 		not_transmitted = np.random.uniform() > self.transmission_rate
-		if np.any((no_valid_messages, not_transmitted)):
+		if no_valid_messages:
 			msg = self.default_msg
 		else:
 			# Formats time delta as partial days
@@ -327,21 +377,320 @@ class LocalBeliefPropagation(BeliefPropagation):
 			# Weight can only decrease original message value
 			np.clip(diff, -np.inf, 0, out=diff)
 			msg['value'] *= np.exp(diff / self.time_constant)
+			msg['value'] *= self.transmission_rate
 			msg.sort(order=['value', 'timestamp', 'name'])
 			msg = model.RiskScore.from_array(msg[-1])
 		return msg
 
-	def _stopping_condition(self, iteration: int, epoch: np.ndarray = None):
+	def stopping_condition(
+			self, iteration: int, epoch: np.ndarray = None, **kwargs) -> bool:
 		if iteration == 1:
 			stop = False
 			stdout(f'Epoch tolerance: n/a')
 		else:
 			diff = sum(epoch)
 			stop = diff < self.tolerance or iteration >= self.iterations
-			stdout(f'Iteration tolerance: {np.round(diff, 6)}')
+			stdout(f'Epoch tolerance: {np.round(diff, 6)}')
 		return stop
 
 
-@attr.s(slots=True)
+@ray.remote
+class _ShareTraceVariablePart:
+	__slots__ = [
+		'vertex_store',
+		'queue',
+		'add_to_queue',
+		'block_queue',
+		'msg_threshold',
+		'iterations',
+		'epoch',
+		'stopping_condition']
+
+	def __init__(
+			self,
+			vertex_store: stores.VertexStore,
+			queue_size: int,
+			add_to_queue: Sequence[model.Message],
+			msg_threshold: float,
+			iterations: int,
+			stopping_condition: StoppingCondition):
+		self.vertex_store = vertex_store
+		self.block_queue = queue_size > 0
+		self.queue = stores.queue_factory(
+			max_size=queue_size, asynchronous=True, local_mode=True)
+		self.add_to_queue = add_to_queue
+		self.msg_threshold = msg_threshold
+		self.iterations = iterations
+		self.epoch = []
+		self.stopping_condition = stopping_condition
+
+	async def send_to_factors(
+			self,
+			graph: graphs.FactorGraph,
+			factors: Sequence['_ShareTraceFactorPart']) -> Result:
+		def update_max(variable, maximum, incoming):
+			if (updated := max(incoming, maximum)) > maximum:
+				difference = updated.value - maximum.value
+				self.vertex_store.put([variable], {variable: {'max': updated}})
+			else:
+				difference = 0
+			return difference
+
+		async def send(from_, to_, message):
+			# Avoid self-bias: do not send message back to sending factor
+			for f in (n for n in graph.get_neighbors(from_) if n != to_):
+				m = model.Message(sender=from_, receiver=f, content=message)
+				factor = factors[graph.get_vertex_attr(f, key='address')]
+				await factor.enqueue.remote(m)
+
+		await self.queue.put(*self.add_to_queue, block=False)
+		self.add_to_queue = None
+		get_max = functools.partial(lambda v: self.vertex_store.get(v, 'max'))
+		stop = False
+		while not stop:
+			for _ in range(self.iterations):
+				msg = await self.queue.get(block=True)
+				# Receiver becomes the sender and vice versa
+				sender, receiver, msg = msg.receiver, msg.sender, msg.content
+				curr_max = get_max(sender)
+				diff = update_max(sender, curr_max, msg)
+				self.epoch.append(diff)
+				if msg.value > self.msg_threshold:
+					await send(sender, receiver, msg)
+			stop = self.stopping_condition(self.epoch)
+			self.epoch.clear()
+		return tuple((v, get_max(v)) for v in self.vertex_store)
+
+	async def enqueue(self, *messages: model.Message) -> NoReturn:
+		for m in messages:
+			await self.queue.put(m, block=self.block_queue)
+
+	@staticmethod
+	def kill() -> NoReturn:
+		ray.actor.exit_actor()
+
+
+@ray.remote
+class _ShareTraceFactorPart:
+	__slots__ = [
+		'vertex_store',
+		'queue',
+		'block_queue',
+		'transmission_rate',
+		'time_buffer',
+		'time_constant',
+		'msg_threshold',
+		'default_msg']
+
+	def __init__(
+			self,
+			vertex_store: stores.VertexStore,
+			queue_size: int,
+			transmission_rate: float,
+			time_buffer: TimestampBuffer,
+			time_constant: float,
+			default_msg: model.RiskScore):
+		self.vertex_store = vertex_store
+		self.block_queue = queue_size > 0
+		self.queue = stores.queue_factory(
+			max_size=queue_size, asynchronous=True, local_mode=True)
+		self.transmission_rate = transmission_rate
+		self.time_buffer = time_buffer
+		self.time_constant = time_constant
+		self.default_msg = default_msg
+
+	async def send_to_variables(
+			self,
+			*,
+			graph: graphs.FactorGraph,
+			variables: Sequence['_ShareTraceVariablePart']) -> NoReturn:
+		while True:
+			msg = await self.queue.get(block=True)
+			# Receiver becomes the sender
+			sender = msg.receiver
+			neighbors = tuple(graph.get_neighbors(sender))
+			# Assumes factor vertex has a degree of 2
+			receiver = neighbors[not neighbors.index(msg.sender)]
+			msg = self._compute_message(sender, msg.content)
+			msg = model.Message(sender=sender, receiver=receiver, content=msg)
+			v = graph.get_vertex_attr(receiver, key='address')
+			await variables[v].enqueue.remote(msg)
+
+	def _compute_message(
+			self,
+			factor: graphs.Vertex,
+			msg: model.RiskScore) -> model.RiskScore:
+		def sec_to_day(s: np.ndarray) -> np.float64:
+			return np.divide(np.float64(s), 86400)
+
+		occurrences = self.vertex_store.get(factor, attribute='occurrences')
+		msg = msg.as_array()
+		most_recent = np.max(occurrences['timestamp'])
+		after_contact = msg['timestamp'] < most_recent + self.time_buffer
+		# TODO(rdt17) Should transmission rate alter message value?
+		#  Using as random variable results in very high risk scores
+		not_transmitted = np.random.uniform() > self.transmission_rate
+		if after_contact:
+			msg = self.default_msg
+		else:
+			# Formats time delta as partial days
+			diff = sec_to_day(msg['timestamp'] - most_recent)
+			# Weight can only decrease original message value
+			np.clip(diff, -np.inf, 0, out=diff)
+			msg['value'] *= np.exp(diff / self.time_constant)
+			msg['value'] *= self.transmission_rate
+			msg = model.RiskScore.from_array(msg)
+		return msg
+
+	async def enqueue(self, *messages: model.Message) -> NoReturn:
+		for m in messages:
+			await self.queue.put(m, block=self.block_queue)
+
+	@staticmethod
+	def kill() -> NoReturn:
+		ray.actor.exit_actor()
+
+
+# Types
+RemoteGraph = Union[ray.ObjectRef, graphs.FactorGraph]
+RemoteVariables = Sequence[Union[ray.ObjectRef, _ShareTraceVariablePart]]
+RemoteFactors = Sequence[Union[ray.ObjectRef, _ShareTraceFactorPart]]
+
+
+@attr.s  # Can't use slots since it inherits from slots
 class RemoteBeliefPropagation(BeliefPropagation):
-	pass
+	"""A multi-process implementation of BeliefPropagation using Ray."""
+	_graph = attr.ib(type=RemoteGraph, init=False, repr=False)
+	_variables = attr.ib(type=RemoteVariables, init=False, repr=False)
+	_factors = attr.ib(type=RemoteFactors, init=False, repr=False)
+
+	def __attrs_post_init__(self):
+		super(RemoteBeliefPropagation, self).__attrs_post_init__()
+
+	def __call__(
+			self, *, factors: Contacts, variables: AllRiskScores) -> Result:
+		stdout('-----------START BELIEF PROPAGATION-----------')
+		result = self.call(factors, variables)
+		stdout('------------END BELIEF PROPAGATION------------')
+		return result
+
+	@codetiming.Timer(text='Total duration: {:0.6f} s', logger=stdout)
+	def call(self, factors: Contacts, variables: AllRiskScores) -> Result:
+		self.create_graph(factors, variables)
+		with codetiming.Timer(text='Sending msgs: {:0.6f} s', logger=stdout):
+			refs = self._initiate_message_passing()
+			result = self._get_result(refs)
+		self._shutdown()
+		return result
+
+	# noinspection PyTypeChecker
+	@codetiming.Timer(text='Creating graph: {:0.6f} s', logger=stdout)
+	def create_graph(self, factors: Contacts, variables: AllRiskScores):
+		def num_stores():
+			# < 1001 variables: 1 CPU
+			v_stores = max(1, np.ceil(np.log10(len(variables))) - 2)
+			# 2:1 factor:variable ratio
+			f_stores = max(backend.NUM_CPUS - v_stores, 2 * v_stores)
+			return int(f_stores), int(v_stores)
+
+		num_fstores, num_vstores = num_stores()
+		builder = graphs.FactorGraphBuilder(
+			impl=self.impl,
+			# Graph structure is static
+			share_graph=True,
+			graph_as_actor=False,
+			# Separate the stateless (structure) and stateful (attributes)
+			use_vertex_store=True,
+			# Store actor index in shared graph for actor-actor communication
+			store_in_graph=['address'],
+			num_stores=(num_fstores, num_vstores),
+			# Vertex stores are stored in each graph partition actor
+			store_as_actor=False,
+			# Prevent actors from being killed automatically
+			detached=True)
+
+		add_to_queues = self._add_variables(builder, variables, num_vstores)
+		self._add_factors_and_edges(builder, factors)
+		self._graph, _, _, (factor_stores, variable_stores) = builder.build()
+		self._variables = tuple(
+			_ShareTraceVariablePart.remote(
+				vertex_store=s,
+				add_to_queue=q,
+				msg_threshold=self.msg_threshold,
+				stopping_condition=self.stopping_condition,
+				iterations=self.iterations,
+				queue_size=self.queue_size)
+			for s, q in zip(variable_stores, add_to_queues))
+		self._factors = tuple(
+			_ShareTraceFactorPart.remote(
+				vertex_store=s,
+				transmission_rate=self.transmission_rate,
+				time_buffer=self.time_buffer,
+				time_constant=self.time_constant,
+				default_msg=self.default_msg,
+				queue_size=self.queue_size)
+			for s in factor_stores)
+
+	def _add_variables(
+			self,
+			builder: graphs.FactorGraphBuilder,
+			variables: AllRiskScores,
+			num_queues: int) -> Iterable[Sequence[model.Message]]:
+		vertices = []
+		attrs = {}
+		queues = [[] for _ in range(num_queues)]
+		for q, (k, v) in enumerate((str(k), v) for k, v in variables):
+			vertices.append(k)
+			v1, v2 = itertools.tee(v)
+			attrs[k] = {'max': max(v1, default=self.default_msg)}
+			print(attrs[k]['max'])
+			msgs = (model.Message(sender=k, receiver=k, content=c) for c in v2)
+			# Queues must have enough capacity to hold local messages
+			queues[q % num_queues].extend(msgs)
+		builder.add_variables(vertices, attributes=attrs)
+		return queues
+
+	@staticmethod
+	def _add_factors_and_edges(
+			builder: graphs.FactorGraphBuilder,
+			factors: Contacts) -> NoReturn:
+		def make_key(factor: model.Contact):
+			parts = tuple(str(u) for u in sorted(factor.users))
+			key = '_'.join(parts)
+			return key, parts
+
+		vertices, edges = [], []
+		attrs = {}
+		for f in factors:
+			k, (v1, v2) = make_key(f)
+			vertices.append(k)
+			edges.extend(((k, v1), (k, v2)))
+			occurrences = (o.as_array() for o in f.occurrences)
+			attrs[k] = {
+				'occurrences': np.array(list(occurrences)).flatten()}
+		builder.add_factors(vertices, attributes=attrs)
+		builder.add_edges(edges)
+
+	def _initiate_message_passing(self) -> Sequence[ray.ObjectRef]:
+		for a in self._factors:
+			a.send_to_variables.remote(
+				graph=self._graph, variables=self._variables)
+		return [
+			a.send_to_factors.remote(graph=self._graph, factors=self._factors)
+			for a in self._variables]
+
+	@staticmethod
+	def _get_result(refs: Sequence[ray.ObjectRef]) -> Result:
+		result = itertools.chain.from_iterable(ray.get(refs))
+		return tuple(result)
+
+	def _shutdown(self):
+		if isinstance(self._graph, backend.ActorMixin):
+			self._graph.kill()
+		for a in self._variables:
+			a.kill.remote()
+		for a in self._factors:
+			a.kill.remote()
+
+	def stopping_condition(self, epoch: np.ndarray, **kwargs) -> bool:
+		return sum(epoch) < self.tolerance
