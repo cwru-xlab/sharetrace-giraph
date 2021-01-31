@@ -1,6 +1,7 @@
-import abc
 import asyncio
 import collections
+from abc import ABC, abstractmethod
+from collections.abc import Collection, Sized
 from typing import (
 	Any, Hashable, Iterable, Iterator, Mapping, NoReturn, Optional)
 
@@ -10,29 +11,29 @@ from ray.util import queue
 import backend
 
 
-class Queue(abc.ABC, collections.Sized):
+class Queue(ABC, Sized):
 	__slots__ = []
 
 	def __init__(self):
 		super(Queue, self).__init__()
 
 	def __repr__(self):
-		return backend.rep(self.__class__.__name__)
+		return backend.rep(self.__class__.__name__, max_size=self.max_size)
 
 	@property
-	@abc.abstractmethod
+	@abstractmethod
 	def max_size(self) -> int:
 		pass
 
-	@abc.abstractmethod
+	@abstractmethod
 	def empty(self) -> bool:
 		pass
 
-	@abc.abstractmethod
+	@abstractmethod
 	def full(self) -> bool:
 		pass
 
-	@abc.abstractmethod
+	@abstractmethod
 	def put(
 			self,
 			*items: Any,
@@ -40,7 +41,7 @@ class Queue(abc.ABC, collections.Sized):
 			timeout: Optional[float] = None) -> bool:
 		pass
 
-	@abc.abstractmethod
+	@abstractmethod
 	def get(
 			self,
 			*,
@@ -55,11 +56,8 @@ class LocalQueue(Queue):
 
 	def __init__(self, max_size: int = 0):
 		super(LocalQueue, self).__init__()
-		self._max_size = None if max_size in {None, 0} else int(max_size)
+		self._max_size = int(max_size)
 		self._queue = collections.deque(maxlen=self.max_size)
-
-	def __repr__(self):
-		return backend.rep(self.__class__.__name__, max_size=self.max_size)
 
 	def __len__(self) -> int:
 		return len(self._queue)
@@ -98,9 +96,6 @@ class AsyncQueue(Queue):
 		super(AsyncQueue, self).__init__()
 		self._max_size = int(max_size)
 		self._queue = asyncio.Queue(maxsize=max_size)
-
-	def __repr__(self):
-		return backend.rep(self.__class__.__name__, max_size=self.max_size)
 
 	def __len__(self):
 		return self._queue.qsize()
@@ -151,9 +146,6 @@ class RemoteQueue(Queue, backend.ActorMixin):
 		self._max_size = int(max_size)
 		self._actor = queue.Queue(maxsize=max_size)
 
-	def __repr__(self):
-		return backend.rep(self.__class__.__name__, max_size=self.max_size)
-
 	def __len__(self) -> int:
 		return self._actor.qsize()
 
@@ -187,7 +179,7 @@ class RemoteQueue(Queue, backend.ActorMixin):
 		ray.kill(self._actor.actor)
 
 
-class VertexStore(collections.Collection, backend.ActorMixin):
+class VertexStore(Collection, backend.ActorMixin):
 	"""Data structure for storing vertex data
 
 	Attributes:
@@ -273,7 +265,7 @@ class VertexStore(collections.Collection, backend.ActorMixin):
 			ray.kill(self._actor)
 
 
-class _VertexStore(collections.Collection):
+class _VertexStore(Collection):
 	__slots__ = ['_store']
 
 	def __init__(self):
@@ -325,7 +317,8 @@ class _VertexStore(collections.Collection):
 
 
 def queue_factory(
-		max_size: int = 0, *,
+		max_size: int = 0,
+		*,
 		asynchronous: bool = False,
 		local_mode: bool = True) -> Queue:
 	if local_mode:
