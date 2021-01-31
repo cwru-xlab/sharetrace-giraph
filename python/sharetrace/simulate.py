@@ -1,7 +1,6 @@
 import datetime
 import random
 
-import codetiming
 import numpy as np
 
 import backend
@@ -55,46 +54,56 @@ def simulate(
 		transmission_rate: float = 0.8,
 		iterations: int = 4,
 		tolerance: float = 1e-5,
-		impl=graphs.IGRAPH):
+		impl=graphs.NUMPY,
+		local_mode: bool = True):
 	transmission_rate = max(min(1., transmission_rate), 0.)
 	iterations = max(1, iterations)
-	tolerance = max(1e-16, tolerance)
-	bp = propagation.BeliefPropagation(
-		iterations=iterations,
-		transmission_rate=transmission_rate,
-		tolerance=tolerance,
-		impl=impl)
+	tolerance = max(1e-6, tolerance)
+	kwargs = {
+		'iterations': iterations,
+		'transmission_rate': transmission_rate,
+		'tolerance': tolerance,
+		'impl': impl}
+	if local_mode:
+		bp = propagation.LocalBeliefPropagation(**kwargs)
+	else:
+		bp = propagation.RemoteBeliefPropagation(**kwargs)
 	return bp(factors=factors, variables=variables)
 
 
 def main():
 	random.seed(12345)
 	np.random.seed(12345)
-	local_mode = False
+	local_mode = True
 	impl = graphs.NUMPY
-	setup_kwargs = {'users': 10, 'scores': 10, 'days': 10, 'locations': 3}
+	setup_kwargs = {'users': 1000, 'scores': 14, 'days': 14, 'locations': 10}
+	iterations = int(500 * 1.1)
 	backend.set_local_mode(local_mode)
 	contact_search = search.ContactSearch()
 	if local_mode:
 		factors, variables = setup(**setup_kwargs)
 		factors = contact_search(factors)
-		simulate(
+		result = simulate(
 			factors=factors,
 			variables=variables,
+			iterations=iterations,
 			transmission_rate=0.8,
-			impl=impl)
+			impl=impl,
+			local_mode=local_mode)
 	else:
 		with backend.ray_context(num_cpus=backend.NUM_CPUS):
 			factors, variables = setup(**setup_kwargs)
 			factors = contact_search(factors)
-			simulate(factors=factors, variables=variables, impl=impl)
+			result = simulate(
+				factors=factors,
+				variables=variables,
+				iterations=iterations,
+				impl=impl,
+				local_mode=local_mode)
+	print('-------------------------------------')
+	for r in result:
+		print(r)
 
 
 if __name__ == '__main__':
-	for i in range(1):
-		with codetiming.Timer(name='main'):
-			main()
-	print(f"mean:{codetiming.Timer.timers.mean('main')}")
-	print(f"stdev:{codetiming.Timer.timers.stdev('main')}")
-	print(f"max:{codetiming.Timer.timers.max('main')}")
-	print(f"min:{codetiming.Timer.timers.min('main')}")
+	main()
