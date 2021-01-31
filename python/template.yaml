@@ -41,14 +41,18 @@ Globals:
           QMEAS4wEQQMuV6dEp7ATpAGKk2RAgEQgC0kQWWItkAACDcUWOixYFQkci8aqKxnUNh\
           IeHQWi7pGtG0//k8ZX8VFd8HrIeU="
         READ_URL: https://hubofallthings.net/api/v2.6/contract-data/read
-        SCORE_TIMESTAMP_BUFFER: 172800
+        TIMESTAMP_BUFFER: 172800
         TAKE_LOCATIONS: 100
         TAKE_SCORES: 100
         TOLERANCE: 0.000001
         MESSAGE_THRESHOLD: 0
         TIME_CONSTANT: 1
         TRANSMISSION_RATE: 0.8
-        WRITE_SCORE_NAMESPACE: # TODO
+        WRITE_SCORE_NAMESPACE:
+          "AQICAHhSpftPnvKaY96TB4Pb3D4dvUDfecQCwvzrWfdTRugRSAEy6ac/aQhtkzTD+x5\
+          NmKXqAAAAazBpBgkqhkiG9w0BBwagXDBaAgEAMFUGCSqGSIb3DQEHATAeBglghkgBZQM\
+          EAS4wEQQMBcR+Mv323Iml7DI7AgEQgChIJTylvZ9cPBMOQp7QaPgh/Vh9x9OfLDHh5yI\
+          P9cYptsyJ2+LsNjWq"
         WRITE_URL: https://hubofallthings.net/api/v2.6/contract-data/create
     KmsKeyArn:
       "arn:aws:kms:us-east-2:429105560611:key/944114e2-94d3-40da-82dc\
