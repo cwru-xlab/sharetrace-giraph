@@ -6,8 +6,10 @@ import time
 from typing import Any, Iterable, Mapping, NoReturn, Optional, Tuple, Union
 
 import aiohttp
+import attr
 import codetiming
 import numpy as np
+from attr import validators
 
 import backend
 import model
@@ -26,11 +28,14 @@ stdout = backend.STDOUT
 stderr = backend.STDERR
 
 
+@attr.s(slots=True)
 class PdaContext:
 	"""Contracted PDA context manager for the ShareTrace project.
 
 	Communicates with user PDAs to retrieve data to send back computed
-	exposure scores.
+	risk scores. The client namespace, contract ID, and long-lived token are
+	required in order to use the context. All other attributes can be set
+	post-instantiation.
 
 	Attributes:
 		client_namespace: Endpoint containing the contracted namespaces.
@@ -41,39 +46,17 @@ class PdaContext:
 		long_lived_token: Required to retrieve a short-lived token and send
 			requests.
 	"""
-	__slots__ = [
-		'client_namespace',
-		'contract_id',
-		'long_lived_token',
-		'keyring_url',
-		'read_url',
-		'write_url',
-		'_session']
 
-	def __init__(
-			self,
-			client_namespace: str,
-			contract_id: str,
-			long_lived_token: str = None,
-			keyring_url: str = None,
-			read_url: str = None,
-			write_url: str = None):
-		self.client_namespace = str(client_namespace)
-		self.contract_id = str(contract_id)
-		self.long_lived_token = str(long_lived_token)
-		self.keyring_url = str(keyring_url)
-		self.read_url = str(read_url)
-		self.write_url = str(write_url)
-
-	def __repr__(self):
-		return backend.rep(
-			self.__class__.__name__,
-			client_namespace=self.client_namespace,
-			contract_id=self.contract_id,
-			long_lived_token=self.long_lived_token,
-			keyring_url=self.keyring_url,
-			read_url=self.read_url,
-			write_url=self.write_url)
+	client_namespace = attr.ib(type=str, validator=validators.instance_of(str))
+	contract_id = attr.ib(type=str, validator=validators.instance_of(str))
+	long_lived_token = attr.ib(type=str, validator=validators.instance_of(str))
+	keyring_url = attr.ib(
+		type=str, validator=validators.instance_of(str), default=None)
+	read_url = attr.ib(
+		type=str, validator=validators.instance_of(str), default=None)
+	write_url = attr.ib(
+		type=str, validator=validators.instance_of(str), default=None)
+	_session = attr.ib(type=aiohttp.ClientSession, init=False, repr=False)
 
 	async def __aenter__(self):
 		self._session = aiohttp.ClientSession()
