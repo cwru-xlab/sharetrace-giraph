@@ -43,7 +43,7 @@ Local-remote trade-off:
 	Timing:
 		500 users (local/remote): 	346/374 	= 1.08x faster
 		1000 users (local/remote):	1330/788	= 0.59x faster
-		
+
 		Linear interpolation: ~600 users leads to 1:1 performance
 """
 
@@ -110,7 +110,12 @@ class BeliefPropagation(abc.ABC):
 			that all iterations are completed. For local computing, this
 			defines the number of times the variable vertices compute. For
 			remote computing, this defines the number of messages a variable
-			Ray actor should process before re-calculating the tolerance.
+			Ray actor should process before re-calculating the tolerance. If
+			unsure about the number of variables and initial messages each
+			variable has to send, set this to a high number. Set this to be
+			at least twice (num_variables) x (num_messages_per_variable) to
+			ensure that the factors have enough time to start sending
+			messages in response.
 		time_buffer: The amount of time (in seconds) that must have passed
 			between an occurrence and risk score for it to be retained
 			by the factor vertex during computation.
@@ -643,7 +648,6 @@ class RemoteBeliefPropagation(BeliefPropagation):
 			vertices.append(k)
 			v1, v2 = itertools.tee(v)
 			attrs[k] = {'max': max(v1, default=self.default_msg)}
-			print(attrs[k]['max'])
 			msgs = (model.Message(sender=k, receiver=k, content=c) for c in v2)
 			# Queues must have enough capacity to hold local messages
 			queues[q % num_queues].extend(msgs)
@@ -687,9 +691,7 @@ class RemoteBeliefPropagation(BeliefPropagation):
 	def _shutdown(self):
 		if isinstance(self._graph, backend.ActorMixin):
 			self._graph.kill()
-		for a in self._variables:
-			a.kill.remote()
-		for a in self._factors:
+		for a in itertools.chain(self._factors, self._variables):
 			a.kill.remote()
 
 	def stopping_condition(self, epoch: np.ndarray, **kwargs) -> bool:
