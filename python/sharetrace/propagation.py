@@ -21,28 +21,28 @@ import stores
 
 """
 Local-remote trade-off:
-	System information: 
+	System information:
 		System model:				Dell XPS 15 9560
 		Physical memory:			16GB RAM
-		Processor: 					Intel i7-7700HQ CPU @ 2.8GHz
+		Processor:					Intel i7-7700HQ CPU @ 2.8GHz
 		Cores (logical/physical):	8/4
 	
 	Simulation setup:
 		Users:						500, 1000
 		Scores per user:			14
-		Days: 						14
-		Unique locations: 			10
-		Graph implementation: 		Numpy
-		Iterations (local/remote): 	4/550
-		Tolerance: 					1e-6
-		Transmission factor: 		0.8
+		Days:						14
+		Unique locations:			10
+		Graph implementation:		Numpy
+		Iterations (local/remote):	4/550
+		Tolerance:					1e-6
+		Transmission factor:		0.8
 		Time constant:				1
 		Time buffer:				2 days
-		Seed: 						12345
+		Seed:						12345
 
 	Timing:
-		500 users (local/remote): 	346/374 	= 1.08x faster
-		1000 users (local/remote):	1330/788	= 0.59x faster
+		500 users (local/remote):	346/374		(1.08x faster)
+		1000 users (local/remote):	1330/788	(0.59x faster)
 
 		Linear interpolation: ~600 users leads to 1:1 performance
 """
@@ -210,7 +210,7 @@ class BeliefPropagation(abc.ABC):
 		pass
 
 	@abc.abstractmethod
-	def create_graph(self, factors: Iterable, variables: Iterable):
+	def create_graph(self, *args, **kwargs):
 		pass
 
 	@abc.abstractmethod
@@ -236,7 +236,11 @@ class LocalBeliefPropagation(BeliefPropagation):
 		return result
 
 	@codetiming.Timer(text='Total duration: {:0.6f} s', logger=stdout)
-	def call(self, factors: Contacts, variables: AllRiskScores) -> Result:
+	def call(
+			self,
+			factors: Contacts,
+			variables: AllRiskScores,
+			**kwargs) -> Result:
 		self.create_graph(factors, variables)
 		i, epoch = 1, None
 		stop = False
@@ -251,7 +255,11 @@ class LocalBeliefPropagation(BeliefPropagation):
 
 	# noinspection PyTypeChecker
 	@codetiming.Timer(text='Creating graph: {:0.6f} s', logger=stdout)
-	def create_graph(self, factors: Contacts, variables: AllRiskScores):
+	def create_graph(
+			self,
+			factors: Contacts,
+			variables: AllRiskScores,
+			**kwargs):
 		builder = graphs.FactorGraphBuilder(
 			impl=self.impl,
 			share_graph=False,
@@ -329,8 +337,8 @@ class LocalBeliefPropagation(BeliefPropagation):
 						if o.value > self.msg_threshold)
 				else:
 					from_others = (
-						incoming[o] for o in incoming
-						if o != f and incoming[o].value > self.msg_threshold)
+						msg for o, msg in incoming.items()
+						if o != f and msg.value > self.msg_threshold)
 				outgoing = {f: {'inbox': {sender: from_others}}}
 				self._factors.put([f], outgoing, merge=True)
 
@@ -448,6 +456,7 @@ class _ShareTraceVariablePart:
 				factor = factors[graph.get_vertex_attr(f, key='address')]
 				await factor.enqueue.remote(m)
 
+		# Queues must have enough capacity to hold local messages
 		await self.queue.put(*self.add_to_queue, block=False)
 		self.add_to_queue = None
 		get_max = functools.partial(lambda v: self.vertex_store.get(v, 'max'))
@@ -464,7 +473,7 @@ class _ShareTraceVariablePart:
 					await send(sender, receiver, msg)
 			stop = self.stopping_condition(self.epoch)
 			self.epoch.clear()
-		return tuple((v, get_max(v)) for v in self.vertex_store)
+		return np.array(list((v, get_max(v)) for v in self.vertex_store))
 
 	async def enqueue(self, *messages: model.Message) -> NoReturn:
 		for m in messages:
@@ -580,7 +589,11 @@ class RemoteBeliefPropagation(BeliefPropagation):
 		return result
 
 	@codetiming.Timer(text='Total duration: {:0.6f} s', logger=stdout)
-	def call(self, factors: Contacts, variables: AllRiskScores) -> Result:
+	def call(
+			self,
+			factors: Contacts,
+			variables: AllRiskScores,
+			**kwargs) -> Result:
 		self.create_graph(factors, variables)
 		with codetiming.Timer(text='Sending msgs: {:0.6f} s', logger=stdout):
 			refs = self._initiate_message_passing()
@@ -590,7 +603,11 @@ class RemoteBeliefPropagation(BeliefPropagation):
 
 	# noinspection PyTypeChecker
 	@codetiming.Timer(text='Creating graph: {:0.6f} s', logger=stdout)
-	def create_graph(self, factors: Contacts, variables: AllRiskScores):
+	def create_graph(
+			self,
+			factors: Contacts,
+			variables: AllRiskScores,
+			**kwargs):
 		def num_stores():
 			# < 1001 variables: 1 CPU
 			v_stores = max(1, np.ceil(np.log10(len(variables))) - 2)
@@ -649,7 +666,6 @@ class RemoteBeliefPropagation(BeliefPropagation):
 			v1, v2 = itertools.tee(v)
 			attrs[k] = {'max': max(v1, default=self.default_msg)}
 			msgs = (model.Message(sender=k, receiver=k, content=c) for c in v2)
-			# Queues must have enough capacity to hold local messages
 			queues[q % num_queues].extend(msgs)
 		builder.add_variables(vertices, attributes=attrs)
 		return queues
@@ -670,8 +686,7 @@ class RemoteBeliefPropagation(BeliefPropagation):
 			vertices.append(k)
 			edges.extend(((k, v1), (k, v2)))
 			occurrences = (o.as_array() for o in f.occurrences)
-			attrs[k] = {
-				'occurrences': np.array(list(occurrences)).flatten()}
+			attrs[k] = {'occurrences': np.array(list(occurrences)).flatten()}
 		builder.add_factors(vertices, attributes=attrs)
 		builder.add_edges(edges)
 
