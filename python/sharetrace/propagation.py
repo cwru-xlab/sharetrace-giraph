@@ -22,23 +22,23 @@ import stores
 """
 Local-remote trade-off:
 	System information:
-		System model:				Dell XPS 15 9560
-		Physical memory:			16GB RAM
-		Processor:					Intel i7-7700HQ CPU @ 2.8GHz
-		Cores (logical/physical):	8/4
+		System model: Dell XPS 15 9560
+		Physical memory: 16GB RAM
+		Processor: Intel i7-7700HQ CPU @ 2.8GHz
+		Cores (logical/physical): 8/4
 	
 	Simulation setup:
-		Users:						500, 1000
-		Scores per user:			14
-		Days:						14
-		Unique locations:			10
-		Graph implementation:		Numpy
-		Iterations (local/remote):	4/550
-		Tolerance:					1e-6
-		Transmission factor:		0.8
-		Time constant:				1
-		Time buffer:				2 days
-		Seed:						12345
+		Users: 500, 1000
+		Scores per user: 14
+		Days: 14
+		Unique locations: 10
+		Graph implementation: Numpy
+		Iterations (local/remote): 4/550
+		Tolerance: 1e-6
+		Transmission factor: 0.8
+		Time constant: 1
+		Time buffer: 2 days
+		Seed: 12345
 
 	Timing:
 		500 users (local/remote):	346/374		(1.08x faster)
