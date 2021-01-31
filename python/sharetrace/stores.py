@@ -1,23 +1,13 @@
 import abc
 import asyncio
 import collections
-from typing import Any, Hashable, Iterable, Iterator, Mapping, NoReturn, \
-	Optional
+from typing import (
+	Any, Hashable, Iterable, Iterator, Mapping, NoReturn, Optional)
 
 import ray
 from ray.util import queue
 
 import backend
-
-_KILL_EXCEPTION = '{} does not support kill(); use {} instead.'
-
-
-class Empty(Exception):
-	pass
-
-
-class Full(Exception):
-	pass
 
 
 class Queue(abc.ABC, collections.Sized):
@@ -60,7 +50,7 @@ class Queue(abc.ABC, collections.Sized):
 
 
 class LocalQueue(Queue):
-	"""FIFO queue implementation using collections.deque."""
+	"""Simple FIFO queue."""
 	__slots__ = ['_max_size', '_queue']
 
 	def __init__(self, max_size: int = 0):
@@ -101,6 +91,7 @@ class LocalQueue(Queue):
 
 
 class AsyncQueue(Queue):
+	"""Asynchronous queue."""
 	__slots__ = ['_max_size', '_queue']
 
 	def __init__(self, max_size: int = 0):
@@ -124,7 +115,7 @@ class AsyncQueue(Queue):
 	def full(self) -> bool:
 		return self._queue.full()
 
-	def put(
+	async def put(
 			self,
 			*items: Any,
 			block: bool = True,
@@ -132,33 +123,27 @@ class AsyncQueue(Queue):
 		if block:
 			for item in items:
 				future = self._queue.put(item)
-				if timeout is None:
-					# TODO Causes TypeError: can't pickle 'Context' object
-					asyncio.get_event_loop().run_until_complete(future)
-				else:
-					asyncio.wait_for(future, timeout=timeout)
+				await asyncio.wait_for(future, timeout=timeout)
 		else:
 			for item in items:
 				self._queue.put_nowait(item)
 		return True
 
-	def get(
+	async def get(
 			self,
 			*,
 			block: bool = True,
 			timeout: Optional[float] = None) -> Any:
 		if block:
 			future = self._queue.get()
-			if timeout is None:
-				item = asyncio.get_event_loop().run_until_complete(future)
-			else:
-				item = asyncio.wait_for(future, timeout=timeout)
+			item = await asyncio.wait_for(future, timeout=timeout)
 		else:
 			item = self._queue.get_nowait()
 		return item
 
 
 class RemoteQueue(Queue, backend.ActorMixin):
+	"""FIFO Ray actor queue."""
 	__slots__ = ['_max_size', '_actor']
 
 	def __init__(self, max_size: int = 0):
@@ -205,27 +190,32 @@ class RemoteQueue(Queue, backend.ActorMixin):
 class VertexStore(collections.Collection, backend.ActorMixin):
 	"""Data structure for storing vertex data
 
+	Attributes:
+		local_mode: True uses an in-memory, single-process implementation.
+			False makes the VertexStore a Ray actor on a separate process.
+		detached: True will prevent the Ray actor VertexStore from being
+			terminated. Only active if local_mode is False.
+
 	Examples:
 		A vertex store can be used for the following four scenarios:
 
-		(1) Vertices with no attributes:
+		1. Vertices with no attributes:
 			{<id>: None...}
 
-		(2) Vertices with a scalar attribute:
+		2. Vertices with a scalar attribute:
 			{<id>: <attr> ...}
 
-		(2) Vertices with multiple scalar attributes:
+		3. Vertices with multiple scalar attributes:
 			{<id>: {<attr_key>: <attr_value>...}...}
 
-		(4) Vertices with mapping attributes:
+		4. Vertices with mapping attributes:
 			{<id>: {<attr_key>: {<key>: <value>...}...}...}
 	"""
 
 	__slots__ = ['local_mode', 'detached', '_actor']
 
-	def __init__(self, *, local_mode: bool = None, detached: bool = True):
+	def __init__(self, *, local_mode: bool = True, detached: bool = True):
 		super(VertexStore, self).__init__()
-		local_mode = backend.LOCAL_MODE if local_mode is None else local_mode
 		self.local_mode = bool(local_mode)
 		self.detached = bool(detached)
 		if self.local_mode:
@@ -337,8 +327,7 @@ class _VertexStore(collections.Collection):
 def queue_factory(
 		max_size: int = 0, *,
 		asynchronous: bool = False,
-		local_mode: bool = None) -> Queue:
-	local_mode = backend.LOCAL_MODE if local_mode is None else local_mode
+		local_mode: bool = True) -> Queue:
 	if local_mode:
 		if asynchronous:
 			queue_obj = AsyncQueue(max_size)
