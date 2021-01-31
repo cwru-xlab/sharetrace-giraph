@@ -42,7 +42,7 @@ Local-remote trade-off:
 
 	Timing:
 		500 users (local/remote): 346/374 (1.08x faster)
-		1000 users (local/remote): 1330/788	(0.59x faster)
+		1000 users (local/remote): 1330/788 (0.59x faster)
 
 		Linear interpolation: ~600 users leads to 1:1 performance
 """
