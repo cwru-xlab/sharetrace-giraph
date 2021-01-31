@@ -3,6 +3,7 @@ from typing import Any, Hashable, Iterable
 
 import attr
 import numpy as np
+from attr import validators
 
 
 # Order of attributes affects attr 'order' attribute
@@ -23,12 +24,20 @@ class RiskScore:
 		timestamp: Time associated with the risk score.
 		name: Identity of the risk score.
 	"""
-	value = attr.ib(type=float, converter=float, kw_only=True)
+	value = attr.ib(
+		type=float,
+		validator=validators.instance_of(numbers.Real),
+		converter=float,
+		kw_only=True)
 	timestamp = attr.ib(
 		type=datetime.datetime,
-		validator=attr.validators.instance_of(datetime.datetime),
+		validator=validators.instance_of(datetime.datetime),
 		kw_only=True)
-	name = attr.ib(type=Hashable, default='', kw_only=True)
+	name = attr.ib(
+		type=Hashable,
+		validator=validators.instance_of(Hashable),
+		default='',
+		kw_only=True)
 
 	def as_array(self):
 		"""Returns the risk score as a numpy structured array.
@@ -63,17 +72,28 @@ class TemporalLocation:
 	"""
 	timestamp = attr.ib(
 		type=datetime.datetime,
-		validator=attr.validators.instance_of(datetime.datetime),
+		validator=validators.instance_of(datetime.datetime),
 		kw_only=True)
-	location = attr.ib(type=Hashable, kw_only=True)
+	location = attr.ib(
+		type=Hashable,
+		validator=validators.instance_of(Hashable),
+		kw_only=True)
 
 
 @attr.s(slots=True, frozen=True)
 class LocationHistory:
 	"""An identifiable set of time-location pairs."""
-	name = attr.ib(type=Hashable, kw_only=True)
+	name = attr.ib(
+		type=Hashable,
+		validator=validators.instance_of(Hashable),
+		kw_only=True)
 	history = attr.ib(
-		type=Iterable[TemporalLocation], converter=frozenset, kw_only=True)
+		type=Iterable[TemporalLocation],
+		validator=validators.deep_iterable(
+			validators.instance_of(TemporalLocation),
+			validators.instance_of(Iterable)),
+		converter=frozenset,
+		kw_only=True)
 
 
 @attr.s(slots=True, frozen=True, order=True)
@@ -91,11 +111,11 @@ class Occurrence:
 	"""
 	timestamp = attr.ib(
 		type=datetime.datetime,
-		validator=attr.validators.instance_of(datetime.datetime),
+		validator=validators.instance_of(datetime.datetime),
 		kw_only=True)
 	duration = attr.ib(
 		type=datetime.timedelta,
-		validator=attr.validators.instance_of(datetime.timedelta),
+		validator=validators.instance_of(datetime.timedelta),
 		kw_only=True)
 
 	def as_array(self) -> np.ndarray:
@@ -125,9 +145,19 @@ class Contact:
 			the details of the contact.
 	"""
 	users = attr.ib(
-		type=Iterable[Hashable], converter=frozenset, kw_only=True)
+		type=Iterable[Hashable],
+		validator=validators.deep_iterable(
+			validators.instance_of(Hashable),
+			validators.instance_of(Iterable)),
+		converter=frozenset,
+		kw_only=True)
 	occurrences = attr.ib(
-		type=Iterable[Occurrence], converter=frozenset, kw_only=True)
+		type=Iterable[Occurrence],
+		validator=validators.deep_iterable(
+			validators.instance_of(Occurrence),
+			validators.instance_of(Iterable)),
+		converter=frozenset,
+		kw_only=True)
 
 	def __attrs_post_init__(self):
 		if len(self.users) != 2:
@@ -158,8 +188,14 @@ class Message:
 		receiver: The one receiving the message.
 		content: The information being sent.
 	"""
-	sender = attr.ib(type=Hashable, kw_only=True)
-	receiver = attr.ib(type=Hashable, kw_only=True)
+	sender = attr.ib(
+		type=Hashable,
+		validator=validators.instance_of(Hashable),
+		kw_only=True)
+	receiver = attr.ib(
+		type=Hashable,
+		validator=validators.instance_of(Hashable),
+		kw_only=True)
 	content = attr.ib(type=Any, kw_only=True)
 
 
@@ -176,4 +212,5 @@ def _from_datetime64(timestamp: np.datetime64) -> datetime.datetime:
 
 
 def _from_timedelta64(duration: np.timedelta64) -> datetime.timedelta:
-	return datetime.timedelta(seconds=np.float64(duration))
+	duration = np.float64(np.timedelta64(duration, 's'))
+	return datetime.timedelta(seconds=duration)
