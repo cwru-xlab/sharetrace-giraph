@@ -15,7 +15,6 @@ import search
 
 stdout = backend.STDOUT
 stderr = backend.STDERR
-backend.set_local_mode(True)
 
 lambda_client = boto3.client('lambda')
 kms_client = boto3.client('kms')
@@ -102,7 +101,7 @@ async def _ahandle() -> NoReturn:
 	def compute(locs, users):
 		contact_search = search.ContactSearch(min_duration=_MIN_DURATION)
 		factors = contact_search(locs)
-		prop = propagation.BeliefPropagation(
+		prop = propagation.LocalBeliefPropagation(
 			transmission_rate=_TRANSMISSION_RATE,
 			iterations=_ITERATIONS,
 			tolerance=_TOLERANCE,
@@ -124,11 +123,7 @@ async def _ahandle() -> NoReturn:
 				hats=hats,
 				namespace=_LOCATION_NAMESPACE,
 				take=_TAKE_LOCATIONS))
-	if backend.LOCAL_MODE:
-		updated_scores = compute(locations, variables)
-	else:
-		with backend.ray_context():
-			updated_scores = compute(locations, variables)
+	updated_scores = compute(locations, variables)
 	async with pda.PdaContext(**_KWARGS) as p:
 		await p.post_scores(
 			token, scores=updated_scores, namespace=_WRITE_SCORE_NAMESPACE)
