@@ -14,9 +14,14 @@ class RiskScore:
 
 	Notes:
 		Order is determined in the following order:
-			(1) value
-			(2) timestamp
-			(3) name
+			1. value
+			2. timestamp
+			3. name
+
+	Attributes:
+		value: Numeric magnitude of the risk score.
+		timestamp: Time associated with the risk score.
+		name: Identity of the risk score.
 	"""
 	value = attr.ib(type=float, converter=float, kw_only=True)
 	timestamp = attr.ib(
@@ -26,6 +31,10 @@ class RiskScore:
 	name = attr.ib(type=Hashable, default='', kw_only=True)
 
 	def as_array(self):
+		"""Returns the risk score as a numpy structured array.
+
+		Note that the timestamp is at the second resolution.
+		"""
 		dt = np.dtype([
 			('name', 'U128'),
 			('timestamp', 'datetime64[s]'),
@@ -35,19 +44,22 @@ class RiskScore:
 	@classmethod
 	def from_array(cls, a: np.ndarray) -> 'RiskScore':
 		return RiskScore(
-			name=a['name'],
-			timestamp=_from_datetime64(a['timestamp']),
-			value=a['value'])
+			name=_unwrap_value(a['name']),
+			timestamp=_from_datetime64(_unwrap_value(a['timestamp'])),
+			value=_unwrap_value(a['value']))
 
 
 @attr.s(slots=True, frozen=True, order=True)
 class TemporalLocation:
 	"""A time-location pair.
 
-	Notes:
-		Order is determined in the following order:
-		 (1) timestamp
-		 (2) location
+	Order is determined in the following order:
+		1. timestamp
+		2. location
+
+	Attributes:
+		timestamp: The temporal aspect of the location.
+		location: The spatial aspect of the timestamp.
 	"""
 	timestamp = attr.ib(
 		type=datetime.datetime,
@@ -70,8 +82,12 @@ class Occurrence:
 
 	Notes:
 		Order is first determined in the following order:
-			(1) timestamp
-			(2) duration
+			1. timestamp
+			2. duration
+
+	Attributes:
+		timestamp: Time of the occurrence.
+		duration: The time period that the occurrence lasts.
 	"""
 	timestamp = attr.ib(
 		type=datetime.datetime,
@@ -83,6 +99,10 @@ class Occurrence:
 		kw_only=True)
 
 	def as_array(self) -> np.ndarray:
+		"""Represents the occurrence as a structured numpy array.
+
+		Note that both timestamp and duration are at the second resolution.
+		"""
 		dt = np.dtype([
 			('timestamp', 'datetime64[s]'), ('duration', 'timedelta64[s]')])
 		return np.array([(self.timestamp, self.duration)], dtype=dt)
@@ -90,8 +110,8 @@ class Occurrence:
 	@classmethod
 	def from_array(cls, a: np.ndarray) -> 'Occurrence':
 		return Occurrence(
-			timestamp=_from_datetime64(a['timestamp']),
-			duration=_from_timedelta64(a['duration']))
+			timestamp=_from_datetime64(_unwrap_value(a['timestamp'])),
+			duration=_from_timedelta64(_unwrap_value(a['duration'])))
 
 
 @attr.s(slots=True, frozen=True)
@@ -119,6 +139,11 @@ class Contact:
 		return Contact(users=users, occurrences=occurrences)
 
 	def as_array(self) -> np.ndarray:
+		"""Represents the Contact as a structured numpy array.
+
+		Note that only the occurrences of the contact are returned and sorted
+		first based on timestamp and then by duration, in ascending order.
+		"""
 		array = np.array([o.as_array() for o in self.occurrences]).flatten()
 		array.sort(order=['timestamp', 'duration'])
 		return array
@@ -136,6 +161,13 @@ class Message:
 	sender = attr.ib(type=Hashable, kw_only=True)
 	receiver = attr.ib(type=Hashable, kw_only=True)
 	content = attr.ib(type=Any, kw_only=True)
+
+
+def _unwrap_value(value: Any):
+	"""Returns value of a singleton numpy array."""
+	if isinstance(value, np.ndarray):
+		value = value[0]
+	return value
 
 
 def _from_datetime64(timestamp: np.datetime64) -> datetime.datetime:
