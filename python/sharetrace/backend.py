@@ -1,6 +1,5 @@
 import abc
 import contextlib
-import datetime
 import logging
 import time
 from typing import Callable, NoReturn
@@ -14,14 +13,6 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 STDOUT: Callable = print
 STDERR: Callable = print
-
-LOCAL_MODE = True
-TIME = datetime.datetime.utcnow()
-
-
-def set_local_mode(value: bool):
-	global LOCAL_MODE
-	LOCAL_MODE = bool(value)
 
 
 @contextlib.contextmanager
