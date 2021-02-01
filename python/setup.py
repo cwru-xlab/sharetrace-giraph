@@ -44,7 +44,7 @@ EXTRAS = {
 # Note: this will only work if 'README.md' is present in your MANIFEST.in file!
 try:
 	with io.open(README, 'r', encoding='utf-8') as f:
-		long_description = f'\n{f.read()}'
+		long_description = '\n' + f.read()
 except FileNotFoundError:
 	long_description = DESCRIPTION
 
