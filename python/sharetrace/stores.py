@@ -3,12 +3,14 @@ import collections
 from abc import ABC, abstractmethod
 from collections.abc import Collection, Sized
 from typing import (
-	Any, Hashable, Iterable, Iterator, Mapping, NoReturn, Optional)
+	Any, Hashable, Iterable, Iterator, Mapping, NoReturn, Optional, Union)
 
 import ray
 from ray.util import queue
 
 import backend
+
+Attributes = Union[Mapping[Hashable, Any], Iterable[Hashable]]
 
 
 class Queue(ABC, Sized):
@@ -249,16 +251,12 @@ class VertexStore(Collection, backend.ActorMixin):
 			value = get.remote(key, attribute)
 		return value if as_ref or self.local_mode else ray.get(value)
 
-	def put(
-			self,
-			keys: Iterable[Hashable],
-			attributes: Mapping[Hashable, Any] = None,
-			merge: bool = False) -> NoReturn:
+	def put(self, attributes: Attributes, merge: bool = False) -> NoReturn:
 		put = self._actor.put
 		if self.local_mode:
-			put(keys, attributes, merge)
+			put(attributes, merge)
 		else:
-			put.remote(keys, attributes, merge)
+			put.remote(attributes, merge)
 
 	def kill(self) -> NoReturn:
 		if not self.local_mode:
@@ -287,16 +285,11 @@ class _VertexStore(Collection):
 	def get(self, key: Hashable, attribute: Any = None) -> Any:
 		if attribute is None:
 			value = self._store[key]
-			value = key if value is None else value
 		else:
 			value = self._store[key][attribute]
 		return value
 
-	def put(
-			self,
-			keys: Iterable[Hashable],
-			attributes: Mapping[Hashable, Any] = None,
-			merge: bool = False) -> NoReturn:
+	def put(self, attributes: Attributes, merge: bool = False) -> NoReturn:
 		def combine(key):
 			for a in attributes[key]:
 				updated = {**self._store[key][a], **attributes[key][a]}
@@ -306,14 +299,14 @@ class _VertexStore(Collection):
 			for a in attributes[key]:
 				self._store[key][a] = attributes[key][a]
 
-		if attributes is None:
-			self._store.update(dict.fromkeys(keys, None))
-		else:
-			for k in keys:
+		if isinstance(attributes, Mapping):
+			for k in attributes:
 				if k in self._store and isinstance(attributes[k], Mapping):
 					combine(k) if merge else replace(k)
 				else:
 					self._store[k] = attributes[k]
+		else:
+			self._store.update(dict.fromkeys(attributes, None))
 
 
 def queue_factory(
