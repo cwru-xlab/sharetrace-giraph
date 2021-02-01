@@ -14,8 +14,8 @@ import ray
 import backend
 import stores
 
-Edge = Tuple[Hashable, Hashable]
 Vertex = Hashable
+Edge = Tuple[Vertex, Vertex]
 Attributes = Union[Any, Mapping[Hashable, Any]]
 VertexAttributes = Mapping[Vertex, Attributes]
 EdgeAttributes = Mapping[Edge, Attributes]
