@@ -74,11 +74,10 @@ def simulate(
 def main():
 	random.seed(12345)
 	np.random.seed(12345)
-	local_mode = True
+	local_mode = False
 	impl = graphs.NUMPY
-	setup_kwargs = {'users': 1000, 'scores': 14, 'days': 14, 'locations': 10}
-	iterations = int(500 * 1.1)
-	backend.set_local_mode(local_mode)
+	setup_kwargs = {'users': 100, 'scores': 14, 'days': 14, 'locations': 10}
+	iterations = 700
 	contact_search = search.ContactSearch()
 	if local_mode:
 		factors, variables = setup(**setup_kwargs)
