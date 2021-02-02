@@ -279,15 +279,13 @@ class LocalBeliefPropagation(BeliefPropagation):
 			self,
 			builder: graphs.FactorGraphBuilder,
 			variables: AllRiskScores) -> NoReturn:
-		vertices = []
-		attrs = {}
+		vertices = {}
 		for k, v in ((str(k), v) for k, v in variables):
-			vertices.append(k)
 			v1, v2 = itertools.tee(v)
-			attrs[k] = {
+			vertices[k] = {
 				'max': max(v1, default=self.default_msg),
 				'inbox': {k: tuple(v2)}}
-		builder.add_variables(vertices, attributes=attrs)
+		builder.add_variables(vertices)
 
 	@staticmethod
 	def _add_factors_and_edges(
@@ -298,17 +296,16 @@ class LocalBeliefPropagation(BeliefPropagation):
 			key = '_'.join(parts)
 			return key, parts
 
-		vertices, edges = [], []
-		attrs = {}
+		vertices = {}
+		edges = []
 		for f in factors:
 			k, (v1, v2) = make_key(f)
-			vertices.append(k)
 			edges.extend(((k, v1), (k, v2)))
 			occurrences = (o.as_array() for o in f.occurrences)
-			attrs[k] = {
+			vertices[k] = {
 				'occurrences': np.array(list(occurrences)).flatten(),
 				'inbox': {}}
-		builder.add_factors(vertices, attributes=attrs)
+		builder.add_factors(vertices)
 		builder.add_edges(edges)
 
 	# noinspection PyTypeChecker
@@ -323,7 +320,7 @@ class LocalBeliefPropagation(BeliefPropagation):
 				values = itertools.chain([curr_max], incoming.values())
 			if (updated := max(values)) > curr_max:
 				difference = updated.value - curr_max.value
-				self._variables.put([sender], {sender: {'max': updated}})
+				self._variables.put({sender: {'max': updated}})
 			else:
 				difference = 0
 			return difference
@@ -340,7 +337,7 @@ class LocalBeliefPropagation(BeliefPropagation):
 						msg for o, msg in incoming.items()
 						if o != f and msg.value > self.msg_threshold)
 				outgoing = {f: {'inbox': {sender: from_others}}}
-				self._factors.put([f], outgoing, merge=True)
+				self._factors.put(outgoing, merge=True)
 
 		epoch = []
 		for v in self._variables:
@@ -348,7 +345,7 @@ class LocalBeliefPropagation(BeliefPropagation):
 			diff = update_max(v, inbox)
 			epoch.append(diff)
 			send(v, inbox)
-			self._variables.put([v], {v: {'inbox': {}}})
+			self._variables.put({v: {'inbox': {}}})
 		return np.array(epoch)
 
 	# noinspection PyTypeChecker
@@ -362,8 +359,8 @@ class LocalBeliefPropagation(BeliefPropagation):
 				receiver = neighbors[not i]
 				msg = self._compute_message(f, inbox[n])
 				outgoing = {receiver: {'inbox': {f: msg}}}
-				self._variables.put([receiver], outgoing, merge=True)
-			self._factors.put([f], {f: {'inbox': {}}})
+				self._variables.put(outgoing, merge=True)
+			self._factors.put({f: {'inbox': {}}})
 
 	def _compute_message(
 			self,
@@ -372,7 +369,7 @@ class LocalBeliefPropagation(BeliefPropagation):
 		def sec_to_day(s: np.ndarray) -> np.float64:
 			return np.divide(np.float64(s), 86400)
 
-		occurrences = self._factors.get(factor, attribute='occurrences')
+		occurrences = self._factors.get(factor, 'occurrences')
 		most_recent = np.max(occurrences['timestamp'])
 		msg = np.array([m.as_array() for m in msg]).flatten()
 		if msg.size:
@@ -444,7 +441,7 @@ class _ShareTraceVariablePart:
 		def update_max(variable, maximum, incoming):
 			if (updated := max(incoming, maximum)) > maximum:
 				difference = updated.value - maximum.value
-				self.vertex_store.put([variable], {variable: {'max': updated}})
+				self.vertex_store.put({variable: {'max': updated}})
 			else:
 				difference = 0
 			return difference
@@ -537,7 +534,7 @@ class _ShareTraceFactorPart:
 		def sec_to_day(s: np.ndarray) -> np.float64:
 			return np.divide(np.float64(s), 86400)
 
-		occurrences = self.vertex_store.get(factor, attribute='occurrences')
+		occurrences = self.vertex_store.get(factor, 'occurrences')
 		msg = msg.as_array()
 		most_recent = np.max(occurrences['timestamp'])
 		after_contact = msg['timestamp'] < most_recent + self.time_buffer
@@ -658,16 +655,14 @@ class RemoteBeliefPropagation(BeliefPropagation):
 			builder: graphs.FactorGraphBuilder,
 			variables: AllRiskScores,
 			num_queues: int) -> Iterable[Sequence[model.Message]]:
-		vertices = []
-		attrs = {}
+		vertices = {}
 		queues = [[] for _ in range(num_queues)]
 		for q, (k, v) in enumerate((str(k), v) for k, v in variables):
-			vertices.append(k)
 			v1, v2 = itertools.tee(v)
-			attrs[k] = {'max': max(v1, default=self.default_msg)}
+			vertices[k] = {'max': max(v1, default=self.default_msg)}
 			msgs = (model.Message(sender=k, receiver=k, content=c) for c in v2)
 			queues[q % num_queues].extend(msgs)
-		builder.add_variables(vertices, attributes=attrs)
+		builder.add_variables(vertices)
 		return queues
 
 	@staticmethod
@@ -679,15 +674,14 @@ class RemoteBeliefPropagation(BeliefPropagation):
 			key = '_'.join(parts)
 			return key, parts
 
-		vertices, edges = [], []
-		attrs = {}
+		edges = []
+		vertices = {}
 		for f in factors:
 			k, (v1, v2) = make_key(f)
-			vertices.append(k)
 			edges.extend(((k, v1), (k, v2)))
-			occurrences = (o.as_array() for o in f.occurrences)
-			attrs[k] = {'occurrences': np.array(list(occurrences)).flatten()}
-		builder.add_factors(vertices, attributes=attrs)
+			occurs = (o.as_array() for o in f.occurrences)
+			vertices[k] = {'occurrences': np.array(list(occurs)).flatten()}
+		builder.add_factors(vertices)
 		builder.add_edges(edges)
 
 	def _initiate_message_passing(self) -> Sequence[ray.ObjectRef]:
@@ -700,8 +694,7 @@ class RemoteBeliefPropagation(BeliefPropagation):
 
 	@staticmethod
 	def _get_result(refs: Sequence[ray.ObjectRef]) -> Result:
-		result = itertools.chain.from_iterable(ray.get(refs))
-		return tuple(result)
+		return tuple(itertools.chain.from_iterable(ray.get(refs)))
 
 	def _shutdown(self):
 		if isinstance(self._graph, backend.ActorMixin):
