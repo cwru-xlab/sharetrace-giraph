@@ -8,4 +8,4 @@ RUN python3.8 -m pip install -r requirements.txt -t .
 
 COPY sharetrace/ .
 
-CMD ["python3.8", "sharetrace/app.handle"]
+CMD ["app.handle"]

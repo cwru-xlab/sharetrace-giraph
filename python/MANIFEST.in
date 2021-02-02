@@ -1,2 +1,1 @@
 include ..\README.md
-exclude environment-variables.txt.gpg
