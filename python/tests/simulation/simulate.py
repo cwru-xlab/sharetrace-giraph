@@ -71,13 +71,13 @@ def simulate(
 	return bp(factors=factors, variables=variables)
 
 
-def main():
-	random.seed(12345)
-	np.random.seed(12345)
-	local_mode = False
+def main(*, print_result: bool = False):
+	random.seed(2468)
+	np.random.seed(2468)
+	local_mode = True
 	impl = graphs.NUMPY
-	setup_kwargs = {'users': 100, 'scores': 14, 'days': 14, 'locations': 10}
-	iterations = 700
+	setup_kwargs = {'users': 500, 'scores': 14, 'days': 14, 'locations': 10}
+	iterations = 4
 	contact_search = search.ContactSearch()
 	if local_mode:
 		factors, variables = setup(**setup_kwargs)
@@ -99,9 +99,10 @@ def main():
 				iterations=iterations,
 				impl=impl,
 				local_mode=local_mode)
-	print('-------------------------------------')
-	for r in result:
-		print(r)
+	if print_result:
+		print('-------------------------------------')
+		for r in result:
+			print(r)
 
 
 if __name__ == '__main__':
