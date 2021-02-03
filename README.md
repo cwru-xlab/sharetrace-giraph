@@ -18,3 +18,11 @@ Note that the following instructions assumes IntelliJ is being used for the deve
  3. Select "Module content root" for "Store generated sources relative to" and specify the desired directories to store the generated code.
  4. Under Build, run "Build Project."
  4. Under Project Structure > Modules > sharetrace-model > main, mark the directory specified as a generated source.
+
+## TODO
+- Extend the `BeliefPropagation` abstract class to outline the general 
+  framework, e.g. `to_factor_condition()` which decides if a message should 
+  be sent to a factor vertex. It may be possible to make `call()` a concrete
+  method and all others abstract. The challenge is with such large 
+  deviations in design that can be seen between `LocalBeliefPropagation` and 
+  `RemoteBeliefPropagation`. This may be solvable via further abstraction.
