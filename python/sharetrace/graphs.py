@@ -14,6 +14,7 @@ import ray
 import backend
 import stores
 
+# Type aliases
 Vertex = Hashable
 Edge = Tuple[Vertex, Vertex]
 Attributes = Union[Hashable, Mapping[Hashable, Any]]
@@ -24,20 +25,20 @@ VertexMatrix = Sequence[Sequence[Tuple[Vertex, int]]]
 VertexStores = Sequence[stores.VertexStore]
 OptionalVertexStores = Optional[
 	Union[Tuple[VertexStores, VertexStores], VertexStores]]
+# Implementation options
 NETWORKX = 'networkx'
 IGRAPH = 'igraph'
 NUMPY = 'numpy'
 OPTIONS = (NETWORKX, IGRAPH, NUMPY)
 DEFAULT = NUMPY
+# Exception messages
 _EDGE_ATTRIBUTE_EXCEPTION = '{} does not support edge attributes'
-_VERTEX_ATTRIBUTE_EXCEPTION = '{} does not support vertex attributes'
-_KILL_EXCEPTION = '{} does not support kill(); use RayFactorGraph instead.'
 _IMPL_EXCEPTION = f"'impl' must be one of the following: {OPTIONS}"
 _NUM_STORES_CPU_EXCEPTION = (
-	"'num_stores' must be less than the number of physical cpus: {}")
+	"'num_stores' must be less than the number of physical CPUs: {}")
 _MIN_NUM_STORES_EXCEPTION = "'num_stores' must be at least 1"
 _GRAPH_STATE_EXCEPTION = (
-	"Only one of 'graph_as_actor' and 'share_graph' can be set to True")
+	"Only one of 'graph_as_actor' and 'share_graph' can True")
 
 
 # AttributeError results when using attrs
@@ -423,7 +424,7 @@ class FactorGraphBuilder:
 			graph_as_actor: bool = False,
 			use_vertex_store: bool = False,
 			store_in_graph: Collection[str] = None,
-			num_stores: Union[int, Sequence] = 1,
+			num_stores: Union[int, Tuple[int, int]] = 1,
 			store_as_actor: bool = False,
 			detached: bool = False):
 		self._cross_check_graph_state(graph_as_actor, share_graph)
@@ -477,14 +478,13 @@ class FactorGraphBuilder:
 			if n < 1:
 				raise ValueError("int 'num_stores' must be at least 1")
 
-		if not isinstance(num_stores, (int, Sequence)):
-			raise TypeError(
-				"'num_stores' must be an int or Sequence of 2 ints")
+		if not isinstance(num_stores, (int, Tuple)):
+			raise TypeError("'num_stores' must be an int or Tuple of 2 ints")
 		if isinstance(num_stores, int):
 			check_num(num_stores)
-		if isinstance(num_stores, Sequence):
+		if isinstance(num_stores, Tuple):
 			if len(num_stores) != 2:
-				raise ValueError("Sequence 'num_stores' must be of length 2")
+				raise ValueError("Tuple 'num_stores' must be of length 2")
 			for x in num_stores:
 				check_num(x)
 		num_cpus = backend.NUM_CPUS
@@ -656,8 +656,4 @@ def factor_graph_factory(
 		graph = NumpyFactorGraph
 	else:
 		raise ValueError(_IMPL_EXCEPTION)
-	if as_actor:
-		graph = RayFactorGraph(graph, detached=detached)
-	else:
-		graph = graph()
-	return graph
+	return RayFactorGraph(graph, detached=detached) if as_actor else graph()
