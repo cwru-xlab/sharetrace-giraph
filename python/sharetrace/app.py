@@ -55,7 +55,8 @@ _ITERATIONS = int(os.environ['ITERATIONS'])
 _TOLERANCE = float(os.environ['TOLERANCE'])
 _TIMESTAMP_BUFFER = datetime.timedelta(
 	seconds=float(os.environ['TIMESTAMP_BUFFER']))
-_MESSAGE_THRESHOLD = float(os.environ['MESSAGE_THRESHOLD'])
+_SEND_THRESHOLD = float(os.environ['SEND_THRESHOLD'])
+_SEND_CONDITION = os.environ['SEND_CONDITION']
 _TIME_CONSTANT = float(os.environ['TIME_CONSTANT'])
 
 
@@ -106,7 +107,8 @@ async def _ahandle() -> NoReturn:
 			iterations=_ITERATIONS,
 			tolerance=_TOLERANCE,
 			time_buffer=_TIMESTAMP_BUFFER,
-			msg_threshold=_MESSAGE_THRESHOLD,
+			send_threshold=_SEND_THRESHOLD,
+			send_condition=_SEND_CONDITION,
 			time_constant=_TIME_CONSTANT)
 		return prop(factors=factors, variables=users)
 
