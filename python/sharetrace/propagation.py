@@ -207,14 +207,21 @@ class BeliefPropagation(abc.ABC):
 
 	@abc.abstractmethod
 	def call(self, *args, **kwargs):
+		"""Runs belief propagation until the stopping condition is met."""
 		pass
 
 	@abc.abstractmethod
 	def create_graph(self, *args, **kwargs):
+		"""Creates the factor graph."""
 		pass
 
 	@abc.abstractmethod
 	def stopping_condition(self, *args, **kwargs) -> bool:
+		"""Determines when the algorithm should halt.
+
+		Returns:
+			True if the algorithm should halt and False otherwise.
+		"""
 		pass
 
 
@@ -312,14 +319,12 @@ class LocalBeliefPropagation(BeliefPropagation):
 	@codetiming.Timer(text='Sending to factors: {:0.6f} s', logger=stdout)
 	def _send_to_factors(self) -> np.ndarray:
 		def update_max(sender, incoming: Dict):
-			curr_max = self._variables.get(sender, 'max')
+			maximum = self._variables.get(sender, 'max')
 			# First iteration only: messages only from self
-			if sender in incoming:
-				values = itertools.chain([curr_max], incoming[sender])
-			else:
-				values = itertools.chain([curr_max], incoming.values())
-			if (updated := max(values)) > curr_max:
-				difference = updated.value - curr_max.value
+			val = incoming[sender] if sender in incoming else incoming.values()
+			val = itertools.chain([maximum], val)
+			if (updated := max(val)) > maximum:
+				difference = updated.value - maximum.value
 				self._variables.put({sender: {'max': updated}})
 			else:
 				difference = 0
@@ -330,8 +335,8 @@ class LocalBeliefPropagation(BeliefPropagation):
 				# First iteration only: messages only from self
 				if sender in incoming:
 					from_others = (
-						o for o in incoming[sender]
-						if o.value > self.msg_threshold)
+						msg for msg in incoming[sender]
+						if msg.value > self.msg_threshold)
 				else:
 					from_others = (
 						msg for o, msg in incoming.items()
