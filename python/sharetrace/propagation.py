@@ -123,6 +123,20 @@ class BeliefPropagation(abc.ABC):
 		time_buffer: The amount of time (in seconds) that must have passed
 			between an occurrence and risk score for it to be retained
 			by the factor vertex during computation.
+		time_constant: The exponential time constant used when weighting the
+			value of each valid message received by a factor vertex.
+		queue_size: Size of the queue used to store incoming messages to
+			either a factor or variable partition actor. Only active when
+			running RemoteBeliefPropagation.
+		send_threshold: The lower bound (exclusive) on the value of the
+			messages sent by variable vertices.
+		send_condition: Determines when a variable vertex sends a message.
+			Options:
+				- 'message': Sends a message of its value is higher than
+					send_threshold.
+				- 'local': Sends a message of its value is at least
+					send_threshold % of the current local value of the
+					variable vertex.
 		impl: Implementation to use for the factor graph.
 		seed: Random seed to allow for reproducibility. If left unset,
 			the current seed is used.
