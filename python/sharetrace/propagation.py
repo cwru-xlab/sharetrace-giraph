@@ -4,6 +4,7 @@ import functools
 import itertools
 import numbers
 import random
+import time
 from typing import (
 	Any, Callable, Collection, Hashable, Iterable, NoReturn,
 	Optional, Sequence, Tuple, Union)
@@ -51,9 +52,9 @@ Local-remote trade-off:
 _TWO_DAYS = np.timedelta64(2, 'D')
 _DEFAULT_MESSAGE = model.RiskScore(
 	name='DEFAULT_ID', timestamp=datetime.datetime.utcnow(), value=0)
-_MAX_SEND_CONDITION = 'maximum'
-_MSG_SEND_CONDITION = 'message'
-_SEND_CONDITION_OPTIONS = {_MAX_SEND_CONDITION, _MSG_SEND_CONDITION}
+_SEND_BY_LOCAL = 'local'
+_SEND_BY_MESSAGE = 'message'
+_SEND_CONDITION_OPTIONS = {_SEND_BY_LOCAL, _SEND_BY_MESSAGE}
 stdout = backend.STDOUT
 stderr = backend.STDERR
 # Type aliases
@@ -62,7 +63,6 @@ RiskScores = Iterable[model.RiskScore]
 AllRiskScores = Collection[Tuple[Hashable, RiskScores]]
 Contacts = Iterable[model.Contact]
 Result = Iterable[Tuple[Hashable, model.RiskScore]]
-Maxes = Union[np.ndarray, Iterable[Tuple[graphs.Vertex, model.RiskScore]]]
 StopCondition = Callable[..., bool]
 SendCondition = Callable[..., bool]
 
@@ -167,8 +167,7 @@ class BeliefPropagation(abc.ABC):
 		validator=validators.instance_of(numbers.Real),
 		converter=float,
 		kw_only=True)
-	send_condition = attr.ib(
-		type=str, default=_MAX_SEND_CONDITION, kw_only=True)
+	send_condition = attr.ib(type=str, default=_SEND_BY_LOCAL, kw_only=True)
 	default_msg = attr.ib(
 		type=model.RiskScore,
 		default=_DEFAULT_MESSAGE,
@@ -249,8 +248,7 @@ class LocalBeliefPropagation(BeliefPropagation):
 	def __attrs_post_init__(self):
 		super(LocalBeliefPropagation, self).__attrs_post_init__()
 
-	def __call__(
-			self, *, factors: Contacts, variables: AllRiskScores) -> Result:
+	def __call__(self, factors: Contacts, variables: AllRiskScores) -> Result:
 		stdout('-----------START BELIEF PROPAGATION-----------')
 		result = self.call(factors, variables)
 		stdout('------------END BELIEF PROPAGATION------------')
@@ -272,7 +270,7 @@ class LocalBeliefPropagation(BeliefPropagation):
 			stop = self.should_stop(i, epoch)
 			i += 1
 			stdout(f'---------------------------------')
-		return ((v, self._variables.get(v, 'max')) for v in self._variables)
+		return ((v, self._variables.get(v, 'local')) for v in self._variables)
 
 	# noinspection PyTypeChecker
 	@codetiming.Timer(text='Creating graph: {:0.6f} s', logger=stdout)
@@ -304,7 +302,7 @@ class LocalBeliefPropagation(BeliefPropagation):
 		for k, v in ((str(k), v) for k, v in variables):
 			v1, v2 = itertools.tee(v)
 			vertices[k] = {
-				'max': max(v1, default=self.default_msg),
+				'local': max(v1, default=self.default_msg),
 				'inbox': {k: tuple(v2)}}
 		builder.add_variables(vertices)
 
@@ -332,7 +330,7 @@ class LocalBeliefPropagation(BeliefPropagation):
 	# noinspection PyTypeChecker
 	@codetiming.Timer(text='Sending to factors: {:0.6f} s', logger=stdout)
 	def _send_to_factors(self) -> np.ndarray:
-		def update_max(variable, local, incoming):
+		def update_local(variable, local, incoming):
 			# First iteration only: messages only from self
 			if variable in incoming:
 				values = itertools.chain([local], incoming[variable])
@@ -340,7 +338,7 @@ class LocalBeliefPropagation(BeliefPropagation):
 				values = itertools.chain([local], incoming.values())
 			if (updated := max(values)) > local:
 				difference = updated.value - local.value
-				self._variables.put({variable: {'max': updated}})
+				self._variables.put({variable: {'local': updated}})
 			else:
 				difference = 0
 			return difference
@@ -361,11 +359,11 @@ class LocalBeliefPropagation(BeliefPropagation):
 
 		epoch = []
 		for v in self._variables:
-			curr_max = self._variables.get(v, 'max')
+			curr_local = self._variables.get(v, 'local')
 			inbox = self._variables.get(v, 'inbox')
-			diff = update_max(v, curr_max, inbox)
+			diff = update_local(v, curr_local, inbox)
 			epoch.append(diff)
-			send(v, curr_max, inbox)
+			send(v, curr_local, inbox)
 			self._variables.put({v: {'inbox': {}}})
 		return np.array(epoch)
 
@@ -433,10 +431,10 @@ class _ShareTraceVariablePart:
 		'add_to_queue',
 		'block_queue',
 		'send_threshold',
-		'send_condition',
+		'should_send',
 		'iterations',
 		'epoch',
-		'stop_condition']
+		'should_stop']
 
 	def __init__(
 			self,
@@ -444,58 +442,64 @@ class _ShareTraceVariablePart:
 			queue_size: int,
 			add_to_queue: Sequence[model.Message],
 			send_threshold: float,
-			send_condition: SendCondition,
+			should_send: SendCondition,
 			iterations: int,
-			stop_condition: StopCondition):
+			should_stop: StopCondition):
 		self.vertex_store = vertex_store
 		self.block_queue = queue_size > 0
 		self.queue = stores.queue_factory(
 			max_size=queue_size, asynchronous=True, local_mode=True)
 		self.add_to_queue = add_to_queue
 		self.send_threshold = send_threshold
-		self.send_condition = send_condition
+		self.should_send = should_send
 		self.iterations = iterations
 		self.epoch = []
-		self.stop_condition = stop_condition
+		self.should_stop = should_stop
 
 	async def send_to_factors(
 			self,
 			graph: graphs.FactorGraph,
 			factors: Sequence['_ShareTraceFactorPart']) -> Result:
-		def update_max(variable, local, incoming):
+		def update_local(variable, local, incoming):
 			if (updated := max(incoming, local)) > local:
 				difference = updated.value - local.value
-				self.vertex_store.put({variable: {'max': updated}})
+				self.vertex_store.put({variable: {'local': updated}})
 			else:
 				difference = 0
 			return difference
 
-		async def send(variable, factor, message):
+		async def send(from_, to_, local, incoming):
 			# Avoid self-bias: do not send message back to sending factor
-			for f in (n for n in graph.get_neighbors(variable) if n != factor):
-				m = model.Message(sender=variable, receiver=f, content=message)
-				factor = factors[graph.get_vertex_attr(f, key='address')]
-				if self.send_condition(message):
+			for f in (n for n in graph.get_neighbors(from_) if n != to_):
+				m = model.Message(sender=from_, receiver=f, content=incoming)
+				factor = factors[graph.get_vertex_attr(f, 'address')]
+				if self.should_send(local, incoming):
 					await factor.enqueue.remote(m)
 
 		# Queue must have enough capacity to hold local messages
 		await self.queue.put(*self.add_to_queue, block=False)
 		self.add_to_queue = None
-		get_max = functools.partial(lambda v: self.vertex_store.get(v, 'max'))
+		get_local = functools.partial(
+			lambda v: self.vertex_store.get(v, 'local'))
 		stop = False
+		i = 1
 		while not stop:
+			start = time.time()
 			for _ in range(self.iterations):
 				# Block so that empty queue is awaited
 				msg = await self.queue.get(block=True)
 				# Receiver becomes the sender and vice versa
 				sender, receiver, msg = msg.receiver, msg.sender, msg.content
-				curr_max = get_max(sender)
-				diff = update_max(sender, curr_max, msg)
+				curr_local = get_local(sender)
+				diff = update_local(sender, curr_local, msg)
 				self.epoch.append(diff)
-				await send(sender, receiver, msg)
-			stop = self.stop_condition(self.epoch)
+				await send(sender, receiver, curr_local, msg)
+			stop = self.should_stop(self.epoch)
 			self.epoch.clear()
-		return np.array(list((v, get_max(v)) for v in self.vertex_store))
+			end = time.time()
+			stdout(f"Iteration {i}: {round(end - start, 6)} s")
+			i += 1
+		return np.array(list((v, get_local(v)) for v in self.vertex_store))
 
 	async def enqueue(self, *messages: model.Message) -> NoReturn:
 		for m in messages:
@@ -550,8 +554,8 @@ class _ShareTraceFactorPart:
 			receiver = neighbors[not neighbors.index(msg.sender)]
 			msg = self._compute_message(sender, msg.content)
 			msg = model.Message(sender=sender, receiver=receiver, content=msg)
-			v = graph.get_vertex_attr(receiver, key='address')
-			await variables[v].enqueue.remote(msg)
+			variable = variables[graph.get_vertex_attr(receiver, 'address')]
+			await variable.enqueue.remote(msg)
 
 	def _compute_message(
 			self,
@@ -590,7 +594,7 @@ RemoteVariables = Sequence[Union[ray.ObjectRef, _ShareTraceVariablePart]]
 RemoteFactors = Sequence[Union[ray.ObjectRef, _ShareTraceFactorPart]]
 
 
-@attr.s(slots=True)
+@attr.s  # Slots not allowed since BeliefPropagation uses slots
 class RemoteBeliefPropagation(BeliefPropagation):
 	"""A multi-process implementation of BeliefPropagation using Ray."""
 	_graph = attr.ib(type=RemoteGraph, init=False, repr=False)
@@ -600,8 +604,7 @@ class RemoteBeliefPropagation(BeliefPropagation):
 	def __attrs_post_init__(self):
 		super(RemoteBeliefPropagation, self).__attrs_post_init__()
 
-	def __call__(
-			self, *, factors: Contacts, variables: AllRiskScores) -> Result:
+	def __call__(self, factors: Contacts, variables: AllRiskScores) -> Result:
 		stdout('-----------START BELIEF PROPAGATION-----------')
 		result = self.call(factors, variables)
 		stdout('------------END BELIEF PROPAGATION------------')
@@ -634,14 +637,11 @@ class RemoteBeliefPropagation(BeliefPropagation):
 			impl=self.impl,
 			# Graph structure is static
 			share_graph=True,
-			graph_as_actor=False,
 			# Separate the stateless (structure) and stateful (attributes)
 			use_vertex_store=True,
 			# Store actor index in shared graph for actor-actor communication
 			store_in_graph=['address'],
 			num_stores=(num_fstores, num_vstores),
-			# Vertex stores are stored in each graph partition actor
-			store_as_actor=False,
 			# Prevent actors from being killed automatically
 			detached=True)
 
@@ -653,7 +653,8 @@ class RemoteBeliefPropagation(BeliefPropagation):
 				vertex_store=s,
 				add_to_queue=q,
 				send_threshold=self.send_threshold,
-				stopping_condition=self.should_stop,
+				should_send=self.should_send,
+				should_stop=self.should_stop,
 				iterations=self.iterations,
 				queue_size=self.queue_size)
 			for s, q in zip(variable_stores, add_to_queues))
@@ -676,7 +677,7 @@ class RemoteBeliefPropagation(BeliefPropagation):
 		queues = [[] for _ in range(num_queues)]
 		for q, (k, v) in enumerate((str(k), v) for k, v in variables):
 			v1, v2 = itertools.tee(v)
-			vertices[k] = {'max': max(v1, default=self.default_msg)}
+			vertices[k] = {'local': max(v1, default=self.default_msg)}
 			msgs = (model.Message(sender=k, receiver=k, content=c) for c in v2)
 			queues[q % num_queues].extend(msgs)
 		builder.add_variables(vertices)
@@ -709,6 +710,17 @@ class RemoteBeliefPropagation(BeliefPropagation):
 			a.send_to_factors.remote(graph=self._graph, factors=self._factors)
 			for a in self._variables]
 
+	def should_send(
+			self,
+			local: model.RiskScore,
+			incoming: model.RiskScore,
+			**kwargs) -> bool:
+		return _should_send(
+			local, incoming, self.send_condition, self.send_threshold)
+
+	def should_stop(self, epoch: Iterable[numbers.Real], **kwargs) -> bool:
+		return sum(epoch) < self.tolerance
+
 	@staticmethod
 	def _get_result(refs: Sequence[ray.ObjectRef]) -> Result:
 		return tuple(itertools.chain.from_iterable(ray.get(refs)))
@@ -719,26 +731,15 @@ class RemoteBeliefPropagation(BeliefPropagation):
 		for a in itertools.chain(self._factors, self._variables):
 			a.kill.remote()
 
-	def should_stop(self, epoch: np.ndarray, **kwargs) -> bool:
-		return sum(epoch) < self.tolerance
-
-	def should_send(
-			self,
-			local: model.RiskScore,
-			incoming: model.RiskScore,
-			**kwargs) -> bool:
-		return _should_send(
-			local, incoming, self.send_condition, self.send_threshold)
-
 
 def _should_send(
 		local: model.RiskScore,
 		incoming: model.RiskScore,
 		condition: str,
 		threshold: float) -> bool:
-	if condition == _MSG_SEND_CONDITION:
+	if condition == _SEND_BY_MESSAGE:
 		send = incoming.value < threshold
-	elif condition == _MAX_SEND_CONDITION:
+	elif condition == _SEND_BY_LOCAL:
 		send = incoming.value < local.value * threshold
 	else:
 		send = True
