@@ -409,10 +409,10 @@ class LocalBeliefPropagation(BeliefPropagation):
 		occurrences = self._factors.get(factor, 'occurrences')
 		most_recent = np.max(occurrences['timestamp'])
 		msg = np.array([m.as_array() for m in msg]).flatten()
-		if msg.size:  # Are there are any messages
+		if msg.size:  # Are there are any messages?
 			old = np.where(msg['timestamp'] <= most_recent + self.time_buffer)
 			msg = msg[old]
-		if msg.size:  # Are there any valid messages
+		if msg.size:  # Are there any valid messages?
 			# Formats time delta as partial days
 			diff = sec_to_day(msg['timestamp'] - most_recent)
 			# Weight can only decrease original message value
@@ -555,7 +555,6 @@ class _ShareTraceFactorPart:
 
 	async def send_to_variables(
 			self,
-			*,
 			graph: graphs.FactorGraph,
 			variables: Sequence['_ShareTraceVariablePart']) -> NoReturn:
 		while True:
@@ -718,10 +717,9 @@ class RemoteBeliefPropagation(BeliefPropagation):
 
 	def _initiate_message_passing(self) -> Sequence[ray.ObjectRef]:
 		for a in self._factors:
-			a.send_to_variables.remote(
-				graph=self._graph, variables=self._variables)
+			a.send_to_variables.remote(self._graph, self._variables)
 		return [
-			a.send_to_factors.remote(graph=self._graph, factors=self._factors)
+			a.send_to_factors.remote(self._graph, self._factors)
 			for a in self._variables]
 
 	def should_send(
@@ -752,9 +750,9 @@ def _should_send(
 		condition: str,
 		threshold: float) -> bool:
 	if condition == _SEND_BY_MESSAGE:
-		send = incoming.value < threshold
+		send = incoming.value > threshold
 	elif condition == _SEND_BY_LOCAL:
-		send = incoming.value < local.value * threshold
+		send = incoming.value > local.value * threshold
 	else:
 		send = True
 	return send
