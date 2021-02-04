@@ -37,6 +37,7 @@ _WRITE_SCORE_NAMESPACE = _decrypt(os.environ['WRITE_SCORE_NAMESPACE'])
 _LOCATION_NAMESPACE = _decrypt(os.environ['READ_LOCATION_NAMESPACE'])
 _TAKE_SCORES = int(os.environ['TAKE_SCORES'])
 _TAKE_LOCATIONS = int(os.environ['TAKE_LOCATIONS'])
+_HASH_OBFUSCATION = int(os.environ['HASH_OBFUSCATION'])
 _KEYRING_URL = os.environ['KEYRING_URL']
 _READ_URL = os.environ['READ_URL']
 _WRITE_URL = os.environ['WRITE_URL']
@@ -124,7 +125,8 @@ async def _ahandle() -> NoReturn:
 				token,
 				hats=hats,
 				namespace=_LOCATION_NAMESPACE,
-				take=_TAKE_LOCATIONS))
+				take=_TAKE_LOCATIONS,
+				obfuscation=_HASH_OBFUSCATION))
 	updated_scores = compute(locations, variables)
 	async with pda.PdaContext(**_KWARGS) as p:
 		await p.post_scores(
