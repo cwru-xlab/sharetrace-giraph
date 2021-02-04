@@ -47,58 +47,25 @@ def generate_bimodal_score(mean1=0.2, var1=0.01, w1=0.95, mean2=0.8, var2=0.01):
 	return np.clip(score, 0, 1)
 
 
-def simulate(
-		*,
-		factors,
-		variables,
-		transmission_rate: float = 0.8,
-		iterations: int = 4,
-		tolerance: float = 1e-5,
-		impl=graphs.NUMPY,
-		local_mode: bool = True):
-	transmission_rate = max(min(1., transmission_rate), 0.)
-	iterations = max(1, iterations)
-	tolerance = max(1e-6, tolerance)
-	kwargs = {
-		'iterations': iterations,
-		'transmission_rate': transmission_rate,
-		'tolerance': tolerance,
-		'impl': impl}
-	if local_mode:
-		bp = propagation.LocalBeliefPropagation(**kwargs)
-	else:
-		bp = propagation.RemoteBeliefPropagation(**kwargs)
-	return bp(factors=factors, variables=variables)
-
-
-def main(*, print_result: bool = False):
-	random.seed(2468)
-	np.random.seed(2468)
+def main(print_result: bool = False):
 	local_mode = True
-	impl = graphs.NUMPY
-	setup_kwargs = {'users': 500, 'scores': 14, 'days': 14, 'locations': 10}
-	iterations = 4
+	bp_kwargs = {
+		'iterations': 4,
+		'transmission_rate': 0.8,
+		'tolerance': 1e-6,
+		'impl': graphs.NUMPY,
+		'send_condition': 'local',
+		'send_threshold': 0.75,
+		'seed': 2468}
 	contact_search = search.ContactSearch()
+	factors, variables = setup(users=500, scores=14, days=14, locations=10)
+	factors = contact_search(factors)
 	if local_mode:
-		factors, variables = setup(**setup_kwargs)
-		factors = contact_search(factors)
-		result = simulate(
-			factors=factors,
-			variables=variables,
-			iterations=iterations,
-			transmission_rate=0.8,
-			impl=impl,
-			local_mode=local_mode)
+		bp = propagation.LocalBeliefPropagation(**bp_kwargs)
 	else:
 		with backend.ray_context(num_cpus=backend.NUM_CPUS):
-			factors, variables = setup(**setup_kwargs)
-			factors = contact_search(factors)
-			result = simulate(
-				factors=factors,
-				variables=variables,
-				iterations=iterations,
-				impl=impl,
-				local_mode=local_mode)
+			bp = propagation.RemoteBeliefPropagation(**bp_kwargs)
+	result = bp(factors=factors, variables=variables)
 	if print_result:
 		print('-------------------------------------')
 		for r in result:
