@@ -293,7 +293,7 @@ class NumpyFactorGraph(FactorGraph):
 		raise NotImplementedError(_EDGE_ATTRIBUTE_EXCEPTION.format(cls))
 
 	def add_variables(self, vertices: Vertices) -> bool:
-		return self._add_vertices(vertices, variables=True)
+		return self._add_vertices(vertices)
 
 	def add_factors(self, vertices: Vertices) -> bool:
 		return self._add_vertices(vertices, variables=False)
@@ -441,7 +441,7 @@ class FactorGraphBuilder:
 			self.store_in_graph = frozenset(store_in_graph)
 			self._store_address = 'address' in store_in_graph
 			if self._store_address:
-				self.store_in_graph = self.store_in_graph - {'address'}
+				self.store_in_graph -= {'address'}
 		self.store_as_actor = bool(store_as_actor)
 		self.detached = bool(detached)
 		if self.use_vertex_store:
