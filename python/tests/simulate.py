@@ -11,7 +11,6 @@ import search
 
 
 def setup(
-		*,
 		users: int = 100,
 		scores: int = 28,
 		locations: int = 5,
@@ -58,14 +57,17 @@ def main(print_result: bool = False):
 		'send_threshold': 0.75,
 		'seed': 2468}
 	contact_search = search.ContactSearch()
-	factors, variables = setup(users=500, scores=14, days=14, locations=10)
-	factors = contact_search(factors)
+	factors, variables = setup(users=1000, scores=7, days=14, locations=10)
+
 	if local_mode:
+		factors = contact_search(factors)
 		bp = propagation.LocalBeliefPropagation(**bp_kwargs)
+		result = bp(factors=factors, variables=variables)
 	else:
 		with backend.ray_context(num_cpus=backend.NUM_CPUS):
+			factors = contact_search(factors)
 			bp = propagation.RemoteBeliefPropagation(**bp_kwargs)
-	result = bp(factors=factors, variables=variables)
+			result = bp(factors=factors, variables=variables)
 	if print_result:
 		print('-------------------------------------')
 		for r in result:
@@ -73,4 +75,4 @@ def main(print_result: bool = False):
 
 
 if __name__ == '__main__':
-	main()
+	main(print_result=True)
