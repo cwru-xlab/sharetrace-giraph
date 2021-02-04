@@ -26,3 +26,8 @@ Note that the following instructions assumes IntelliJ is being used for the deve
   method and all others abstract. The challenge is with such large 
   deviations in design that can be seen between `LocalBeliefPropagation` and 
   `RemoteBeliefPropagation`. This may be solvable via further abstraction.
+- Consider moving non-encrypted environment variables to S3, particularly 
+  parameters pertaining to the network model and the contact-searching 
+  algorithm.
+- Implement a more dynamic heuristic for determining the number of CPUs to 
+  assign for variable and factor graph partition processes.
