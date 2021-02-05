@@ -477,8 +477,8 @@ class _ShareTraceVariablePart:
 			self,
 			graph: graphs.FactorGraph,
 			factors: Sequence['_ShareTraceFactorPart']) -> Result:
-		self._set_graph(graph)
-		self._set_factors(factors)
+		self.graph = graph
+		self.factors = factors
 		await self._send_local()
 		stop, i = False, 1
 		while not stop:
@@ -528,14 +528,6 @@ class _ShareTraceVariablePart:
 
 	def _get_local(self, vertex) -> model.RiskScore:
 		return self.vertex_store.get(vertex, 'local')
-
-	def _set_graph(self, value):
-		if self.graph is None:
-			self.graph = value
-
-	def _set_factors(self, value):
-		if self.factors is None:
-			self.factors = value
 
 	async def enqueue(self, *msgs: model.Message) -> NoReturn:
 		block = self.block_queue
