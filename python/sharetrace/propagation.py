@@ -1,4 +1,5 @@
 import abc
+import asyncio
 import datetime
 import functools
 import itertools
@@ -439,6 +440,8 @@ class LocalBeliefPropagation(BeliefPropagation):
 @ray.remote
 class _ShareTraceVariablePart:
 	__slots__ = [
+		'graph',
+		'factors',
 		'vertex_store',
 		'queue',
 		'local_msgs',
@@ -458,6 +461,8 @@ class _ShareTraceVariablePart:
 			should_send: SendCondition,
 			iterations: int,
 			should_stop: StopCondition):
+		self.graph = None
+		self.factors = None
 		self.vertex_store = vertex_store
 		self.block_queue = queue_size > 0
 		self.queue = stores.queue_factory(
@@ -466,66 +471,75 @@ class _ShareTraceVariablePart:
 		self.send_threshold = send_threshold
 		self.should_send = should_send
 		self.iterations = iterations
-		self.epoch = []
 		self.should_stop = should_stop
 
 	async def send_to_factors(
 			self,
 			graph: graphs.FactorGraph,
 			factors: Sequence['_ShareTraceFactorPart']) -> Result:
-		await self._send_local(graph, factors)
+		self._set_graph(graph)
+		self._set_factors(factors)
+		await self._send_local()
 		stop, i = False, 1
 		while not stop:
 			text = ': '.join((f'Iteration {i}', '{:0.6f} s'))
 			with codetiming.Timer(text=text, logger=stdout):
-				await self._send_incoming(graph, factors)
-			stop = self.should_stop(self.epoch)
-			self.epoch.clear()
-			i += 1
+				epoch = await self._send_incoming()
+				stop = self.should_stop(epoch)
+				i += 1
 		result = ((v, self._get_local(v)) for v in self.vertex_store)
 		return np.array(list(result))
 
 	@codetiming.Timer(text='Sending local messages: {:0.6f} s', logger=stdout)
-	async def _send_local(self, graph, factors):
-		for msg in self.local_msgs:
-			await self._send(graph, factors, msg)
+	async def _send_local(self):
+		await asyncio.gather(*(self._send(m) for m in self.local_msgs))
 		self.local_msgs = None
 
-	async def _send_incoming(self, graph, factors):
-		for _ in range(self.iterations):
-			# Block so that empty queue is awaited
-			msg = await self.queue.get(block=True)
-			# Receiver becomes the sender and vice versa
-			diff = self._update_local(msg)
-			self.epoch.append(diff)
-			await self._send(graph, factors, msg)
+	async def _send_incoming(self) -> Iterable[float]:
+		msgs = await asyncio.gather(
+			*(self.queue.get(block=True) for _ in range(self.iterations)))
+		epoch = np.array([self._update_local(m) for m in msgs])
+		await asyncio.gather(*(self._send(m) for m in msgs))
+		return epoch
 
 	# noinspection PyTypeChecker
 	def _update_local(self, msg: model.Message) -> float:
 		local = self._get_local(msg.receiver)
 		if (updated := max(msg.content, local)) > local:
-			difference = updated.value - local.value
+			diff = updated.value - local.value
 			self.vertex_store.put({msg.receiver: {'local': updated}})
 		else:
-			difference = 0
-		return difference
+			diff = 0
+		return diff
 
-	async def _send(self, graph, factors, msg: model.Message) -> NoReturn:
+	async def _send(self, msg: model.Message) -> NoReturn:
+		# Receiver becomes the sender and vice versa
 		sender, receiver, msg = msg.receiver, msg.sender, msg.content
-		local = self._get_local(sender)
 		# Avoid self-bias: do not send message back to sending factor
-		for f in (n for n in graph.get_neighbors(sender) if n != receiver):
-			m = model.Message(sender=sender, receiver=f, content=msg)
-			factor = factors[graph.get_vertex_attr(f, 'address')]
-			if self.should_send(local, msg):
-				await factor.enqueue.remote(m)
+		others = (n for n in self.graph.get_neighbors(sender) if n != receiver)
+		await asyncio.gather(*(self._enqueue(sender, f, msg) for f in others))
+
+	async def _enqueue(self, sender, receiver, msg: model.RiskScore):
+		local = self._get_local(sender)
+		if self.should_send(local, msg):
+			msg = model.Message(sender=sender, receiver=receiver, content=msg)
+			f = self.graph.get_vertex_attr(receiver, 'address')
+			await self.factors[f].enqueue.remote(msg)
 
 	def _get_local(self, vertex) -> model.RiskScore:
 		return self.vertex_store.get(vertex, 'local')
 
-	async def enqueue(self, *messages: model.Message) -> NoReturn:
-		for m in messages:
-			await self.queue.put(m, block=self.block_queue)
+	def _set_graph(self, value):
+		if self.graph is None:
+			self.graph = value
+
+	def _set_factors(self, value):
+		if self.factors is None:
+			self.factors = value
+
+	async def enqueue(self, *msgs: model.Message) -> NoReturn:
+		block = self.block_queue
+		await asyncio.gather(*(self.queue.put(m, block=block) for m in msgs))
 
 	@staticmethod
 	def kill() -> NoReturn:
@@ -662,9 +676,7 @@ class RemoteBeliefPropagation(BeliefPropagation):
 			use_vertex_store=True,
 			# Store actor index in shared graph for actor-actor communication
 			store_in_graph=['address'],
-			num_stores=(num_fstores, num_vstores),
-			# Prevent actors from being killed automatically
-			detached=True)
+			num_stores=(num_fstores, num_vstores))
 
 		local_msgs = self._add_variables(builder, variables, num_vstores)
 		self._add_factors_and_edges(builder, factors)
