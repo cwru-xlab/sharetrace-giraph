@@ -581,8 +581,8 @@ class _ShareTraceFactorPart:
 			receiver = neighbors[not neighbors.index(msg.sender)]
 			msg = self._compute_message(sender, msg.content)
 			msg = model.Message(sender=sender, receiver=receiver, content=msg)
-			variable = variables[graph.get_vertex_attr(receiver, 'address')]
-			await variable.enqueue.remote(msg)
+			v = graph.get_vertex_attr(receiver, 'address')
+			await variables[v].enqueue.remote(msg)
 
 	def _compute_message(
 			self,
@@ -606,9 +606,9 @@ class _ShareTraceFactorPart:
 			msg = self.default_msg
 		return msg
 
-	async def enqueue(self, *messages: model.Message) -> NoReturn:
-		for m in messages:
-			await self.queue.put(m, block=self.block_queue)
+	async def enqueue(self, *msgs: model.Message) -> NoReturn:
+		block = self.block_queue
+		await asyncio.gather(*(self.queue.put(m, block=block) for m in msgs))
 
 	@staticmethod
 	def kill() -> NoReturn:
