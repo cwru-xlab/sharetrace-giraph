@@ -4,7 +4,6 @@ import functools
 import itertools
 import numbers
 import random
-import time
 from typing import (
 	Any, Callable, Collection, Hashable, Iterable, NoReturn,
 	Optional, Sequence, Tuple, Union)
@@ -442,7 +441,7 @@ class _ShareTraceVariablePart:
 	__slots__ = [
 		'vertex_store',
 		'queue',
-		'add_to_queue',
+		'local_msgs',
 		'block_queue',
 		'send_threshold',
 		'should_send',
@@ -454,7 +453,7 @@ class _ShareTraceVariablePart:
 			self,
 			vertex_store: stores.VertexStore,
 			queue_size: int,
-			add_to_queue: Sequence[model.Message],
+			local_msgs: Sequence[model.Message],
 			send_threshold: float,
 			should_send: SendCondition,
 			iterations: int,
@@ -463,7 +462,7 @@ class _ShareTraceVariablePart:
 		self.block_queue = queue_size > 0
 		self.queue = stores.queue_factory(
 			max_size=queue_size, asynchronous=True, local_mode=True)
-		self.add_to_queue = add_to_queue
+		self.local_msgs = local_msgs
 		self.send_threshold = send_threshold
 		self.should_send = should_send
 		self.iterations = iterations
@@ -474,46 +473,55 @@ class _ShareTraceVariablePart:
 			self,
 			graph: graphs.FactorGraph,
 			factors: Sequence['_ShareTraceFactorPart']) -> Result:
-		def update_local(variable, local, incoming):
-			if (updated := max(incoming, local)) > local:
-				difference = updated.value - local.value
-				self.vertex_store.put({variable: {'local': updated}})
-			else:
-				difference = 0
-			return difference
-
-		async def send(from_, to_, local, incoming):
-			# Avoid self-bias: do not send message back to sending factor
-			for f in (n for n in graph.get_neighbors(from_) if n != to_):
-				m = model.Message(sender=from_, receiver=f, content=incoming)
-				factor = factors[graph.get_vertex_attr(f, 'address')]
-				if self.should_send(local, incoming):
-					await factor.enqueue.remote(m)
-
-		# Queue must have enough capacity to hold local messages
-		await self.queue.put(*self.add_to_queue, block=False)
-		self.add_to_queue = None
-		get_local = functools.partial(
-			lambda v: self.vertex_store.get(v, 'local'))
-		stop = False
-		i = 1
+		await self._send_local(graph, factors)
+		stop, i = False, 1
 		while not stop:
-			start = time.time()
-			for _ in range(self.iterations):
-				# Block so that empty queue is awaited
-				msg = await self.queue.get(block=True)
-				# Receiver becomes the sender and vice versa
-				sender, receiver, msg = msg.receiver, msg.sender, msg.content
-				curr_local = get_local(sender)
-				diff = update_local(sender, curr_local, msg)
-				self.epoch.append(diff)
-				await send(sender, receiver, curr_local, msg)
+			text = ': '.join((f'Iteration {i}', '{:0.6f} s'))
+			with codetiming.Timer(text=text, logger=stdout):
+				await self._send_incoming(graph, factors)
 			stop = self.should_stop(self.epoch)
 			self.epoch.clear()
-			end = time.time()
-			stdout(f"Iteration {i}: {round(end - start, 6)} s")
 			i += 1
-		return np.array(list((v, get_local(v)) for v in self.vertex_store))
+		result = ((v, self._get_local(v)) for v in self.vertex_store)
+		return np.array(list(result))
+
+	@codetiming.Timer(text='Sending local messages: {:0.6f} s', logger=stdout)
+	async def _send_local(self, graph, factors):
+		for msg in self.local_msgs:
+			await self._send(graph, factors, msg)
+		self.local_msgs = None
+
+	async def _send_incoming(self, graph, factors):
+		for _ in range(self.iterations):
+			# Block so that empty queue is awaited
+			msg = await self.queue.get(block=True)
+			# Receiver becomes the sender and vice versa
+			diff = self._update_local(msg)
+			self.epoch.append(diff)
+			await self._send(graph, factors, msg)
+
+	# noinspection PyTypeChecker
+	def _update_local(self, msg: model.Message) -> float:
+		local = self._get_local(msg.receiver)
+		if (updated := max(msg.content, local)) > local:
+			difference = updated.value - local.value
+			self.vertex_store.put({msg.receiver: {'local': updated}})
+		else:
+			difference = 0
+		return difference
+
+	async def _send(self, graph, factors, msg: model.Message) -> NoReturn:
+		sender, receiver, msg = msg.receiver, msg.sender, msg.content
+		local = self._get_local(sender)
+		# Avoid self-bias: do not send message back to sending factor
+		for f in (n for n in graph.get_neighbors(sender) if n != receiver):
+			m = model.Message(sender=sender, receiver=f, content=msg)
+			factor = factors[graph.get_vertex_attr(f, 'address')]
+			if self.should_send(local, msg):
+				await factor.enqueue.remote(m)
+
+	def _get_local(self, vertex) -> model.RiskScore:
+		return self.vertex_store.get(vertex, 'local')
 
 	async def enqueue(self, *messages: model.Message) -> NoReturn:
 		for m in messages:
@@ -658,19 +666,19 @@ class RemoteBeliefPropagation(BeliefPropagation):
 			# Prevent actors from being killed automatically
 			detached=True)
 
-		add_to_queues = self._add_variables(builder, variables, num_vstores)
+		local_msgs = self._add_variables(builder, variables, num_vstores)
 		self._add_factors_and_edges(builder, factors)
 		self._graph, _, _, (factor_stores, variable_stores) = builder.build()
 		self._variables = tuple(
 			_ShareTraceVariablePart.remote(
 				vertex_store=s,
-				add_to_queue=q,
+				local_msgs=m,
 				send_threshold=self.send_threshold,
 				should_send=self.should_send,
 				should_stop=self.should_stop,
 				iterations=self.iterations,
 				queue_size=self.queue_size)
-			for s, q in zip(variable_stores, add_to_queues))
+			for s, m in zip(variable_stores, local_msgs))
 		self._factors = tuple(
 			_ShareTraceFactorPart.remote(
 				vertex_store=s,
@@ -685,16 +693,16 @@ class RemoteBeliefPropagation(BeliefPropagation):
 			self,
 			builder: graphs.FactorGraphBuilder,
 			variables: AllRiskScores,
-			num_queues: int) -> Iterable[Sequence[model.Message]]:
+			num_parts: int) -> Iterable[Sequence[model.Message]]:
 		vertices = {}
-		queues = [[] for _ in range(num_queues)]
+		local = [[] for _ in range(num_parts)]
 		for q, (k, v) in enumerate((str(k), v) for k, v in variables):
 			v1, v2 = itertools.tee(v)
 			vertices[k] = {'local': max(v1, default=self.default_msg)}
 			msgs = (model.Message(sender=k, receiver=k, content=c) for c in v2)
-			queues[q % num_queues].extend(msgs)
+			local[q % num_parts].extend(msgs)
 		builder.add_variables(vertices)
-		return queues
+		return local
 
 	@staticmethod
 	def _add_factors_and_edges(
