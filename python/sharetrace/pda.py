@@ -94,8 +94,8 @@ class PdaContext:
 		data = await asyncio.gather(*[
 			self._get_data(token=token, namespace=namespace, hat=h, take=take)
 			for h in hats])
-		return await asyncio.gather(*[
-			self._to_scores(h, d, since) for h, d in zip(hats, data)])
+		return await asyncio.gather(*(
+			self._to_scores(h, d, since) for h, d in zip(hats, data)))
 
 	@staticmethod
 	async def _to_scores(
@@ -127,9 +127,9 @@ class PdaContext:
 		namespace = '/'.join((self.client_namespace, location_namespace))
 		get_data = functools.partial(
 			self._get_data, namespace=namespace, token=token, take=take)
-		return await asyncio.gather(*[
+		return await asyncio.gather(*(
 			self._to_locations(h, await get_data(hat=h), since, obfuscation)
-			for h in hats])
+			for h in hats))
 
 	@staticmethod
 	async def _to_locations(
@@ -137,14 +137,14 @@ class PdaContext:
 			data: Iterable[Mapping[str, Any]],
 			since: datetime.datetime,
 			obfuscation: int) -> model.LocationHistory:
-		locs = (loc['data'] for loc in data)
-		locs = (
+		locations = (loc['data'] for loc in data)
+		locations = (
 			(_to_timestamp(loc['timestamp']), loc['hash'][:-obfuscation])
-			for loc in locs)
-		locs = (
+			for loc in locations)
+		locations = (
 			model.TemporalLocation(timestamp=t, location=h)
-			for t, h in locs if t >= since)
-		return model.LocationHistory(name=hat, history=locs)
+			for t, h in locations if t >= since)
+		return model.LocationHistory(name=hat, history=locations)
 
 	async def _get_data(
 			self,
