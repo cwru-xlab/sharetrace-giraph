@@ -594,7 +594,7 @@ class _ShareTraceFactorPart:
 		occurrences = self.vertex_store.get(factor, 'occurrences')
 		msg = msg.as_array()
 		most_recent = np.max(occurrences['timestamp'])
-		if msg['timestamp'] >= most_recent + self.time_buffer:
+		if msg['timestamp'] <= most_recent + self.time_buffer:
 			# Formats time delta as partial days
 			diff = sec_to_day(msg['timestamp'] - most_recent)
 			# Weight can only decrease original message value
