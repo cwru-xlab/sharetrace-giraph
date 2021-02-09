@@ -543,6 +543,7 @@ class FactorGraphBuilder:
 				index = self._store_ind
 			else:
 				index = self._store_ind[variables]
+			self._increment(variables)
 			return index
 
 		def get_store(index: int) -> stores.VertexStore:
@@ -563,15 +564,13 @@ class FactorGraphBuilder:
 				for v in to_add}
 		else:
 			in_graph, in_store = collections.defaultdict(dict), to_add
-
+		storage = in_graph if self._store_address else in_store
 		for v in to_add:
 			i = get_index()
 			added[i].append(v)
-			storage = in_graph if self._store_address else in_store
 			storage[v]['address'] = i
 			add_func({v: in_graph[v]})
 			get_store(i).put({v: in_store[v]})
-			self._increment(variables)
 
 	def add_edges(self, edges: Edges) -> NoReturn:
 		self._graph.add_edges(edges)
