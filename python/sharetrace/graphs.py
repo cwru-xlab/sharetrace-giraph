@@ -538,6 +538,20 @@ class FactorGraphBuilder:
 		return True
 
 	def _add_with_store(self, to_add, add_func, added, variables):
+		def get_index() -> int:
+			if isinstance(self.num_stores, int):
+				index = self._store_ind
+			else:
+				index = self._store_ind[variables]
+			return index
+
+		def get_store(index: int) -> stores.VertexStore:
+			if isinstance(self.num_stores, int):
+				store = self._stores[index]
+			else:
+				store = self._stores[variables][index]
+			return store
+
 		if self.store_in_graph:
 			in_graph = functools.partial(lambda a: a in self.store_in_graph)
 			in_store = functools.partial(lambda a: not in_graph(a))
@@ -550,39 +564,14 @@ class FactorGraphBuilder:
 		else:
 			in_graph, in_store = collections.defaultdict(dict), to_add
 
-		def common_add(index, vertex):
-			added[index].append(vertex)
-			if self._store_address:
-				in_graph[vertex].update({'address': index})
-				add_func({vertex: in_graph[vertex]})
-			else:
-				add_func(in_graph)
-
-		def int_add():
-			for v in to_add:
-				ind = self._store_ind
-				common_add(ind, v)
-				if not self._store_address:
-					in_store[v].update({'address': ind})
-					attributes = {v: in_store[v]}
-				else:
-					attributes = in_store
-				self._stores[ind].put(attributes)
-				self._increment()
-
-		def seq_add(i):
-			for v in to_add:
-				ind = self._store_ind[i]
-				common_add(ind, v)
-				if not self._store_address:
-					in_store[v]['address'] = ind
-					attributes = {v: in_store[v]}
-				else:
-					attributes = in_store
-				self._stores[i][ind].put(attributes)
-				self._increment(variables)
-
-		int_add() if isinstance(self.num_stores, int) else seq_add(variables)
+		for v in to_add:
+			i = get_index()
+			added[i].append(v)
+			storage = in_graph if self._store_address else in_store
+			storage[v]['address'] = i
+			add_func({v: in_graph[v]})
+			get_store(i).put({v: in_store[v]})
+			self._increment(variables)
 
 	def add_edges(self, edges: Edges) -> NoReturn:
 		self._graph.add_edges(edges)
