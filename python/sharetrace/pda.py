@@ -15,7 +15,7 @@ import backend
 import model
 
 SUCCESS_CODE = 200
-_CONTENT_TYPE_HEADER = {'Content-Type': 'application/json'}
+_CONTENT_TYPE = {'Content-Type': 'application/json'}
 _HTTPS = 'https://'
 _BASE_READ_BODY = {'orderBy': 'timestamp', 'ordering': 'descending', 'skip': 0}
 _TWO_WEEKS_AGO = datetime.datetime.utcnow() - datetime.timedelta(days=14)
@@ -91,11 +91,10 @@ class PdaContext:
 		RiskScore objects are grouped by HAT.
 		"""
 		namespace = '/'.join((self.client_namespace, score_namespace))
-		data = await asyncio.gather(*[
-			self._get_data(token=token, namespace=namespace, hat=h, take=take)
-			for h in hats])
+		get_data = functools.partial(
+			self._get_data, token, namespace=namespace, take=take)
 		return await asyncio.gather(*(
-			self._to_scores(h, d, since) for h, d in zip(hats, data)))
+			self._to_scores(h, await get_data(h), since) for h in hats))
 
 	@staticmethod
 	async def _to_scores(
@@ -126,9 +125,9 @@ class PdaContext:
 		"""
 		namespace = '/'.join((self.client_namespace, location_namespace))
 		get_data = functools.partial(
-			self._get_data, namespace=namespace, token=token, take=take)
+			self._get_data, token, namespace=namespace, take=take)
 		return await asyncio.gather(*(
-			self._to_locations(h, await get_data(hat=h), since, obfuscation)
+			self._to_locations(h, await get_data(h), since, obfuscation)
 			for h in hats))
 
 	@staticmethod
@@ -161,7 +160,7 @@ class PdaContext:
 			body['take'] = take
 		url = self._format_url(self.read_url, hat, namespace)
 		async with self._session.post(
-				url, json=body, headers=_CONTENT_TYPE_HEADER) as r:
+				url, json=body, headers=_CONTENT_TYPE) as r:
 			return await self._handle_response(r, hat=hat, send=False)
 
 	# noinspection PyTypeChecker
@@ -185,7 +184,7 @@ class PdaContext:
 				'body': {'score': value, 'timestamp': timestamp}}
 			url = self._format_url(self.write_url, hat, namespace)
 			async with self._session.post(
-					url, json=body, headers=_CONTENT_TYPE_HEADER) as r:
+					url, json=body, headers=_CONTENT_TYPE) as r:
 				await self._handle_response(r, hat=hat)
 
 		await asyncio.gather(*[post(h, s) for h, s in scores])
