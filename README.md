@@ -136,7 +136,7 @@ To generate source code:
    directory specified as a generated source.
 
 ## TODO
-
+- Implement optimizations mentioned in https://towardsdatascience.com/optimizing-your-python-code-156d4b8f4a29
 - Extend the `BeliefPropagation` abstract class to outline the general
   framework, e.g. `to_factor_condition()` which decides if a message should be
   sent to a factor vertex. It may be possible to make `call()` a concrete method
