@@ -92,27 +92,14 @@ def handle(event, context):
 	stdout(f'## EVENT\n{jsonpickle.encode(event)}')
 	stdout(f'## CONTEXT\n{jsonpickle.encode(context)}')
 	stdout('------------------START TASK------------------')
-	asyncio.get_event_loop().run_until_complete(_ahandle())
+	asyncio.get_event_loop().run_until_complete(_handle())
 	stdout('-------------------END TASK-------------------')
 	return {'status_code': pda.SUCCESS_CODE}
 
 
 # noinspection PyTypeChecker
 @codetiming.Timer(text='Total task duration: {:0.6f} s', logger=stdout)
-async def _ahandle() -> NoReturn:
-	def compute(locs, users):
-		contact_search = search.ContactSearch(min_duration=_MIN_DURATION)
-		factors = contact_search(locs)
-		prop = propagation.LocalBeliefPropagation(
-			transmission_rate=_TRANSMISSION_RATE,
-			iterations=_ITERATIONS,
-			tolerance=_TOLERANCE,
-			time_buffer=_TIMESTAMP_BUFFER,
-			send_threshold=_SEND_THRESHOLD,
-			send_condition=_SEND_CONDITION,
-			time_constant=_TIME_CONSTANT)
-		return prop(factors=factors, variables=users)
-
+async def _handle() -> NoReturn:
 	async with pda.PdaContext(**_KWARGS) as p:
 		token, hats = await p.get_token_and_hats()
 		variables, locations = await asyncio.gather(
@@ -127,7 +114,16 @@ async def _ahandle() -> NoReturn:
 				namespace=_LOCATION_NAMESPACE,
 				take=_TAKE_LOCATIONS,
 				obfuscation=_HASH_OBFUSCATION))
-	updated_scores = compute(locations, variables)
-	async with pda.PdaContext(**_KWARGS) as p:
+		contact_search = search.ContactSearch(min_duration=_MIN_DURATION)
+		factors = contact_search(locations)
+		belief_propagation = propagation.LocalBeliefPropagation(
+			transmission_rate=_TRANSMISSION_RATE,
+			iterations=_ITERATIONS,
+			tolerance=_TOLERANCE,
+			time_buffer=_TIMESTAMP_BUFFER,
+			send_threshold=_SEND_THRESHOLD,
+			send_condition=_SEND_CONDITION,
+			time_constant=_TIME_CONSTANT)
+		updated_scores = belief_propagation(factors, variables)
 		await p.post_scores(
 			token, scores=updated_scores, namespace=_WRITE_SCORE_NAMESPACE)
