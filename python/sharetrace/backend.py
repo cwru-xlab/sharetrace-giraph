@@ -12,9 +12,9 @@ NUM_CPUS = psutil.cpu_count(logical=False)
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 # Deployment: logger.info; testing: print
-STDOUT: Callable = print
+STDOUT: Callable = logger.info
 # Deployment: logger.error; testing: print
-STDERR: Callable = print
+STDERR: Callable = logger.error
 
 
 @contextlib.contextmanager
