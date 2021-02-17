@@ -1,5 +1,6 @@
 import asyncio
 import collections
+import functools
 from abc import ABC, abstractmethod
 from collections.abc import Collection, Sized
 from typing import (
@@ -40,7 +41,7 @@ class Queue(ABC, Sized):
 			self,
 			*items: Any,
 			block: bool = True,
-			timeout: Optional[float] = None) -> bool:
+			timeout: Optional[float] = None) -> NoReturn:
 		pass
 
 	@abstractmethod
@@ -78,9 +79,8 @@ class LocalQueue(Queue):
 			self,
 			*items: Any,
 			block: bool = True,
-			timeout: Optional[float] = None) -> bool:
+			timeout: Optional[float] = None) -> NoReturn:
 		self._queue.extend(items)
-		return True
 
 	def get(
 			self,
@@ -116,15 +116,15 @@ class AsyncQueue(Queue):
 			self,
 			*items: Any,
 			block: bool = True,
-			timeout: Optional[float] = None) -> bool:
+			timeout: Optional[float] = None) -> NoReturn:
 		if block:
-			for item in items:
-				future = self._queue.put(item)
-				await asyncio.wait_for(future, timeout=timeout)
+			put = self._queue.put
+			wait_for = functools.partial(asyncio.wait_for, timeout=timeout)
+			await asyncio.gather(*(wait_for(put(item)) for item in items))
 		else:
+			put = self._queue.put_nowait
 			for item in items:
-				self._queue.put_nowait(item)
-		return True
+				put(item)
 
 	async def get(
 			self,
@@ -132,14 +132,13 @@ class AsyncQueue(Queue):
 			block: bool = True,
 			timeout: Optional[float] = None) -> Any:
 		if block:
-			future = self._queue.get()
-			item = await asyncio.wait_for(future, timeout=timeout)
+			item = await asyncio.wait_for(self._queue.get(), timeout=timeout)
 		else:
 			item = self._queue.get_nowait()
 		return item
 
 
-class RemoteQueue(Queue, backend.ActorMixin):
+class RemoteQueue(Queue, backend.Process):
 	"""FIFO Ray actor queue."""
 	__slots__ = ['_max_size', '_actor']
 
@@ -165,10 +164,10 @@ class RemoteQueue(Queue, backend.ActorMixin):
 			self,
 			*items: Any,
 			block: bool = True,
-			timeout: Optional[float] = None) -> bool:
+			timeout: Optional[float] = None) -> NoReturn:
+		put = functools.partial(self._actor.put, block=block, timeout=timeout)
 		for item in items:
-			self._actor.put(item, block=block, timeout=timeout)
-		return True
+			put(item)
 
 	def get(
 			self,
@@ -181,7 +180,7 @@ class RemoteQueue(Queue, backend.ActorMixin):
 		ray.kill(self._actor.actor)
 
 
-class VertexStore(Collection, backend.ActorMixin):
+class VertexStore(Collection, backend.Process):
 	"""Data structure for storing vertex data
 
 	Attributes:
@@ -290,23 +289,20 @@ class _VertexStore(Collection):
 		return value
 
 	def put(self, attributes: Attributes, merge: bool = False) -> NoReturn:
-		def combine(key):
-			for a in attributes[key]:
-				updated = {**self._store[key][a], **attributes[key][a]}
-				self._store[k][a] = updated
-
-		def replace(key):
-			for a in attributes[key]:
-				self._store[key][a] = attributes[key][a]
-
+		store = self._store
 		if isinstance(attributes, Mapping):
 			for k in attributes:
-				if k in self._store and isinstance(attributes[k], Mapping):
-					combine(k) if merge else replace(k)
+				if k in store and isinstance(attributes[k], Mapping):
+					if merge:
+						for a in attributes[k]:
+							store[k][a] = {**store[k][a], **attributes[k][a]}
+					else:
+						for a in attributes[k]:
+							store[k][a] = attributes[k][a]
 				else:
-					self._store[k] = attributes[k]
+					store[k] = attributes[k]
 		else:
-			self._store.update(dict.fromkeys(attributes, None))
+			store.update(dict.fromkeys(attributes, None))
 
 
 def queue_factory(
