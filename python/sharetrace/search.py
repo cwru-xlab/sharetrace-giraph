@@ -1,4 +1,5 @@
 import datetime
+import functools
 import itertools
 import random
 from typing import Collection, Iterable, Optional
@@ -105,7 +106,11 @@ class ContactSearch:
 		loc1, loc2 = next(iter1), next(iter2)
 		next1, next2 = next(iter1, None), next(iter2, None)
 		started = False
-		start = self._get_later(loc1, loc2)
+		get_later = self._get_later
+		create_occurrence = self._create_occurrence
+		add_occurrence = occurrences.add
+		update_one = functools.partial(random.choice, [False, True])
+		start = get_later(loc1, loc2)
 		while next1 is not None and next2 is not None:
 			if loc1.location == loc2.location:
 				if started:
@@ -113,27 +118,27 @@ class ContactSearch:
 					loc2, next2 = next2, next(iter2, None)
 				else:
 					started = True
-					start = self._get_later(loc1, loc2)
+					start = get_later(loc1, loc2)
 			else:
 				if started:
 					started = False
-					occur = self._create_occurrence(start, loc1, loc2)
+					occur = create_occurrence(start, loc1, loc2)
 					if occur is not None:
-						occurrences.add(occur)
+						add_occurrence(occur)
 				else:
 					if loc1.timestamp < loc2.timestamp:
 						loc1, next1 = next1, next(iter1, None)
 					elif loc2.timestamp < loc1.timestamp:
 						loc2, next2 = next2, next(iter2, None)
 					else:
-						if random.randint(1, 2) == 1:
+						if update_one():
 							loc1, next1 = next1, next(iter1, None)
 						else:
 							loc2, next2 = next2, next(iter2, None)
 		if started:
-			occur = self._create_occurrence(start, loc1, loc2)
+			occur = create_occurrence(start, loc1, loc2)
 			if occur is not None:
-				occurrences.add(occur)
+				add_occurrence(occur)
 		return occurrences
 
 	def _create_occurrence(
@@ -142,7 +147,7 @@ class ContactSearch:
 			loc1: model.TemporalLocation,
 			loc2: model.TemporalLocation) -> Optional[model.Occurrence]:
 		start = start.timestamp
-		end = ContactSearch._get_earlier(loc1, loc2).timestamp
+		end = self._get_earlier(loc1, loc2).timestamp
 		if (duration := end - start) >= self.min_duration:
 			occurrence = model.Occurrence(timestamp=start, duration=duration)
 		else:
