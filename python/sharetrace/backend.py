@@ -30,7 +30,7 @@ def get_per_task_overhead():
 
 	@ray.remote
 	def no_work(x):
-		return x
+		pass
 
 	with ray_context():
 		start = time.time()
@@ -45,11 +45,11 @@ def rep(cls, **attrs):
 	return f"{cls}({', '.join(attrs)})"
 
 
-class ActorMixin(abc.ABC):
+class Process(abc.ABC):
 	__slots__ = []
 
 	def __init__(self):
-		super(ActorMixin, self).__init__()
+		super(Process, self).__init__()
 
 	@abc.abstractmethod
 	def kill(self) -> NoReturn:
