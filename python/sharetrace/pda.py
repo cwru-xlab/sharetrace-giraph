@@ -174,12 +174,13 @@ class PdaContext:
 		"""Sends computed exposure scores to all PDAs."""
 		namespace = '/'.join((self.client_namespace, namespace))
 		timestamp = time.time() * 1e3
+		contract_id = self.contract_id
 
 		async def post(hat: str, score: model.RiskScore):
 			value = round(score.value, 2)
 			body = {
 				'token': token,
-				'contractId': self.contract_id,
+				'contractId': contract_id,
 				'hatName': hat,
 				'body': {'score': value, 'timestamp': timestamp}}
 			url = self._format_url(self.write_url, hat, namespace)
@@ -187,7 +188,7 @@ class PdaContext:
 					url, json=body, headers=_CONTENT_TYPE) as r:
 				await self._handle_response(r, hat=hat)
 
-		await asyncio.gather(*[post(h, s) for h, s in scores])
+		await asyncio.gather(*(post(h, s) for h, s in scores))
 
 	@staticmethod
 	async def _handle_response(
