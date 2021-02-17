@@ -33,12 +33,6 @@ OPTIONS = (NETWORKX, IGRAPH, NUMPY)
 DEFAULT = NUMPY
 # Exception messages
 _EDGE_ATTRIBUTE_EXCEPTION = '{} does not support edge attributes'
-_IMPL_EXCEPTION = f"'impl' must be one of the following: {OPTIONS}"
-_NUM_STORES_CPU_EXCEPTION = (
-	"'num_stores' must be less than the number of physical CPUs: {}")
-_MIN_NUM_STORES_EXCEPTION = "'num_stores' must be at least 1"
-_GRAPH_STATE_EXCEPTION = (
-	"Only one of 'graph_as_actor' and 'share_graph' can True")
 
 
 # AttributeError results when using attrs
@@ -54,52 +48,51 @@ class FactorGraph(abc.ABC):
 		return backend.rep(cls)
 
 	@abc.abstractmethod
-	def get_factors(self) -> Iterable[Vertex]:
+	def get_factors(self):
 		pass
 
 	@abc.abstractmethod
-	def set_factors(self, value: Iterable[Vertex]) -> bool:
+	def set_factors(self, value):
 		pass
 
 	@abc.abstractmethod
-	def get_variables(self) -> Iterable[Vertex]:
+	def get_variables(self):
 		pass
 
 	@abc.abstractmethod
-	def set_variables(self, value: Iterable[Vertex]) -> bool:
+	def set_variables(self, value):
 		pass
 
 	@abc.abstractmethod
-	def get_neighbors(self, vertex: Vertex) -> Iterable[Vertex]:
+	def get_neighbors(self, vertex):
 		pass
 
 	@abc.abstractmethod
-	def get_vertex_attr(self, vertex: Vertex, key: Hashable) -> Any:
+	def get_vertex_attr(self, vertex, key):
 		pass
 
 	@abc.abstractmethod
-	def set_vertex_attr(
-			self, vertex: Vertex, key: Hashable, value: Any) -> bool:
+	def set_vertex_attr(self, vertex, key, value):
 		pass
 
 	@abc.abstractmethod
-	def get_edge_attr(self, edge: Edge, key: Hashable) -> Any:
+	def get_edge_attr(self, edge, key):
 		pass
 
 	@abc.abstractmethod
-	def set_edge_attr(self, edge: Edge, key: Hashable, value: Any) -> bool:
+	def set_edge_attr(self, edge, key, value):
 		pass
 
 	@abc.abstractmethod
-	def add_variables(self, vertices: Vertices) -> bool:
+	def add_variables(self, vertices):
 		pass
 
 	@abc.abstractmethod
-	def add_factors(self, vertices: Vertices) -> bool:
+	def add_factors(self, vertices):
 		pass
 
 	@abc.abstractmethod
-	def add_edges(self, edges: Edges) -> bool:
+	def add_edges(self, edges):
 		pass
 
 
@@ -117,16 +110,14 @@ class IGraphFactorGraph(FactorGraph):
 	def get_factors(self) -> Iterable[Vertex]:
 		return frozenset(self._factors)
 
-	def set_factors(self, value: Iterable[Vertex]) -> bool:
+	def set_factors(self, value: Iterable[Vertex]) -> NoReturn:
 		self._factors = set(value)
-		return True
 
 	def get_variables(self) -> Iterable[Vertex]:
 		return frozenset(self._variables)
 
-	def set_variables(self, value: Iterable[Vertex]) -> bool:
+	def set_variables(self, value: Iterable[Vertex]) -> NoReturn:
 		self._variables = set(value)
-		return True
 
 	def get_neighbors(self, vertex: Vertex) -> Iterable[Vertex]:
 		neighbors = self._graph.neighbors(vertex)
@@ -138,39 +129,38 @@ class IGraphFactorGraph(FactorGraph):
 		return self._graph.vs.find(name=vertex).attributes()[key]
 
 	def set_vertex_attr(
-			self, vertex: Vertex, key: Hashable, value: Any) -> bool:
+			self, vertex: Vertex, key: Hashable, value) -> NoReturn:
 		self._graph.vs.find(name=vertex).update_attributes({key: value})
-		return True
 
 	def get_edge_attr(self, edge: Edge, key: Hashable) -> Any:
 		return self._graph.es[self._graph.get_eid(*edge)][key]
 
-	def set_edge_attr(self, edge: Edge, key: Hashable, value: Any) -> bool:
+	def set_edge_attr(self, edge: Edge, key: Hashable, value) -> NoReturn:
 		edge = self._graph.es[self._graph.get_eid(*edge)]
 		edge.update_attributes({key: value})
-		return True
 
-	def add_variables(self, vertices: Vertices) -> bool:
-		return self._add_vertices(vertices)
+	def add_variables(self, vertices: Vertices) -> NoReturn:
+		self._add_vertices(vertices)
 
-	def add_factors(self, vertices: Vertices) -> bool:
-		return self._add_vertices(vertices)
+	def add_factors(self, vertices: Vertices) -> NoReturn:
+		self._add_vertices(vertices)
 
-	def _add_vertices(self, vertices: Vertices) -> bool:
-		for v in vertices:
-			if isinstance(vertices, Mapping):
-				self._graph.add_vertex(v, **vertices[v])
-			else:
-				self._graph.add_vertex(v)
-		return True
+	def _add_vertices(self, vertices: Vertices) -> NoReturn:
+		add_vertex = self._graph.add_vertex
+		if isinstance(vertices, Mapping):
+			for v in vertices:
+				add_vertex(v, **vertices[v])
+		else:
+			for v in vertices:
+				add_vertex(v)
 
-	def add_edges(self, edges: Edges) -> bool:
+	def add_edges(self, edges: Edges) -> NoReturn:
+		add_edge = self._graph.add_edge
 		if isinstance(edges, Mapping):
 			for e in edges:
-				self._graph.add_edge(*e, **edges[e])
+				add_edge(*e, **edges[e])
 		else:
 			self._graph.add_edges(edges)
-		return True
 
 
 class NetworkXFactorGraph(FactorGraph):
@@ -187,16 +177,14 @@ class NetworkXFactorGraph(FactorGraph):
 	def get_factors(self) -> Iterable[Vertex]:
 		return frozenset(self._factors)
 
-	def set_factors(self, value: Iterable[Vertex]) -> bool:
+	def set_factors(self, value: Iterable[Vertex]) -> NoReturn:
 		self._factors = set(value)
-		return True
 
 	def get_variables(self) -> Iterable[Vertex]:
 		return frozenset(self._variables)
 
-	def set_variables(self, value: Iterable[Vertex]) -> bool:
+	def set_variables(self, value: Iterable[Vertex]) -> NoReturn:
 		self._variables = set(value)
-		return True
 
 	def get_neighbors(self, vertex: Vertex) -> Iterable[Vertex]:
 		return self._graph.neighbors(vertex)
@@ -205,36 +193,32 @@ class NetworkXFactorGraph(FactorGraph):
 		return self._graph.nodes[vertex][key]
 
 	def set_vertex_attr(
-			self, vertex: Vertex, key: Hashable, value: Any) -> bool:
+			self, vertex: Vertex, key: Hashable, value) -> NoReturn:
 		self._graph.nodes[vertex][key] = value
-		return True
 
 	def get_edge_attr(self, edge: Edge, key: Hashable) -> Any:
 		return self._graph.get_edge_data(*edge)[key]
 
-	def set_edge_attr(self, edge: Edge, key: Hashable, value: Any) -> bool:
+	def set_edge_attr(self, edge: Edge, key: Hashable, value) -> NoReturn:
 		self._graph[edge[0]][edge[1]][key] = value
-		return True
 
-	def add_variables(self, vertices: Vertices) -> bool:
-		return self._add_vertices(vertices)
+	def add_variables(self, vertices: Vertices) -> NoReturn:
+		self._add_vertices(vertices)
 
-	def add_factors(self, vertices: Vertices) -> bool:
-		return self._add_vertices(vertices)
+	def add_factors(self, vertices: Vertices) -> NoReturn:
+		self._add_vertices(vertices)
 
-	def _add_vertices(self, vertices: Vertices) -> bool:
+	def _add_vertices(self, vertices: Vertices) -> NoReturn:
 		if isinstance(vertices, Mapping):
 			self._graph.add_nodes_from((v, vertices[v]) for v in vertices)
 		else:
 			self._graph.add_nodes_from(vertices)
-		return True
 
-	def add_edges(self, edges: Edges) -> bool:
+	def add_edges(self, edges: Edges) -> NoReturn:
 		if isinstance(edges, Mapping):
 			self._graph.add_edges_from((e, edges[e]) for e in edges)
 		else:
 			self._graph.add_edges_from(edges)
-		return True
 
 
 class NumpyFactorGraph(FactorGraph):
@@ -243,8 +227,6 @@ class NumpyFactorGraph(FactorGraph):
 	Notes:
 		The key is a vertex identifier and the value is a numpy array of the
 		neighbors of the vertex.
-
-		Edge attributes are not supported.
 	"""
 
 	__slots__ = ['_graph', '_variables', '_factors', '_attrs']
@@ -259,44 +241,36 @@ class NumpyFactorGraph(FactorGraph):
 	def get_factors(self) -> Iterable[Vertex]:
 		return frozenset(self._factors)
 
-	def set_factors(self, value: Iterable[Vertex]) -> bool:
+	def set_factors(self, value: Iterable[Vertex]) -> NoReturn:
 		self._factors = set(value)
-		return True
 
 	def get_variables(self) -> Iterable[Vertex]:
 		return frozenset(self._variables)
 
-	def set_variables(self, value: Iterable[Vertex]) -> bool:
+	def set_variables(self, value: Iterable[Vertex]) -> NoReturn:
 		self._variables = set(value)
-		return True
 
 	def get_neighbors(self, vertex: Vertex) -> Iterable[Vertex]:
 		return self._graph[vertex]
 
-	# noinspection PyTypeChecker
 	def get_vertex_attr(self, vertex: Vertex, key: Hashable) -> Any:
 		return self._attrs[vertex][key]
 
-	# noinspection PyTypeChecker
 	def set_vertex_attr(
-			self, vertex: Vertex, key: Hashable, value: Any) -> bool:
+			self, vertex: Vertex, key: Hashable, value) -> NoReturn:
 		self._attrs[vertex][key] = value
-		return True
 
 	def get_edge_attr(self, edge: Edge, key: Hashable) -> Any:
-		cls = self.__class__.__name__
-		raise NotImplementedError(_EDGE_ATTRIBUTE_EXCEPTION.format(cls))
+		return self._attrs[edge][key]
 
-	# noinspection PyTypeChecker
-	def set_edge_attr(self, edge: Edge, key: Hashable, value: Any) -> bool:
-		cls = self.__class__.__name__
-		raise NotImplementedError(_EDGE_ATTRIBUTE_EXCEPTION.format(cls))
+	def set_edge_attr(self, edge: Edge, key: Hashable, value) -> NoReturn:
+		self._attrs[edge][key] = value
 
-	def add_variables(self, vertices: Vertices) -> bool:
-		return self._add_vertices(vertices)
+	def add_variables(self, vertices: Vertices) -> NoReturn:
+		self._add_vertices(vertices)
 
-	def add_factors(self, vertices: Vertices) -> bool:
-		return self._add_vertices(vertices, variables=False)
+	def add_factors(self, vertices: Vertices) -> NoReturn:
+		self._add_vertices(vertices, variables=False)
 
 	def _add_vertices(
 			self, vertices: Vertices, variables: bool = True) -> NoReturn:
@@ -306,20 +280,21 @@ class NumpyFactorGraph(FactorGraph):
 			self._variables.update(vertices)
 		else:
 			self._factors.update(vertices)
-		self._graph.fromkeys(vertices, np.array([]))
-		return True
+		new = (v for v in vertices if v not in self._graph)
+		self._graph.fromkeys(new, np.array([]))
 
-	def add_edges(self, edges: Edges) -> bool:
+	def add_edges(self, edges: Edges) -> NoReturn:
 		if isinstance(edges, Mapping):
-			cls = self.__class__.__name__
-			raise NotImplementedError(_EDGE_ATTRIBUTE_EXCEPTION.format(cls))
+			self._attrs.update(edges)
+		append = np.append
+		array = np.array
+		graph = self._graph
 		for (v1, v2) in edges:
-			self._graph[v1] = np.append(self._graph[v1], np.array([v2]))
-			self._graph[v2] = np.append(self._graph[v2], np.array([v1]))
-		return True
+			graph[v1] = append(graph[v1], array([v2]))
+			graph[v2] = append(graph[v2], array([v1]))
 
 
-class RayFactorGraph(FactorGraph, backend.ActorMixin):
+class RayFactorGraph(FactorGraph, backend.Process):
 	__slots__ = ['detached', '_actor']
 
 	def __init__(self, graph: Type, *, detached: bool = False):
@@ -332,14 +307,14 @@ class RayFactorGraph(FactorGraph, backend.ActorMixin):
 	def get_factors(self) -> Iterable[Vertex]:
 		return ray.get(self._actor.get_factors.remote())
 
-	def set_factors(self, value: Iterable[Vertex]) -> bool:
-		return ray.get(self._actor.set_factors.remote(value))
+	def set_factors(self, value: Iterable[Vertex]) -> NoReturn:
+		ray.get(self._actor.set_factors.remote(value))
 
 	def get_variables(self) -> Iterable[Vertex]:
 		return ray.get(self._actor.get_variables.remote())
 
-	def set_variables(self, value: Iterable[Vertex]) -> bool:
-		return ray.get(self._actor.set_variables.remote(value))
+	def set_variables(self, value: Iterable[Vertex]) -> NoReturn:
+		ray.get(self._actor.set_variables.remote(value))
 
 	def get_neighbors(self, vertex: Vertex) -> Iterable[Vertex]:
 		return ray.get(self._actor.get_neighbors.remote(vertex))
@@ -348,23 +323,23 @@ class RayFactorGraph(FactorGraph, backend.ActorMixin):
 		return ray.get(self._actor.get_vertex_attr.remote(vertex, key))
 
 	def set_vertex_attr(
-			self, vertex: Vertex, key: Hashable, value: Any) -> bool:
-		return ray.get(self._actor.set_vertex_attr.remote(vertex, key, value))
+			self, vertex: Vertex, key: Hashable, value) -> NoReturn:
+		ray.get(self._actor.set_vertex_attr.remote(vertex, key, value))
 
 	def get_edge_attr(self, edge: Edge, key: Hashable) -> Any:
-		return ray.get(self._actor.get_edge_attr.remote(edge, key=key))
+		return ray.get(self._actor.get_edge_attr.remote(edge, key))
 
-	def set_edge_attr(self, edge: Edge, key: Hashable, value: Any) -> bool:
-		return ray.get(self._actor.set_edge_attr.remote(edge, key, value))
+	def set_edge_attr(self, edge: Edge, key: Hashable, value) -> NoReturn:
+		ray.get(self._actor.set_edge_attr.remote(edge, key, value))
 
-	def add_variables(self, vertices: Vertices) -> bool:
-		return ray.get(self._actor.add_variables.remote(vertices))
+	def add_variables(self, vertices: Vertices) -> NoReturn:
+		ray.get(self._actor.add_variables.remote(vertices))
 
-	def add_factors(self, vertices: Vertices) -> bool:
-		return ray.get(self._actor.add_factors.remote(vertices))
+	def add_factors(self, vertices: Vertices) -> NoReturn:
+		ray.get(self._actor.add_factors.remote(vertices))
 
-	def add_edges(self, edges: Edges) -> bool:
-		return ray.get(self._actor.add_edges.remote(edges))
+	def add_edges(self, edges: Edges) -> NoReturn:
+		ray.get(self._actor.add_edges.remote(edges))
 
 	def kill(self) -> NoReturn:
 		ray.kill(self._actor)
@@ -490,7 +465,9 @@ class FactorGraphBuilder:
 		num_cpus = backend.NUM_CPUS
 		if store_as_actor:
 			if isinstance(num_stores, int) and num_stores > num_cpus:
-				raise ValueError(_NUM_STORES_CPU_EXCEPTION.format(num_cpus))
+				raise ValueError(
+					"'num_stores' must be less than the number of physical "
+					f"CPUs: {num_cpus}")
 			else:
 				total_exceeded = sum(num_stores) > num_cpus
 				either_exceeded = any(n for n in num_stores if n > num_cpus)
@@ -503,7 +480,8 @@ class FactorGraphBuilder:
 	@staticmethod
 	def _cross_check_graph_state(graph_as_actor, share_graph):
 		if graph_as_actor and share_graph:
-			raise ValueError(_GRAPH_STATE_EXCEPTION)
+			raise ValueError(
+				"Only one of 'graph_as_actor' and 'share_graph' can True")
 
 	def __repr__(self):
 		return backend.rep(
@@ -516,28 +494,27 @@ class FactorGraphBuilder:
 			store_as_actor=self.store_as_actor,
 			detached=self.detached)
 
-	def add_variables(self, vertices: Vertices) -> bool:
-		return self._add_vertices(
+	def add_variables(self, vertices: Vertices) -> NoReturn:
+		self._add_vertices(
 			to_add=vertices,
-			add_func=self._graph.add_variables,
+			add=self._graph.add_variables,
 			added=self._variables,
 			variables=True)
 
-	def add_factors(self, vertices: Vertices) -> bool:
-		return self._add_vertices(
+	def add_factors(self, vertices: Vertices) -> NoReturn:
+		self._add_vertices(
 			to_add=vertices,
-			add_func=self._graph.add_factors,
+			add=self._graph.add_factors,
 			added=self._factors,
 			variables=False)
 
-	def _add_vertices(self, to_add, add_func, added, variables) -> bool:
+	def _add_vertices(self, to_add, add, added, variables) -> NoReturn:
 		if self.use_vertex_store:
-			self._add_with_store(to_add, add_func, added, variables)
+			self._add_with_store(to_add, add, added, variables)
 		else:
-			add_func(to_add)
-		return True
+			add(to_add)
 
-	def _add_with_store(self, to_add, add_func, added, variables):
+	def _add_with_store(self, to_add, add, added, variables):
 		def get_index() -> int:
 			if isinstance(self.num_stores, int):
 				index = self._store_ind
@@ -553,23 +530,23 @@ class FactorGraphBuilder:
 				store = self._stores[variables][index]
 			return store
 
-		if self.store_in_graph:
-			in_graph = functools.partial(lambda a: a in self.store_in_graph)
-			in_store = functools.partial(lambda a: not in_graph(a))
-			in_graph = {
-				v: {a: to_add[v][a] for a in to_add[v] if in_graph(a)}
-				for v in to_add}
-			in_store = {
-				v: {a: to_add[v][a] for a in to_add[v] if in_store(a)}
-				for v in to_add}
+		store_in_graph = self.store_in_graph
+		if store_in_graph:
+			in_graph, in_store = {}, {}
+			for v, a in ((v, a) for v in to_add for a in to_add[v]):
+				if a in store_in_graph:
+					in_graph[v][a] = to_add[v][a]
+				else:
+					in_store[v][a] = to_add[v][a]
 		else:
 			in_graph, in_store = collections.defaultdict(dict), to_add
+
 		storage = in_graph if self._store_address else in_store
 		for v in to_add:
 			i = get_index()
 			added[i].append(v)
 			storage[v]['address'] = i
-			add_func({v: in_graph[v]})
+			add({v: in_graph[v]})
 			get_store(i).put({v: in_store[v]})
 
 	def add_edges(self, edges: Edges) -> NoReturn:
@@ -620,15 +597,20 @@ class FactorGraphBuilder:
 		return graph, factors, variables, vertex_stores
 
 	def _increment(self, variables: bool = True):
-		def int_incr():
+		# noinspection PyTypeChecker
+		def int_increment():
 			reset = (plus_one := self._store_ind + 1) >= self.num_stores
 			self._store_ind = 0 if reset else plus_one
 
-		def seq_incr(i):
+		# noinspection PyUnresolvedReferences
+		def sequence_increment(i):
 			reset = (plus_one := self._store_ind[i] + 1) >= self.num_stores[i]
 			self._store_ind[i] = 0 if reset else plus_one
 
-		int_incr() if isinstance(self._store_ind, int) else seq_incr(variables)
+		if isinstance(self._store_ind, int):
+			int_increment()
+		else:
+			sequence_increment(variables)
 
 
 def factor_graph_factory(
@@ -643,5 +625,5 @@ def factor_graph_factory(
 	elif impl == NUMPY:
 		graph = NumpyFactorGraph
 	else:
-		raise ValueError(_IMPL_EXCEPTION)
+		raise ValueError(f"'impl' must be one of the following: {OPTIONS}")
 	return RayFactorGraph(graph, detached=detached) if as_actor else graph()
