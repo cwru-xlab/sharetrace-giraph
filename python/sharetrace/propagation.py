@@ -522,13 +522,13 @@ class _ShareTraceVariablePart:
 
 	async def _send_incoming(self) -> Iterable[float]:
 		epoch = []
-		dequeue = self.queue.get
+		dequeue = functools.partial(self.queue.get, block=True)
 		update_local = self._update_local
 		send = self._send
 		add_to_epoch = epoch.append
 		# Cannot use asyncio.gather: must keep message passing active
 		for _ in range(self.iterations):
-			msg = await dequeue(block=True)
+			msg = await dequeue()
 			await send(msg)
 			diff = update_local(msg)
 			add_to_epoch(diff)
@@ -622,6 +622,7 @@ class _ShareTraceFactorPart:
 			v = get_address(receiver)
 			await variables[v].enqueue.remote(msg)
 
+	# TODO(rdt17) Refactor to be callable passed into class
 	def _compute_message(
 			self,
 			factor: graphs.Vertex,
@@ -797,7 +798,7 @@ class RemoteBeliefPropagation(BeliefPropagation):
 
 	@staticmethod
 	def _get_result(refs: Sequence[ray.ObjectRef]) -> Result:
-		return tuple(itertools.chain.from_iterable(ray.get(refs)))
+		return itertools.chain.from_iterable(ray.get(refs))
 
 	def _shutdown(self):
 		if isinstance(self._graph, backend.Process):

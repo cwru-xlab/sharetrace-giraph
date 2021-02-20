@@ -1,11 +1,10 @@
-FROM public.ecr.aws/lambda/python:3.8
+FROM amazon/aws-lambda-python:3.8
 
-WORKDIR /code
+RUN /var/lang/bin/python3.8 -m pip install --upgrade pip
 
-COPY sharetrace/app.py requirements.txt ./
+COPY requirements.txt /tmp
+RUN pip install -r /tmp/requirements.txt
 
-RUN python3.8 -m pip install -r requirements.txt -t .
-
-COPY sharetrace/ .
+COPY sharetrace/ /var/task
 
 CMD ["app.handle"]

@@ -55,16 +55,16 @@ def main(print_result: bool = False):
 		'impl': graphs.NUMPY,
 		'send_condition': 'local',
 		'send_threshold': 0.75,
-		'seed': 2468}
-	contact_search = search.ContactSearch()
-	factors, variables = setup(users=1000, scores=7, days=14, locations=10)
-
+		'seed': None}
+	factors, variables = setup(users=100, scores=14, days=14, locations=10)
 	if local_mode:
+		contact_search = search.ContactSearch()
 		factors = contact_search(factors)
 		bp = propagation.LocalBeliefPropagation(**bp_kwargs)
 		result = bp(factors=factors, variables=variables)
 	else:
-		with backend.ray_context(num_cpus=backend.NUM_CPUS):
+		with backend.ray_context():
+			contact_search = search.ContactSearch()
 			factors = contact_search(factors)
 			bp = propagation.RemoteBeliefPropagation(**bp_kwargs)
 			result = bp(factors=factors, variables=variables)
