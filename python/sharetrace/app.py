@@ -1,8 +1,8 @@
 import asyncio
+import base64
 import datetime
 import os
-from base64 import b64decode
-from typing import NoReturn
+from typing import NoReturn, Union
 
 import boto3
 import codetiming
@@ -20,12 +20,13 @@ lambda_client = boto3.client('lambda')
 kms_client = boto3.client('kms')
 
 
-def _decrypt(value: str) -> str:
+def _decrypt(value: Union[str, bytes]) -> str:
 	"""Decrypts an encrypted environment variable"""
 	context = {'LambdaFunctionName': os.environ['AWS_LAMBDA_FUNCTION_NAME']}
 	decrypted = kms_client.decrypt(
-		CiphertextBlob=b64decode(value), EncryptionContext=context)
-	return decrypted('Plaintext').decode('utf-8')
+		CiphertextBlob=base64.b64decode(value),
+		EncryptionContext=context)
+	return decrypted['Plaintext'].decode('utf-8')
 
 
 # PDA environment variables
