@@ -10,6 +10,7 @@ from attr import validators
 # Order of attributes affects attr 'order' attribute
 
 
+# noinspection PyUnresolvedReferences
 @attr.s(slots=True, frozen=True, order=True)
 class RiskScore:
 	"""An identifiable temporal score of risk.
@@ -59,6 +60,7 @@ class RiskScore:
 			value=_unwrap_value(a['value']))
 
 
+# noinspection PyUnresolvedReferences
 @attr.s(slots=True, frozen=True, order=True)
 class TemporalLocation:
 	"""A time-location pair.
@@ -97,6 +99,7 @@ class LocationHistory:
 		kw_only=True)
 
 
+# noinspection PyUnresolvedReferences
 @attr.s(slots=True, frozen=True, order=True)
 class Occurrence:
 	"""A time-duration pair.
@@ -135,6 +138,7 @@ class Occurrence:
 			duration=_from_timedelta64(_unwrap_value(a['duration'])))
 
 
+# noinspection PyUnresolvedReferences
 @attr.s(slots=True, frozen=True)
 class Contact:
 	"""A set of zero or more occurrences between two users.
@@ -180,6 +184,7 @@ class Contact:
 		return array
 
 
+# noinspection PyUnresolvedReferences
 @attr.s(slots=True, frozen=True)
 class Message:
 	"""A message with knowledge of the sender and receiver.
