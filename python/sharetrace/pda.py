@@ -1,7 +1,6 @@
 import asyncio
 import datetime
 import functools
-import json
 import time
 from typing import Any, Iterable, Mapping, NoReturn, Optional, Tuple, Union
 
@@ -28,6 +27,7 @@ stdout = backend.STDOUT
 stderr = backend.STDERR
 
 
+# noinspection PyUnresolvedReferences
 @attr.s(slots=True)
 class PdaContext:
 	"""Contracted PDA context manager for the ShareTrace project.
@@ -70,10 +70,10 @@ class PdaContext:
 		"""Retrieves a short-lived token and contracted-associated HATs."""
 		headers = {'Authorization': f'Bearer {self.long_lived_token}'}
 		async with self._session.get(self.keyring_url, headers=headers) as r:
-			text = await self._handle_response(r)
-		hats = np.array(text['associatedHats'])
-		stdout(f'Number of hats retrieved: {len(hats)}')
-		return text['token'], hats
+			response = await self._handle_response(r)
+			token, hats = response['token'], response['associatedHats']
+			stdout(f'Number of hats retrieved: {len(hats)}')
+			return token, np.array(hats)
 
 	@codetiming.Timer(text=_READ_SCORES_MSG, logger=stdout)
 	async def get_scores(
@@ -81,7 +81,7 @@ class PdaContext:
 			token: str,
 			*,
 			hats: Iterable[str],
-			score_namespace: str,
+			namespace: str,
 			take: int = None,
 			since: datetime.datetime = _TWO_WEEKS_AGO
 	) -> Iterable[Tuple[str, Iterable[model.RiskScore]]]:
@@ -90,7 +90,7 @@ class PdaContext:
 		Each response record to is mapped to a collection of RiskScore objects.
 		RiskScore objects are grouped by HAT.
 		"""
-		namespace = '/'.join((self.client_namespace, score_namespace))
+		namespace = '/'.join((self.client_namespace, namespace))
 		get_data = functools.partial(
 			self._get_data, token, namespace=namespace, take=take)
 		return await asyncio.gather(*(
@@ -115,7 +115,7 @@ class PdaContext:
 			token: str,
 			*,
 			hats: Iterable[str],
-			location_namespace: str,
+			namespace: str,
 			take: int = None,
 			since: datetime.datetime = _TWO_WEEKS_AGO,
 			obfuscation: int = 3) -> Iterable[model.LocationHistory]:
@@ -123,7 +123,7 @@ class PdaContext:
 
 		Maps each response record to a LocationHistory object.
 		"""
-		namespace = '/'.join((self.client_namespace, location_namespace))
+		namespace = '/'.join((self.client_namespace, namespace))
 		get_data = functools.partial(
 			self._get_data, token, namespace=namespace, take=take)
 		return await asyncio.gather(*(
@@ -186,34 +186,37 @@ class PdaContext:
 			url = self._format_url(self.write_url, hat, namespace)
 			async with self._session.post(
 					url, json=body, headers=_CONTENT_TYPE) as r:
-				await self._handle_response(r, hat=hat)
+				await self._handle_response(r, hat=hat, send=True)
 
-		await asyncio.gather(*(post(h, s) for h, s in scores))
+		response = await asyncio.gather(*(post(h, s) for h, s in scores))
+		total = len(response)
+		num_failed = sum(map(lambda r: r is None), response)
+		stdout(f'Number of successful posts: {total - num_failed}')
+		stderr(f'Number of failed posts: {num_failed}')
 
 	@staticmethod
 	async def _handle_response(
 			response: aiohttp.ClientResponse,
 			hat: Optional[str] = None,
-			send: Optional[bool] = True) -> _Response:
+			send: Optional[bool] = None) -> _Response:
 		def check_hat():
 			if send is not None and hat is None:
 				raise ValueError(
 					'Must provide HAT name to handle non-keyring response')
 
-		text = await response.text()
-		text = json.loads(text)
-		status = response.status
-		if status != SUCCESS_CODE:
+		content = await response.json()
+		if (status := response.status) != SUCCESS_CODE:
+			content = None
 			if send:
 				check_hat()
-				msg = f'{status}: failed to send data to {hat}\n{text}'
+				stderr(f'{status}: failed to send data to {hat}. \n{content}')
 			elif send is False:
 				check_hat()
-				msg = f'{status}: failed to get data from {hat}\n{text}'
+				stderr(f'{status}: failed to get data from {hat}. \n{content}')
 			else:
-				msg = f'{status}: failed to authorize keyring\n{text}'
-			stderr(msg)
-		return text
+				raise IOError(
+					f'{status}: failed to authorize keyring. \n{content}')
+		return content
 
 	@staticmethod
 	def _format_url(base_url: str, hat: str, namespace: str):
