@@ -70,9 +70,13 @@ class PdaContext:
 		"""Retrieves a short-lived token and contracted-associated HATs."""
 		headers = {'Authorization': f'Bearer {self.long_lived_token}'}
 		async with self._session.get(self.keyring_url, headers=headers) as r:
-			response = await self._handle_response(r)
-			token, hats = response['token'], response['associatedHats']
-			stdout(f'Number of hats retrieved: {len(hats)}')
+			if response := await self._handle_response(r):
+				token, hats = response['token'], response['associatedHats']
+				stdout(f'Number of hats retrieved: {len(hats)}')
+			else:
+				raise IOError(
+					'No HATs could be retrieved. Check that HATs are '
+					'associated with the contract ID.')
 			return token, np.array(hats)
 
 	@codetiming.Timer(text=_READ_SCORES_MSG, logger=stdout)
