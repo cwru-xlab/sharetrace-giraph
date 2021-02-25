@@ -2,7 +2,7 @@ import datetime
 import functools
 import itertools
 import random
-from typing import Collection, Iterable, Optional
+from typing import Any, Collection, Iterable, Iterator, Optional
 
 import attr
 import codetiming
@@ -87,8 +87,7 @@ class ContactSearch:
 			self,
 			h1: model.LocationHistory,
 			h2: model.LocationHistory) -> Optional[model.Contact]:
-		occurrences = self._find_occurrences(h1, h2)
-		if not occurrences:
+		if not (occurrences := self._find_occurrences(h1, h2)):
 			contact = None
 		else:
 			users = {h1.name, h2.name}
@@ -97,48 +96,43 @@ class ContactSearch:
 
 	def _find_occurrences(
 			self,
-			h1: model.LocationHistory,
-			h2: model.LocationHistory) -> Optional[Occurrences]:
-		if len(h1.history) == 0 and len(h2.history) == 0 or h1.name == h2.name:
+			hist1: model.LocationHistory,
+			hist2: model.LocationHistory) -> Optional[Occurrences]:
+		def advance(x: Iterator, n: int = 1, default: Any = False):
+			nxt = functools.partial(lambda iterator: next(iterator, default))
+			return nxt(x) if n == 1 else tuple(nxt(x) for _ in range(n))
+
+		if not (hist1 or hist2) or hist1.name == hist2.name:
 			return None
+
 		occurrences = set()
-		iter1, iter2 = iter(sorted(h1.history)), iter(sorted(h2.history))
-		loc1, loc2 = next(iter1), next(iter2)
-		next1, next2 = next(iter1, None), next(iter2, None)
+		hist1, hist2 = iter(sorted(hist1)), iter(sorted(hist2))
+		(loc1, next1), (loc2, next2) = advance(hist1, 2), advance(hist2, 2)
 		started = False
-		get_later = self._get_later
-		create_occurrence = self._create_occurrence
-		add_occurrence = occurrences.add
-		update_one = functools.partial(random.choice, [False, True])
-		start = get_later(loc1, loc2)
-		while next1 is not None and next2 is not None:
+		start = self._get_later(loc1, loc2)
+		while next1 and next2:
 			if loc1.location == loc2.location:
 				if started:
-					loc1, next1 = next1, next(iter1, None)
-					loc2, next2 = next2, next(iter2, None)
+					loc1, next1 = next1, advance(hist1)
+					loc2, next2 = next2, advance(hist2)
 				else:
 					started = True
-					start = get_later(loc1, loc2)
+					start = self._get_later(loc1, loc2)
+			elif started:
+				started = False
+				if occurrence := self._create_occurrence(start, loc1, loc2):
+					occurrences.add(occurrence)
+			elif loc1 < loc2:
+				loc1, next1 = next1, advance(hist1)
+			elif loc2 < loc1:
+				loc2, next2 = next2, advance(hist2)
+			elif random.choice((False, True)):
+				loc1, next1 = next1, advance(hist1)
 			else:
-				if started:
-					started = False
-					occur = create_occurrence(start, loc1, loc2)
-					if occur is not None:
-						add_occurrence(occur)
-				else:
-					if loc1.timestamp < loc2.timestamp:
-						loc1, next1 = next1, next(iter1, None)
-					elif loc2.timestamp < loc1.timestamp:
-						loc2, next2 = next2, next(iter2, None)
-					else:
-						if update_one():
-							loc1, next1 = next1, next(iter1, None)
-						else:
-							loc2, next2 = next2, next(iter2, None)
+				loc2, next2 = next2, advance(hist2)
 		if started:
-			occur = create_occurrence(start, loc1, loc2)
-			if occur is not None:
-				add_occurrence(occur)
+			if occurrence := self._create_occurrence(start, loc1, loc2):
+				occurrences.add(occurrence)
 		return occurrences
 
 	def _create_occurrence(
@@ -156,9 +150,9 @@ class ContactSearch:
 
 	@staticmethod
 	def _get_later(loc1: model.TemporalLocation, loc2: model.TemporalLocation):
-		return loc1 if loc1.timestamp > loc2.timestamp else loc2
+		return loc1 if loc1 > loc2 else loc2
 
 	@staticmethod
 	def _get_earlier(
 			loc1: model.TemporalLocation, loc2: model.TemporalLocation):
-		return loc1 if loc1.timestamp < loc2.timestamp else loc2
+		return loc1 if loc1 < loc2 else loc2
