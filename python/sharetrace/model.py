@@ -1,6 +1,7 @@
 import datetime
 import numbers
-from typing import Any, Hashable, Iterable
+from collections.abc import Collection
+from typing import Any, Hashable, Iterable, Iterator
 
 import attr
 import numpy as np
@@ -84,7 +85,7 @@ class TemporalLocation:
 
 
 @attr.s(slots=True, frozen=True)
-class LocationHistory:
+class LocationHistory(Collection):
 	"""An identifiable set of time-location pairs."""
 	name = attr.ib(
 		type=Hashable,
@@ -97,6 +98,15 @@ class LocationHistory:
 			validators.instance_of(Iterable)),
 		converter=frozenset,
 		kw_only=True)
+
+	def __len__(self) -> int:
+		return len(self.history)
+
+	def __iter__(self) -> Iterator:
+		return iter(self.history)
+
+	def __contains__(self, __x: object) -> bool:
+		return __x in self.history
 
 
 # noinspection PyUnresolvedReferences
@@ -140,7 +150,7 @@ class Occurrence:
 
 # noinspection PyUnresolvedReferences
 @attr.s(slots=True, frozen=True)
-class Contact:
+class Contact(Collection):
 	"""A set of zero or more occurrences between two users.
 
 	Attributes:
@@ -167,6 +177,19 @@ class Contact:
 	def __attrs_post_init__(self):
 		if len(self.users) != 2:
 			raise AttributeError('Contact must have 2 distinct users')
+
+	def __len__(self) -> int:
+		return len(self.occurrences)
+
+	def __iter__(self) -> Iterator:
+		return iter(self.occurrences)
+
+	def __contains__(self, __x: object) -> bool:
+		if isinstance(__x, Occurrence):
+			contained = __x in self.occurrences
+		else:
+			contained = __x in self.users
+		return contained
 
 	@classmethod
 	def from_array(cls, users: Iterable[Hashable], a: np.ndarray) -> 'Contact':
