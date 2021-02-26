@@ -20,6 +20,7 @@ Contacts = Iterable[model.Contact]
 Occurrences = Collection[model.Occurrence]
 
 
+# noinspection PyUnresolvedReferences
 @attr.s(slots=True, frozen=True)
 class ContactSearch:
 	"""
@@ -78,7 +79,7 @@ class ContactSearch:
 	def _call(self, histories: Histories, as_iterator: bool) -> Contacts:
 		pairs = itertools.combinations(histories, 2)
 		contacts = (self._find_contact(*p) for p in pairs)
-		contacts = (c for c in contacts if c is not None)
+		contacts = (c for c in contacts if c)
 		if not as_iterator:
 			contacts = np.array(list(contacts))
 		return contacts
