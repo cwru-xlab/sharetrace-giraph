@@ -97,25 +97,25 @@ class ContactSearch:
 
 	def _find_occurrences(
 			self,
-			hist1: model.LocationHistory,
-			hist2: model.LocationHistory) -> Optional[Occurrences]:
+			h1: model.LocationHistory,
+			h2: model.LocationHistory) -> Optional[Occurrences]:
 		def advance(x: Iterator, n: int = 1, default: Any = False):
 			nxt = functools.partial(lambda iterator: next(iterator, default))
 			return nxt(x) if n == 1 else tuple(nxt(x) for _ in range(n))
 
-		if not (hist1 or hist2) or hist1.name == hist2.name:
+		if not (h1 or h2) or h1.name == h2.name:
 			return None
 
 		occurrences = set()
-		hist1, hist2 = iter(sorted(hist1)), iter(sorted(hist2))
-		(loc1, next1), (loc2, next2) = advance(hist1, 2), advance(hist2, 2)
+		h1, h2 = iter(sorted(h1)), iter(sorted(h2))
+		(loc1, next1), (loc2, next2) = advance(h1, 2), advance(h2, 2)
 		started = False
 		start = self._get_later(loc1, loc2)
 		while next1 and next2:
 			if loc1.location == loc2.location:
 				if started:
-					loc1, next1 = next1, advance(hist1)
-					loc2, next2 = next2, advance(hist2)
+					loc1, next1 = next1, advance(h1)
+					loc2, next2 = next2, advance(h2)
 				else:
 					started = True
 					start = self._get_later(loc1, loc2)
@@ -124,13 +124,13 @@ class ContactSearch:
 				if occurrence := self._create_occurrence(start, loc1, loc2):
 					occurrences.add(occurrence)
 			elif loc1 < loc2:
-				loc1, next1 = next1, advance(hist1)
+				loc1, next1 = next1, advance(h1)
 			elif loc2 < loc1:
-				loc2, next2 = next2, advance(hist2)
+				loc2, next2 = next2, advance(h2)
 			elif random.choice((False, True)):
-				loc1, next1 = next1, advance(hist1)
+				loc1, next1 = next1, advance(h1)
 			else:
-				loc2, next2 = next2, advance(hist2)
+				loc2, next2 = next2, advance(h2)
 		if started:
 			if occurrence := self._create_occurrence(start, loc1, loc2):
 				occurrences.add(occurrence)
