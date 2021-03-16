@@ -328,7 +328,10 @@ class LocalBeliefPropagation(BeliefPropagation):
 			vertices[k] = {
 				'local': max(v1, default=default_msg),
 				'inbox': {k: array(list(v2))}}
-		builder.add_variables(vertices)
+		if vertices:
+			builder.add_variables(vertices)
+		else:
+			raise ValueError('There must be at least 1 variable\n')
 
 	# noinspection PyTypeChecker
 	@staticmethod
@@ -351,8 +354,11 @@ class LocalBeliefPropagation(BeliefPropagation):
 			vertices[k] = {
 				'occurrences': array(list(occurrences)).flatten(),
 				'inbox': {}}
-		builder.add_factors(vertices)
-		builder.add_edges(edges)
+		if vertices:
+			builder.add_factors(vertices)
+			builder.add_edges(edges)
+		else:
+			raise ValueError('There must be at least 1 factor\n')
 
 	# noinspection PyTypeChecker
 	@codetiming.Timer(text='Sending to factors: {:0.6f} s', logger=stdout)
