@@ -24,7 +24,7 @@ def _decrypt(value: Union[str, bytes]) -> str:
 	"""Decrypts an encrypted environment variable"""
 	context = {'LambdaFunctionName': os.environ['AWS_LAMBDA_FUNCTION_NAME']}
 	decrypted = kms_client.decrypt(
-		CiphertextBlob=base64.b64decode(value),
+		CiphertextBlob=base64.b64decode(value, validate=True),
 		EncryptionContext=context)
 	return decrypted['Plaintext'].decode('utf-8')
 
@@ -93,7 +93,7 @@ def handle(event, context):
 	stdout(f'## EVENT\n{jsonpickle.encode(event)}')
 	stdout(f'## CONTEXT\n{jsonpickle.encode(context)}')
 	stdout('------------------START TASK------------------')
-	asyncio.get_event_loop().run_until_complete(_handle())
+	asyncio.run(_handle())
 	stdout('-------------------END TASK-------------------')
 	return {'status_code': pda.SUCCESS_CODE}
 
@@ -102,16 +102,16 @@ def handle(event, context):
 @codetiming.Timer(text='Total task duration: {:0.6f} s', logger=stdout)
 async def _handle() -> NoReturn:
 	async with pda.PdaContext(**_KWARGS) as p:
-		token, hats = await p.get_token_and_hats()
+		hats, token = await p.get_hats_and_token()
 		variables, locations = await asyncio.gather(
 			p.get_scores(
-				token,
 				hats=hats,
+				token=token,
 				namespace=_READ_SCORE_NAMESPACE,
 				take=_TAKE_SCORES),
 			p.get_locations(
-				token,
 				hats=hats,
+				token=token,
 				namespace=_LOCATION_NAMESPACE,
 				take=_TAKE_LOCATIONS,
 				obfuscation=_HASH_OBFUSCATION))

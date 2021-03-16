@@ -1,12 +1,13 @@
 import asyncio
 import datetime
-import functools
+import itertools
 import time
 from typing import Any, Iterable, Mapping, NoReturn, Optional, Tuple, Union
 
 import aiohttp
 import attr
 import codetiming
+import jsonpickle
 import numpy as np
 from attr import validators
 
@@ -18,7 +19,7 @@ _CONTENT_TYPE = {'Content-Type': 'application/json'}
 _HTTPS = 'https://'
 _BASE_READ_BODY = {'orderBy': 'timestamp', 'ordering': 'descending', 'skip': 0}
 _TWO_WEEKS_AGO = datetime.datetime.utcnow() - datetime.timedelta(days=14)
-_Response = Union[Mapping[str, Any], Iterable[Mapping[str, Any]]]
+_Response = Optional[Union[Mapping[str, Any], Iterable[Mapping[str, Any]]]]
 _READ_HATS_MSG = 'Reading tokens and hats: {:0.6f} s'
 _READ_SCORES_MSG = 'Reading scores: {:0.6f} s'
 _READ_LOCATIONS_MSG = 'Reading location histories: {:0.6f} s'
@@ -66,7 +67,7 @@ class PdaContext:
 		await self._session.close()
 
 	@codetiming.Timer(text=_READ_HATS_MSG, logger=stdout)
-	async def get_token_and_hats(self) -> Tuple[str, Iterable[str]]:
+	async def get_hats_and_token(self) -> Tuple[Iterable[str], str]:
 		"""Retrieves a short-lived token and contracted-associated HATs."""
 		headers = {'Authorization': f'Bearer {self.long_lived_token}'}
 		async with self._session.get(self.keyring_url, headers=headers) as r:
@@ -77,14 +78,14 @@ class PdaContext:
 				raise IOError(
 					'No HATs could be retrieved. Check that HATs are '
 					'associated with the contract ID.')
-			return token, np.array(hats)
+			return np.array(hats), token
 
 	@codetiming.Timer(text=_READ_SCORES_MSG, logger=stdout)
 	async def get_scores(
 			self,
-			token: str,
-			*,
 			hats: Iterable[str],
+			*,
+			token: str,
 			namespace: str,
 			take: int = None,
 			since: datetime.datetime = _TWO_WEEKS_AGO
@@ -95,13 +96,14 @@ class PdaContext:
 		RiskScore objects are grouped by HAT.
 		"""
 		namespace = '/'.join((self.client_namespace, namespace))
-		get_data = functools.partial(
-			self._get_data, token, namespace=namespace, take=take)
-		return await asyncio.gather(*(
-			self._to_scores(h, await get_data(h), since) for h in hats))
+		h1, h2 = itertools.tee(hats)
+		data = await asyncio.gather(
+			*(self._get_data(h, token, namespace, take) for h in h1))
+		hats_and_data = ((h, d) for h, d in zip(h2, data) if d)
+		return (self._to_scores(h, d, since) for h, d in hats_and_data)
 
 	@staticmethod
-	async def _to_scores(
+	def _to_scores(
 			hat: str,
 			data: Iterable[Mapping[str, Any]],
 			since: datetime.datetime = _TWO_WEEKS_AGO
@@ -116,9 +118,9 @@ class PdaContext:
 	@codetiming.Timer(text=_READ_LOCATIONS_MSG, logger=stdout)
 	async def get_locations(
 			self,
-			token: str,
-			*,
 			hats: Iterable[str],
+			*,
+			token: str,
 			namespace: str,
 			take: int = None,
 			since: datetime.datetime = _TWO_WEEKS_AGO,
@@ -128,14 +130,16 @@ class PdaContext:
 		Maps each response record to a LocationHistory object.
 		"""
 		namespace = '/'.join((self.client_namespace, namespace))
-		get_data = functools.partial(
-			self._get_data, token, namespace=namespace, take=take)
-		return await asyncio.gather(*(
-			self._to_locations(h, await get_data(h), since, obfuscation)
-			for h in hats))
+		h1, h2 = itertools.tee(hats)
+		data = await asyncio.gather(
+			*(self._get_data(h, token, namespace, take) for h in h1))
+		hats_and_data = ((h, d) for h, d in zip(h2, data) if d)
+		return (
+			self._to_locations(h, d, since, obfuscation)
+			for h, d in hats_and_data)
 
 	@staticmethod
-	async def _to_locations(
+	def _to_locations(
 			hat: str,
 			data: Iterable[Mapping[str, Any]],
 			since: datetime.datetime,
@@ -151,14 +155,14 @@ class PdaContext:
 
 	async def _get_data(
 			self,
-			token: str,
 			hat: str,
+			token: str,
 			namespace: str,
 			take: int) -> _Response:
 		body = _BASE_READ_BODY.copy()
 		body.update({
-			'token': token,
 			'hatName': hat,
+			'token': token,
 			'contractId': self.contract_id})
 		if take is not None:
 			body['take'] = take
@@ -171,20 +175,19 @@ class PdaContext:
 	@codetiming.Timer(text=_WRITE_SCORES_MSG, logger=stdout)
 	async def post_scores(
 			self,
-			token: str,
-			*,
 			scores: Iterable[Tuple[str, model.RiskScore]],
+			*,
+			token: str,
 			namespace: str) -> NoReturn:
 		"""Sends computed exposure scores to all PDAs."""
 		namespace = '/'.join((self.client_namespace, namespace))
 		timestamp = time.time() * 1e3
-		contract_id = self.contract_id
 
 		async def post(hat: str, score: model.RiskScore):
 			value = round(score.value, 2)
 			body = {
 				'token': token,
-				'contractId': contract_id,
+				'contractId': self.contract_id,
 				'hatName': hat,
 				'body': {'score': value, 'timestamp': timestamp}}
 			url = self._format_url(self.write_url, hat, namespace)
@@ -194,7 +197,7 @@ class PdaContext:
 
 		response = await asyncio.gather(*(post(h, s) for h, s in scores))
 		total = len(response)
-		num_failed = sum(map(lambda r: r is None), response)
+		num_failed = sum(map(lambda r: r is None, response))
 		stdout(f'Number of successful posts: {total - num_failed}')
 		stderr(f'Number of failed posts: {num_failed}')
 
@@ -208,18 +211,19 @@ class PdaContext:
 				raise ValueError(
 					'Must provide HAT name to handle non-keyring response')
 
-		content = await response.json()
+		content = await response.read()
 		if (status := response.status) != SUCCESS_CODE:
 			content = None
 			if send:
 				check_hat()
-				stderr(f'{status}: failed to send data to {hat}. \n{content}')
+				stderr(f'{status}: failed to send data to {hat}')
 			elif send is False:
 				check_hat()
-				stderr(f'{status}: failed to get data from {hat}. \n{content}')
+				stderr(f'{status}: failed to get data from {hat}')
 			else:
-				raise IOError(
-					f'{status}: failed to authorize keyring. \n{content}')
+				raise IOError(f'{status}: failed to authorize keyring')
+		else:
+			content = jsonpickle.loads(content)
 		return content
 
 	@staticmethod
