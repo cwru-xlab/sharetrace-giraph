@@ -14,7 +14,7 @@ from attr import validators
 import backend
 import model
 
-SUCCESS_CODE = 200
+SUCCESS_CODES = {200, 201}
 _CONTENT_TYPE = {'Content-Type': 'application/json'}
 _HTTPS = 'https://'
 _BASE_READ_BODY = {'orderBy': 'timestamp', 'ordering': 'descending', 'skip': 0}
@@ -175,7 +175,7 @@ class PdaContext:
 	@codetiming.Timer(text=_WRITE_SCORES_MSG, logger=stdout)
 	async def post_scores(
 			self,
-			scores: Iterable[Tuple[str, model.RiskScore]],
+			scores: Iterable[model.RiskScore],
 			*,
 			token: str,
 			namespace: str) -> NoReturn:
@@ -183,8 +183,9 @@ class PdaContext:
 		namespace = '/'.join((self.client_namespace, namespace))
 		timestamp = time.time() * 1e3
 
-		async def post(hat: str, score: model.RiskScore):
+		async def post(score: model.RiskScore):
 			value = round(score.value, 2)
+			hat = score.name
 			body = {
 				'token': token,
 				'contractId': self.contract_id,
@@ -193,9 +194,9 @@ class PdaContext:
 			url = self._format_url(self.write_url, hat, namespace)
 			async with self._session.post(
 					url, json=body, headers=_CONTENT_TYPE) as r:
-				await self._handle_response(r, hat=hat, send=True)
+				return await self._handle_response(r, hat=hat, send=True)
 
-		response = await asyncio.gather(*(post(h, s) for h, s in scores))
+		response = await asyncio.gather(*(post(s) for s in scores))
 		total = len(response)
 		num_failed = sum(map(lambda r: r is None, response))
 		stdout(f'Number of successful posts: {total - num_failed}')
@@ -212,7 +213,7 @@ class PdaContext:
 					'Must provide HAT name to handle non-keyring response')
 
 		content = await response.read()
-		if (status := response.status) != SUCCESS_CODE:
+		if (status := response.status) not in SUCCESS_CODES:
 			content = None
 			if send:
 				check_hat()
