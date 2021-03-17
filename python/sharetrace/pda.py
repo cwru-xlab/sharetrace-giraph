@@ -15,15 +15,16 @@ import backend
 import model
 
 SUCCESS_CODES = {200, 201}
-_CONTENT_TYPE = {'Content-Type': 'application/json'}
-_HTTPS = 'https://'
-_BASE_READ_BODY = {'orderBy': 'timestamp', 'ordering': 'descending', 'skip': 0}
-_TWO_WEEKS_AGO = datetime.datetime.utcnow() - datetime.timedelta(days=14)
-_Response = Optional[Union[Mapping[str, Any], Iterable[Mapping[str, Any]]]]
-_READ_HATS_MSG = 'Reading tokens and hats: {:0.6f} s'
-_READ_SCORES_MSG = 'Reading scores: {:0.6f} s'
-_READ_LOCATIONS_MSG = 'Reading location histories: {:0.6f} s'
-_WRITE_SCORES_MSG = 'Writing scores: {:0.6f} s'
+CONTENT_TYPE = {'Content-Type': 'application/json'}
+HTTPS = 'https://'
+BASE_READ_BODY = {'orderBy': 'timestamp', 'ordering': 'descending', 'skip': 0}
+TWO_WEEKS_AGO = datetime.datetime.utcnow() - datetime.timedelta(days=14)
+Response = Optional[Union[Mapping[str, Any], Iterable[Mapping[str, Any]]]]
+# Timing messages
+READ_HATS_MSG = 'Reading tokens and hats: {:0.6f} s'
+READ_SCORES_MSG = 'Reading scores: {:0.6f} s'
+READ_LOCATIONS_MSG = 'Reading location histories: {:0.6f} s'
+WRITE_SCORES_MSG = 'Writing scores: {:0.6f} s'
 stdout = backend.STDOUT
 stderr = backend.STDERR
 
@@ -66,7 +67,7 @@ class PdaContext:
 	async def __aexit__(self, exc_type, exc_val, exc_tb):
 		await self._session.close()
 
-	@codetiming.Timer(text=_READ_HATS_MSG, logger=stdout)
+	@codetiming.Timer(text=READ_HATS_MSG, logger=stdout)
 	async def get_hats_and_token(self) -> Tuple[Iterable[str], str]:
 		"""Retrieves a short-lived token and contracted-associated HATs."""
 		headers = {'Authorization': f'Bearer {self.long_lived_token}'}
@@ -80,7 +81,7 @@ class PdaContext:
 					'associated with the contract ID.')
 			return np.array(hats), token
 
-	@codetiming.Timer(text=_READ_SCORES_MSG, logger=stdout)
+	@codetiming.Timer(text=READ_SCORES_MSG, logger=stdout)
 	async def get_scores(
 			self,
 			hats: Iterable[str],
@@ -88,7 +89,7 @@ class PdaContext:
 			token: str,
 			namespace: str,
 			take: int = None,
-			since: datetime.datetime = _TWO_WEEKS_AGO
+			since: datetime.datetime = TWO_WEEKS_AGO
 	) -> Iterable[Tuple[str, Iterable[model.RiskScore]]]:
 		"""Retrieves the survey risk scores from the PDAs.
 
@@ -106,16 +107,16 @@ class PdaContext:
 	def _to_scores(
 			hat: str,
 			data: Iterable[Mapping[str, Any]],
-			since: datetime.datetime = _TWO_WEEKS_AGO
+			since: datetime.datetime = TWO_WEEKS_AGO
 	) -> Tuple[str, Iterable[model.RiskScore]]:
 		values = (s['data'] for s in data)
 		values = ((s['score'], _to_timestamp(s['timestamp'])) for s in values)
 		scores = (
-			model.RiskScore(name=hat, value=v / 100, timestamp=t)
+			model.RiskScore(name=hat, value=v, timestamp=t)
 			for v, t in values if t >= since)
 		return hat, scores
 
-	@codetiming.Timer(text=_READ_LOCATIONS_MSG, logger=stdout)
+	@codetiming.Timer(text=READ_LOCATIONS_MSG, logger=stdout)
 	async def get_locations(
 			self,
 			hats: Iterable[str],
@@ -123,7 +124,7 @@ class PdaContext:
 			token: str,
 			namespace: str,
 			take: int = None,
-			since: datetime.datetime = _TWO_WEEKS_AGO,
+			since: datetime.datetime = TWO_WEEKS_AGO,
 			obfuscation: int = 3) -> Iterable[model.LocationHistory]:
 		"""Retrieves the location data from the PDAs.
 
@@ -158,8 +159,8 @@ class PdaContext:
 			hat: str,
 			token: str,
 			namespace: str,
-			take: int) -> _Response:
-		body = _BASE_READ_BODY.copy()
+			take: int) -> Response:
+		body = BASE_READ_BODY.copy()
 		body.update({
 			'hatName': hat,
 			'token': token,
@@ -168,11 +169,11 @@ class PdaContext:
 			body['take'] = take
 		url = self._format_url(self.read_url, hat, namespace)
 		async with self._session.post(
-				url, json=body, headers=_CONTENT_TYPE) as r:
+				url, json=body, headers=CONTENT_TYPE) as r:
 			return await self._handle_response(r, hat=hat, send=False)
 
 	# noinspection PyTypeChecker
-	@codetiming.Timer(text=_WRITE_SCORES_MSG, logger=stdout)
+	@codetiming.Timer(text=WRITE_SCORES_MSG, logger=stdout)
 	async def post_scores(
 			self,
 			scores: Iterable[model.RiskScore],
@@ -193,7 +194,7 @@ class PdaContext:
 				'body': {'score': value, 'timestamp': timestamp}}
 			url = self._format_url(self.write_url, hat, namespace)
 			async with self._session.post(
-					url, json=body, headers=_CONTENT_TYPE) as r:
+					url, json=body, headers=CONTENT_TYPE) as r:
 				return await self._handle_response(r, hat=hat, send=True)
 
 		response = await asyncio.gather(*(post(s) for s in scores))
@@ -206,7 +207,7 @@ class PdaContext:
 	async def _handle_response(
 			response: aiohttp.ClientResponse,
 			hat: Optional[str] = None,
-			send: Optional[bool] = None) -> _Response:
+			send: Optional[bool] = None) -> Response:
 		def check_hat():
 			if send is not None and hat is None:
 				raise ValueError(
@@ -229,7 +230,7 @@ class PdaContext:
 
 	@staticmethod
 	def _format_url(base_url: str, hat: str, namespace: str):
-		with_hat = ''.join((_HTTPS, f'{hat}.', base_url.split(_HTTPS)[-1]))
+		with_hat = ''.join((HTTPS, f'{hat}.', base_url.split(HTTPS)[-1]))
 		return '/'.join((with_hat, namespace))
 
 
