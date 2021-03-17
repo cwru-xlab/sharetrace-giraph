@@ -199,9 +199,9 @@ class PdaContext:
 
 		response = await asyncio.gather(*(post(s) for s in scores))
 		total = len(response)
-		num_failed = sum(map(lambda r: r is None, response))
-		stdout(f'Number of successful posts: {total - num_failed}')
-		stderr(f'Number of failed posts: {num_failed}')
+		if num_failed := sum(map(lambda r: r is None, response)):
+			stderr(f'Number of failed posts: {num_failed}')
+		stdout(f'Number of successful posts: {total - num_failed} / {total}')
 
 	@staticmethod
 	async def _handle_response(
