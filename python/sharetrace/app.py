@@ -95,7 +95,7 @@ def handle(event, context):
 	stdout('------------------START TASK------------------')
 	asyncio.run(_handle())
 	stdout('-------------------END TASK-------------------')
-	return {'status_code': pda.SUCCESS_CODE}
+	return {'status_code': 200}
 
 
 # noinspection PyTypeChecker
@@ -127,4 +127,6 @@ async def _handle() -> NoReturn:
 			time_constant=_TIME_CONSTANT)
 		updated_scores = belief_propagation(factors, variables)
 		await p.post_scores(
-			token, scores=updated_scores, namespace=_WRITE_SCORE_NAMESPACE)
+			scores=updated_scores,
+			token=token,
+			namespace=_WRITE_SCORE_NAMESPACE)
