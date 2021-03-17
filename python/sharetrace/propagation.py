@@ -217,13 +217,6 @@ class BeliefPropagation(abc.ABC):
 		if value < 1:
 			raise ValueError(f"'iterations' must be at least 1; got {value}")
 
-	@send_threshold.validator
-	def _check_send_threshold(self, _, value):
-		if not 0 <= value <= 1:
-			raise ValueError(
-				f"'send_threshold' must be between 0 and 1, inclusive; got "
-				f"{value}")
-
 	@send_condition.validator
 	def _check_send_condition(self, _, value):
 		if value not in _SEND_CONDITION_OPTIONS:
