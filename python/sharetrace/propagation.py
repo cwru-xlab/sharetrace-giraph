@@ -62,7 +62,6 @@ TimestampBuffer = Union[datetime.timedelta, np.timedelta64]
 RiskScores = Iterable[model.RiskScore]
 AllRiskScores = Collection[Tuple[Hashable, RiskScores]]
 Contacts = Iterable[model.Contact]
-Result = Iterable[Tuple[Hashable, model.RiskScore]]
 StopCondition = Callable[..., bool]
 SendCondition = Callable[..., bool]
 
@@ -263,7 +262,8 @@ class LocalBeliefPropagation(BeliefPropagation):
 	def __attrs_post_init__(self):
 		super(LocalBeliefPropagation, self).__attrs_post_init__()
 
-	def __call__(self, factors: Contacts, variables: AllRiskScores) -> Result:
+	def __call__(
+			self, factors: Contacts, variables: AllRiskScores) -> RiskScores:
 		stdout('-----------START BELIEF PROPAGATION-----------')
 		result = self.call(factors, variables)
 		stdout('------------END BELIEF PROPAGATION------------')
@@ -274,23 +274,17 @@ class LocalBeliefPropagation(BeliefPropagation):
 			self,
 			factors: Contacts,
 			variables: AllRiskScores,
-			**kwargs) -> Result:
+			**kwargs) -> RiskScores:
 		self.create_graph(factors, variables)
-		i, epoch = 1, None
-		stop = False
-		send_to_factors = self._send_to_factors
-		send_to_variables = self._send_to_variables
-		should_stop = self.should_stop
+		i, epoch, stop = 1, None, False
 		while not stop:
 			stdout(f'-----------Iteration {i}-----------')
-			epoch = send_to_factors()
-			send_to_variables()
-			stop = should_stop(i, epoch)
+			epoch = self._send_to_factors()
+			self._send_to_variables()
+			stop = self.should_stop(i, epoch)
 			i += 1
 			stdout(f'---------------------------------')
-		get = self._variables.get
-		variables = self._variables
-		return ((v, get(v, 'local')) for v in variables)
+		return (self._variables.get(v, 'local') for v in self._variables)
 
 	# noinspection PyTypeChecker
 	@codetiming.Timer(text='Creating graph: {:0.6f} s', logger=stdout)
@@ -319,19 +313,16 @@ class LocalBeliefPropagation(BeliefPropagation):
 			self,
 			builder: graphs.FactorGraphBuilder,
 			variables: AllRiskScores) -> NoReturn:
-		default_msg = self.default_msg
-		array = np.array
-		tee = itertools.tee
 		vertices = {}
 		for k, v in ((str(k), v) for k, v in variables):
-			v1, v2 = tee(v)
+			v1, v2 = itertools.tee(v)
 			vertices[k] = {
-				'local': max(v1, default=default_msg),
-				'inbox': {k: array(list(v2))}}
+				'local': max(v1, default=self.default_msg),
+				'inbox': {k: np.array(list(v2))}}
 		if vertices:
 			builder.add_variables(vertices)
 		else:
-			raise ValueError('There must be at least 1 variable\n')
+			raise ValueError('There must be at least 1 variable')
 
 	# noinspection PyTypeChecker
 	@staticmethod
@@ -345,45 +336,38 @@ class LocalBeliefPropagation(BeliefPropagation):
 
 		vertices = {}
 		edges = []
-		add_edges = edges.extend
-		array = np.array
 		for f in factors:
 			k, (v1, v2) = make_key(f)
-			add_edges(((k, v1), (k, v2)))
+			edges.extend(((k, v1), (k, v2)))
 			occurrences = (o.as_array() for o in f.occurrences)
 			vertices[k] = {
-				'occurrences': array(list(occurrences)).flatten(),
+				'occurrences': np.array(list(occurrences)).flatten(),
 				'inbox': {}}
 		if vertices:
 			builder.add_factors(vertices)
 			builder.add_edges(edges)
 		else:
-			raise ValueError('There must be at least 1 factor\n')
+			raise ValueError('There must be at least 1 factor')
 
 	# noinspection PyTypeChecker
 	@codetiming.Timer(text='Sending to factors: {:0.6f} s', logger=stdout)
 	def _send_to_factors(self) -> np.ndarray:
-		put = self._variables.put
-		get_neighbors = self._graph.get_neighbors
-		chain = itertools.chain
-
 		def update_local(variable, local, incoming):
 			# First iteration only: messages only from self
 			if variable in incoming:
-				values = chain([local], incoming[variable])
+				values = itertools.chain([local], incoming[variable])
 			else:
-				values = chain([local], incoming.values())
+				values = itertools.chain([local], incoming.values())
 			if (updated := max(values)) > local:
 				difference = updated.value - local.value
-				put({variable: {'local': updated}})
+				self._variables.put({variable: {'local': updated}})
 			else:
 				difference = 0
 			return difference
 
 		def send(sender, local, incoming):
 			should_send = functools.partial(self.should_send, local)
-			update_factor = self._factors.put
-			for f in get_neighbors(sender):
+			for f in self._graph.get_neighbors(sender):
 				# First iteration only: messages only from self
 				if sender in incoming:
 					others = (m for m in incoming[sender] if should_send(m))
@@ -391,18 +375,16 @@ class LocalBeliefPropagation(BeliefPropagation):
 					others = (
 						msg for o, msg in incoming.items()
 						if o != f and should_send(msg))
-				update_factor({f: {'inbox': {sender: others}}}, merge=True)
+				self._factors.put({f: {'inbox': {sender: others}}}, merge=True)
 
 		epoch = []
-		get = self._variables.get
-		add_to_epoch = epoch.append
 		for v in self._variables:
-			curr_local = get(v, 'local')
-			inbox = get(v, 'inbox')
+			curr_local = self._variables.get(v, 'local')
+			inbox = self._variables.get(v, 'inbox')
 			diff = update_local(v, curr_local, inbox)
-			add_to_epoch(diff)
+			epoch.append(diff)
 			send(v, curr_local, inbox)
-			put({v: {'inbox': {}}})
+			self._variables.put({v: {'inbox': {}}})
 		return np.array(epoch)
 
 	def should_send(self, local, incoming, **kwargs) -> bool:
@@ -412,27 +394,23 @@ class LocalBeliefPropagation(BeliefPropagation):
 	# noinspection PyTypeChecker
 	@codetiming.Timer(text='Sending to variables: {:0.6f} s', logger=stdout)
 	def _send_to_variables(self) -> NoReturn:
-		get_neighbors = self._graph.get_neighbors
-		get = self._factors.get
-		update_variable = self._variables.put
-		update_factor = self._factors.put
-		compute_msg = self._compute_message
 		for f in self._factors:
-			neighbors = tuple(get_neighbors(f))
-			inbox = get(f, 'inbox')
+			neighbors = tuple(self._graph.get_neighbors(f))
+			inbox = self._factors.get(f, 'inbox')
 			for i, n in enumerate(neighbors):
 				# Assumes factor vertex has a degree of 2
 				receiver = neighbors[not i]
-				msg = compute_msg(f, inbox[n])
-				update_variable({receiver: {'inbox': {f: msg}}}, merge=True)
-			update_factor({f: {'inbox': {}}})
+				msg = self._compute_message(f, inbox[n])
+				msg = {'inbox': {f: msg}}
+				self._variables.put({receiver: msg}, merge=True)
+			self._factors.put({f: {'inbox': {}}})
 
 	def _compute_message(
 			self,
 			factor: graphs.Vertex,
 			msg: Iterable[model.RiskScore]) -> model.RiskScore:
-		def sec_to_day(s: np.ndarray) -> np.float64:
-			return np.divide(np.float64(s), 86400)
+		def sec_to_day(s: Union[np.ndarray, np.float64]):
+			return np.float64(s) / 86400
 
 		occurrences = self._factors.get(factor, 'occurrences')
 		most_recent = np.max(occurrences['timestamp'])
@@ -504,7 +482,7 @@ class _ShareTraceVariablePart:
 	async def send_to_factors(
 			self,
 			graph: graphs.FactorGraph,
-			factors: Sequence['_ShareTraceFactorPart']) -> Result:
+			factors: Sequence['_ShareTraceFactorPart']) -> RiskScores:
 		self.graph = graph
 		self.factors = factors
 		await self._send_local()
@@ -518,7 +496,7 @@ class _ShareTraceVariablePart:
 				stop = should_stop(epoch)
 				i += 1
 		local = functools.partial(lambda v: self.vertex_store.get(v, 'local'))
-		return np.array([(v, local(v)) for v in self.vertex_store])
+		return np.array([local(v) for v in self.vertex_store])
 
 	@codetiming.Timer(text='Sending local messages: {:0.6f} s', logger=stdout)
 	async def _send_local(self):
@@ -633,7 +611,7 @@ class _ShareTraceFactorPart:
 			self,
 			factor: graphs.Vertex,
 			msg: model.RiskScore) -> model.RiskScore:
-		def sec_to_day(s: np.ndarray) -> np.float64:
+		def sec_to_day(s: Union[np.ndarray, np.float64]):
 			return np.divide(np.float64(s), 86400)
 
 		occurrences = self.vertex_store.get(factor, 'occurrences')
@@ -682,7 +660,8 @@ class RemoteBeliefPropagation(BeliefPropagation):
 	def __attrs_post_init__(self):
 		super(RemoteBeliefPropagation, self).__attrs_post_init__()
 
-	def __call__(self, factors: Contacts, variables: AllRiskScores) -> Result:
+	def __call__(
+			self, factors: Contacts, variables: AllRiskScores) -> RiskScores:
 		stdout('-----------START BELIEF PROPAGATION-----------')
 		result = self.call(factors, variables)
 		stdout('------------END BELIEF PROPAGATION------------')
@@ -693,7 +672,7 @@ class RemoteBeliefPropagation(BeliefPropagation):
 			self,
 			factors: Contacts,
 			variables: AllRiskScores,
-			**kwargs) -> Result:
+			**kwargs) -> RiskScores:
 		self.create_graph(factors, variables)
 		with codetiming.Timer(text='Sending msgs: {:0.6f} s', logger=stdout):
 			refs = self._initiate_message_passing()
@@ -752,11 +731,9 @@ class RemoteBeliefPropagation(BeliefPropagation):
 			num_parts: int) -> Iterable[Sequence[model.Message]]:
 		vertices = {}
 		local = [[] for _ in range(num_parts)]
-		default_msg = self.default_msg
-		tee = itertools.tee
 		for q, (k, v) in enumerate((str(k), v) for k, v in variables):
-			v1, v2 = tee(v)
-			vertices[k] = {'local': max(v1, default=default_msg)}
+			v1, v2 = itertools.tee(v)
+			vertices[k] = {'local': max(v1, default=self.default_msg)}
 			msgs = (model.Message(sender=k, receiver=k, content=c) for c in v2)
 			local[q % num_parts].extend(msgs)
 		builder.add_variables(vertices)
@@ -774,13 +751,11 @@ class RemoteBeliefPropagation(BeliefPropagation):
 
 		edges = []
 		vertices = {}
-		add_edges = edges.extend
-		array = np.array
 		for f in factors:
 			k, (v1, v2) = make_key(f)
-			add_edges(((k, v1), (k, v2)))
+			edges.extend(((k, v1), (k, v2)))
 			occurs = (o.as_array() for o in f.occurrences)
-			vertices[k] = {'occurrences': array(list(occurs)).flatten()}
+			vertices[k] = {'occurrences': np.array(list(occurs)).flatten()}
 		builder.add_factors(vertices)
 		builder.add_edges(edges)
 
@@ -803,7 +778,7 @@ class RemoteBeliefPropagation(BeliefPropagation):
 		return sum(epoch) < self.tolerance
 
 	@staticmethod
-	def _get_result(refs: Sequence[ray.ObjectRef]) -> Result:
+	def _get_result(refs: Sequence[ray.ObjectRef]) -> RiskScores:
 		return itertools.chain.from_iterable(ray.get(refs))
 
 	def _shutdown(self):
