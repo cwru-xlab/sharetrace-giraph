@@ -30,36 +30,36 @@ def _decrypt(value: Union[str, bytes]) -> str:
 
 
 # PDA environment variables
-_CONTRACT_ID = _decrypt(os.environ['CONTRACT_ID'])
-_LONG_LIVED_TOKEN = _decrypt(os.environ['LONG_LIVED_TOKEN'])
-_CLIENT_NAMESPACE = _decrypt(os.environ['CLIENT_NAMESPACE'])
-_READ_SCORE_NAMESPACE = _decrypt(os.environ['READ_SCORE_NAMESPACE'])
-_WRITE_SCORE_NAMESPACE = _decrypt(os.environ['WRITE_SCORE_NAMESPACE'])
-_LOCATION_NAMESPACE = _decrypt(os.environ['READ_LOCATION_NAMESPACE'])
-_TAKE_SCORES = int(os.environ['TAKE_SCORES'])
-_TAKE_LOCATIONS = int(os.environ['TAKE_LOCATIONS'])
-_HASH_OBFUSCATION = int(os.environ['HASH_OBFUSCATION'])
-_KEYRING_URL = os.environ['KEYRING_URL']
-_READ_URL = os.environ['READ_URL']
-_WRITE_URL = os.environ['WRITE_URL']
-_KWARGS = {
-	'client_namespace': _CLIENT_NAMESPACE,
-	'contract_id': _CONTRACT_ID,
-	'keyring_url': _KEYRING_URL,
-	'read_url': _READ_URL,
-	'write_url': _WRITE_URL,
-	'long_lived_token': _LONG_LIVED_TOKEN}
+CONTRACT_ID = _decrypt(os.environ['CONTRACT_ID'])
+LONG_LIVED_TOKEN = _decrypt(os.environ['LONG_LIVED_TOKEN'])
+CLIENT_NAMESPACE = _decrypt(os.environ['CLIENT_NAMESPACE'])
+READ_SCORE_NAMESPACE = _decrypt(os.environ['READ_SCORE_NAMESPACE'])
+WRITE_SCORE_NAMESPACE = _decrypt(os.environ['WRITE_SCORE_NAMESPACE'])
+LOCATION_NAMESPACE = _decrypt(os.environ['READ_LOCATION_NAMESPACE'])
+TAKE_SCORES = int(os.environ['TAKE_SCORES'])
+TAKE_LOCATIONS = int(os.environ['TAKE_LOCATIONS'])
+HASH_OBFUSCATION = int(os.environ['HASH_OBFUSCATION'])
+KEYRING_URL = os.environ['KEYRING_URL']
+READ_URL = os.environ['READ_URL']
+WRITE_URL = os.environ['WRITE_URL']
+KWARGS = {
+	'client_namespace': CLIENT_NAMESPACE,
+	'contract_id': CONTRACT_ID,
+	'keyring_url': KEYRING_URL,
+	'read_url': READ_URL,
+	'write_url': WRITE_URL,
+	'long_lived_token': LONG_LIVED_TOKEN}
 # Contact search environment variables
-_MIN_DURATION = datetime.timedelta(seconds=float(os.environ['MIN_DURATION']))
+MIN_DURATION = datetime.timedelta(seconds=float(os.environ['MIN_DURATION']))
 # Propagation environment variables
-_TRANSMISSION_RATE = float(os.environ['TRANSMISSION_RATE'])
-_ITERATIONS = int(os.environ['ITERATIONS'])
-_TOLERANCE = float(os.environ['TOLERANCE'])
-_TIMESTAMP_BUFFER = datetime.timedelta(
+TRANSMISSION_RATE = float(os.environ['TRANSMISSION_RATE'])
+ITERATIONS = int(os.environ['ITERATIONS'])
+TOLERANCE = float(os.environ['TOLERANCE'])
+TIMESTAMP_BUFFER = datetime.timedelta(
 	seconds=float(os.environ['TIMESTAMP_BUFFER']))
-_SEND_THRESHOLD = float(os.environ['SEND_THRESHOLD'])
-_SEND_CONDITION = os.environ['SEND_CONDITION']
-_TIME_CONSTANT = float(os.environ['TIME_CONSTANT'])
+SEND_THRESHOLD = float(os.environ['SEND_THRESHOLD'])
+SEND_CONDITION = os.environ['SEND_CONDITION']
+TIME_CONSTANT = float(os.environ['TIME_CONSTANT'])
 
 
 def handle(event, context):
@@ -101,32 +101,32 @@ def handle(event, context):
 # noinspection PyTypeChecker
 @codetiming.Timer(text='Total task duration: {:0.6f} s', logger=stdout)
 async def _handle() -> NoReturn:
-	async with pda.PdaContext(**_KWARGS) as p:
+	async with pda.PdaContext(**KWARGS) as p:
 		hats, token = await p.get_hats_and_token()
 		variables, locations = await asyncio.gather(
 			p.get_scores(
 				hats=hats,
 				token=token,
-				namespace=_READ_SCORE_NAMESPACE,
-				take=_TAKE_SCORES),
+				namespace=READ_SCORE_NAMESPACE,
+				take=TAKE_SCORES),
 			p.get_locations(
 				hats=hats,
 				token=token,
-				namespace=_LOCATION_NAMESPACE,
-				take=_TAKE_LOCATIONS,
-				obfuscation=_HASH_OBFUSCATION))
-		contact_search = search.ContactSearch(min_duration=_MIN_DURATION)
+				namespace=LOCATION_NAMESPACE,
+				take=TAKE_LOCATIONS,
+				obfuscation=HASH_OBFUSCATION))
+		contact_search = search.ContactSearch(min_duration=MIN_DURATION)
 		factors = contact_search(locations)
 		belief_propagation = propagation.LocalBeliefPropagation(
-			transmission_rate=_TRANSMISSION_RATE,
-			iterations=_ITERATIONS,
-			tolerance=_TOLERANCE,
-			time_buffer=_TIMESTAMP_BUFFER,
-			send_threshold=_SEND_THRESHOLD,
-			send_condition=_SEND_CONDITION,
-			time_constant=_TIME_CONSTANT)
+			transmission_rate=TRANSMISSION_RATE,
+			iterations=ITERATIONS,
+			tolerance=TOLERANCE,
+			time_buffer=TIMESTAMP_BUFFER,
+			send_threshold=SEND_THRESHOLD,
+			send_condition=SEND_CONDITION,
+			time_constant=TIME_CONSTANT)
 		updated_scores = belief_propagation(factors, variables)
 		await p.post_scores(
 			scores=updated_scores,
 			token=token,
-			namespace=_WRITE_SCORE_NAMESPACE)
+			namespace=WRITE_SCORE_NAMESPACE)
