@@ -103,7 +103,7 @@ class ContactSearch:
 			nxt = functools.partial(lambda iterator: next(iterator, default))
 			return nxt(x) if n == 1 else tuple(nxt(x) for _ in range(n))
 
-		if not (h1 or h2) or h1.name == h2.name:
+		if not (h1 and h2) or h1.name == h2.name:
 			return None
 
 		occurrences = set()
