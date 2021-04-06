@@ -108,7 +108,7 @@ class PdaContext:
 			hat: str,
 			data: Iterable[Mapping[str, Any]],
 			since: datetime.datetime) -> Tuple[str, Iterable[model.RiskScore]]:
-		since = 0 if since is None else since
+		since = datetime.datetime.min if since is None else since
 		values = (s['data'] for s in data)
 		values = ((s['score'], _to_timestamp(s['timestamp'])) for s in values)
 		scores = (
