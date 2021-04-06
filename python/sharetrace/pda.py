@@ -145,6 +145,7 @@ class PdaContext:
 			data: Iterable[Mapping[str, Any]],
 			since: datetime.datetime,
 			obfuscation: int) -> model.LocationHistory:
+		since = datetime.datetime.min if since is None else since
 		locations = (loc['data'] for loc in data)
 		locations = (
 			(_to_timestamp(loc['timestamp']), loc['hash'][:-obfuscation])
