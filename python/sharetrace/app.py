@@ -20,6 +20,14 @@ lambda_client = boto3.client('lambda')
 kms_client = boto3.client('kms')
 
 
+def _since(days: float) -> datetime.datetime:
+	if days < 0:
+		since = datetime.datetime.min
+	else:
+		since = datetime.datetime.utcnow() - datetime.timedelta(days=days)
+	return since
+
+
 def _decrypt(value: Union[str, bytes]) -> str:
 	"""Decrypts an encrypted environment variable"""
 	context = {'LambdaFunctionName': os.environ['AWS_LAMBDA_FUNCTION_NAME']}
@@ -60,7 +68,7 @@ TIMESTAMP_BUFFER = datetime.timedelta(
 SEND_THRESHOLD = float(os.environ['SEND_THRESHOLD'])
 SEND_CONDITION = os.environ['SEND_CONDITION']
 TIME_CONSTANT = float(os.environ['TIME_CONSTANT'])
-SCORES_SINCE = float(os.environ['SCORES_SINCE'])
+LOOKBACK_DAYS = _since(float(os.environ['LOOKBACK_DAYS']))
 
 
 def handle(event, context):
@@ -110,13 +118,14 @@ async def _handle() -> NoReturn:
 				token=token,
 				namespace=READ_SCORE_NAMESPACE,
 				take=TAKE_SCORES,
-				since=SCORES_SINCE),
+				since=LOOKBACK_DAYS),
 			p.get_locations(
 				hats=hats,
 				token=token,
 				namespace=LOCATION_NAMESPACE,
 				take=TAKE_LOCATIONS,
-				obfuscation=HASH_OBFUSCATION))
+				obfuscation=HASH_OBFUSCATION,
+				since=LOOKBACK_DAYS))
 		contact_search = search.ContactSearch(min_duration=MIN_DURATION)
 		factors = contact_search(locations)
 		belief_propagation = propagation.LocalBeliefPropagation(
