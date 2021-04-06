@@ -286,12 +286,9 @@ class NumpyFactorGraph(FactorGraph):
 	def add_edges(self, edges: Edges) -> NoReturn:
 		if isinstance(edges, Mapping):
 			self._attrs.update(edges)
-		append = np.append
-		array = np.array
-		graph = self._graph
 		for (v1, v2) in edges:
-			graph[v1] = append(graph[v1], array([v2]))
-			graph[v2] = append(graph[v2], array([v1]))
+			self._graph[v1] = np.append(self._graph[v1], np.array([v2]))
+			self._graph[v2] = np.append(self._graph[v2], np.array([v1]))
 
 
 class RayFactorGraph(FactorGraph, backend.Process):

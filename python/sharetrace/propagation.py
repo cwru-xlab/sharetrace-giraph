@@ -403,7 +403,7 @@ class LocalBeliefPropagation(BeliefPropagation):
 			factor: graphs.Vertex,
 			msg: Iterable[model.RiskScore]) -> model.RiskScore:
 		def sec_to_day(s: Union[np.ndarray, np.float64]):
-			return np.float64(s) / 86400
+			return np.array(s / 86_400, dtype=np.float64)
 
 		occurrences = self._factors.get(factor, 'occurrences')
 		most_recent = np.max(occurrences['timestamp'])
@@ -480,50 +480,41 @@ class _ShareTraceVariablePart:
 		self.factors = factors
 		await self._send_local()
 		stop, i = False, 1
-		send_incoming = self._send_incoming
-		should_stop = self.should_stop
 		while not stop:
 			text = ': '.join((f'Iteration {i}', '{:0.6f} s'))
 			with codetiming.Timer(text=text, logger=stdout):
-				epoch = await send_incoming()
-				stop = should_stop(epoch)
+				epoch = await self._send_incoming()
+				stop = self.should_stop(epoch)
 				i += 1
 		local = functools.partial(lambda v: self.vertex_store.get(v, 'local'))
 		return np.array([local(v) for v in self.vertex_store])
 
 	@codetiming.Timer(text='Sending local messages: {:0.6f} s', logger=stdout)
 	async def _send_local(self):
-		send = self._send
-		await asyncio.gather(*(send(m) for m in self.local_msgs))
+		await asyncio.gather(*(self._send(m) for m in self.local_msgs))
 		self.local_msgs = None
 
 	async def _send_incoming(self) -> Iterable[float]:
 		epoch = []
-		dequeue = functools.partial(self.queue.get, block=True)
-		update_local = self._update_local
-		send = self._send
-		add_to_epoch = epoch.append
 		# Cannot use asyncio.gather: must keep message passing active
 		for _ in range(self.iterations):
-			msg = await dequeue()
-			await send(msg)
-			diff = update_local(msg)
-			add_to_epoch(diff)
+			msg = await self.queue.get(block=True)
+			await self._send(msg)
+			diff = self._update_local(msg)
+			epoch.append(diff)
 		return epoch
 
 	def _update_local(self, msg: model.Message) -> float:
-		vertex_store = self.vertex_store
 		receiver = msg.receiver
-		local = vertex_store.get(receiver, 'local')
+		local = self.vertex_store.get(receiver, 'local')
 		if (updated := max(msg.content, local)) > local:
 			diff = updated.value - local.value
-			vertex_store.put({receiver: {'local': updated}})
+			self.vertex_store.put({receiver: {'local': updated}})
 		else:
 			diff = 0
 		return diff
 
 	async def _send(self, msg: model.Message) -> NoReturn:
-		enqueue = self._enqueue
 		# Receiver becomes the sender and vice versa
 		sender, receiver, msg = msg.receiver, msg.sender, msg.content
 		# Avoid self-bias: do not send message back to sending factor
@@ -539,10 +530,9 @@ class _ShareTraceVariablePart:
 			await self.factors[f].enqueue.remote(msg)
 
 	async def enqueue(self, *msgs: model.Message) -> NoReturn:
-		put = functools.partial(self.queue.put, block=self.block_queue)
 		# TODO(rdt17) Consider reverting back to asyncio.gather()
 		for m in msgs:
-			await put(m)
+			await self.queue.put(m, block=True)
 
 	# noinspection PyTypeChecker
 	@staticmethod
@@ -583,20 +573,16 @@ class _ShareTraceFactorPart:
 			self,
 			graph: graphs.FactorGraph,
 			variables: Sequence['_ShareTraceVariablePart']) -> NoReturn:
-		dequeue = functools.partial(self.queue.get, block=True)
-		get_neighbors = graph.get_neighbors
-		get_address = functools.partial(graph.get_vertex_attr, key='address')
-		compute_msg = self._compute_message
 		while True:
-			msg = await dequeue()
+			msg = await self.queue.get(block=True)
 			# Receiver becomes the sender
 			sender = msg.receiver
-			neighbors = tuple(get_neighbors(sender))
+			neighbors = tuple(graph.get_neighbors(sender))
 			# Assumes factor vertex has a degree of 2
 			receiver = neighbors[not neighbors.index(msg.sender)]
-			msg = compute_msg(sender, msg.content)
+			msg = self._compute_message(sender, msg.content)
 			msg = model.Message(sender=sender, receiver=receiver, content=msg)
-			v = get_address(receiver)
+			v = graph.get_vertex_attr(receiver, key='address')
 			await variables[v].enqueue.remote(msg)
 
 	# TODO(rdt17) Refactor to be callable passed into class
@@ -623,11 +609,9 @@ class _ShareTraceFactorPart:
 		return msg
 
 	async def enqueue(self, *msgs: model.Message) -> NoReturn:
-		block = self.block_queue
-		put = self.queue.put
 		# TODO(rdt17) Consider reverting back to asyncio.gather()
 		for m in msgs:
-			await put(m, block=block)
+			await self.queue.put(m, block=self.block_queue)
 
 	# await asyncio.gather(*(put(m, block=block) for m in msgs))
 

@@ -56,10 +56,11 @@ TRANSMISSION_RATE = float(os.environ['TRANSMISSION_RATE'])
 ITERATIONS = int(os.environ['ITERATIONS'])
 TOLERANCE = float(os.environ['TOLERANCE'])
 TIMESTAMP_BUFFER = datetime.timedelta(
-	seconds=float(os.environ['TIMESTAMP_BUFFER']))
+	days=float(os.environ['TIMESTAMP_BUFFER']))
 SEND_THRESHOLD = float(os.environ['SEND_THRESHOLD'])
 SEND_CONDITION = os.environ['SEND_CONDITION']
 TIME_CONSTANT = float(os.environ['TIME_CONSTANT'])
+SCORES_SINCE = float(os.environ['SCORES_SINCE'])
 
 
 def handle(event, context):
@@ -108,7 +109,8 @@ async def _handle() -> NoReturn:
 				hats=hats,
 				token=token,
 				namespace=READ_SCORE_NAMESPACE,
-				take=TAKE_SCORES),
+				take=TAKE_SCORES,
+				since=SCORES_SINCE),
 			p.get_locations(
 				hats=hats,
 				token=token,
