@@ -1,7 +1,10 @@
 # aws-giraph
 
 This (incomplete) implementation follows the 
-[original design](https://doi.org/10.1145/3459930.3469553) of the ShareTrace algorithm. Refer to [this](https://github.com/share-trace/akka) repo for an improved implementation.
+[original design](https://doi.org/10.1145/3459930.3469553) of the ShareTrace
+algorithm. This implementation assumes contacts are extracted from geolocation
+data, and not device proximity. Refer to 
+[this](https://github.com/share-trace/akka) repo for an improved implementation.
 
 ## Building from source
 
